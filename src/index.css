@@ -2,87 +2,131 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Professional Sales & Stage Manager Design System */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core Background & Text */
+    --background: 210 15% 98%;
+    --foreground: 215 25% 15%;
 
+    /* Card System */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 215 25% 15%;
+    --card-border: 210 20% 88%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 215 25% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Business Primary - Professional Blue */
+    --primary: 217 91% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 91% 40%;
+    --primary-glow: 217 91% 60%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Professional Secondary - Slate */
+    --secondary: 210 15% 92%;
+    --secondary-foreground: 215 25% 25%;
+    --secondary-hover: 210 15% 88%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Success & Revenue - Green */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 95%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Warning & Pending - Amber */
+    --warning: 43 96% 56%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 43 96% 95%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive & Losses - Red */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 0 84% 95%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Muted Elements */
+    --muted: 210 15% 95%;
+    --muted-foreground: 215 15% 55%;
 
-    --radius: 0.5rem;
+    /* Accent for Highlights */
+    --accent: 217 91% 95%;
+    --accent-foreground: 217 91% 35%;
 
+    /* Form Elements */
+    --border: 210 20% 88%;
+    --input: 210 15% 95%;
+    --ring: 217 91% 45%;
+
+    --radius: 0.75rem;
+
+    /* Professional Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 45%));
+    --gradient-card: linear-gradient(180deg, hsl(var(--card)), hsl(210 15% 99%));
+    --gradient-revenue: linear-gradient(45deg, hsl(var(--success)) 0%, hsl(142 76% 50%) 100%);
+
+    /* Professional Shadows */
+    --shadow-card: 0 2px 8px -2px hsl(215 25% 15% / 0.08);
+    --shadow-elevated: 0 8px 24px -8px hsl(215 25% 15% / 0.12);
+    --shadow-primary: 0 4px 16px -4px hsl(var(--primary) / 0.3);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* Sidebar Variables */
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 215 28% 8%;
     --foreground: 210 40% 98%;
 
-    --card: 222.2 84% 4.9%;
+    --card: 215 28% 10%;
     --card-foreground: 210 40% 98%;
+    --card-border: 215 28% 15%;
 
-    --popover: 222.2 84% 4.9%;
+    --popover: 215 28% 10%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 217 91% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 91% 50%;
+    --primary-glow: 217 91% 65%;
 
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 215 28% 15%;
     --secondary-foreground: 210 40% 98%;
+    --secondary-hover: 215 28% 18%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --success: 142 76% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 8%;
 
-    --accent: 217.2 32.6% 17.5%;
+    --warning: 43 96% 60%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 43 96% 8%;
+
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 0 84% 8%;
+
+    --muted: 215 28% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 215 28% 15%;
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --border: 215 28% 15%;
+    --input: 215 28% 15%;
+    --ring: 217 91% 55%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
