@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KPICard } from "@/components/KPICard";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { 
   DollarSign, 
   Users, 
@@ -117,80 +118,53 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Recent Activity & Quick Actions */}
+      {/* Dashboard Header with ROI per Stage */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
-              Recent Activity
+              <TrendingUp className="w-5 h-5" />
+              ROI per Stage
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-accent/50 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-success flex items-center justify-center">
-                  <DollarSign className="w-4 h-4 text-success-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">Contract signed</p>
-                  <p className="text-xs text-muted-foreground">Max Mustermann - €3,200</p>
-                </div>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-success/10 rounded-lg">
+                <span className="font-medium">Hamburg Workshop</span>
+                <span className="text-success font-bold">+480% ROI</span>
               </div>
-              
-              <div className="flex items-center gap-3 p-3 bg-accent/50 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                  <Phone className="w-4 h-4 text-primary-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">Zweitgespräch completed</p>
-                  <p className="text-xs text-muted-foreground">Anna Schmidt - Interested</p>
-                </div>
+              <div className="flex justify-between items-center p-3 bg-warning/10 rounded-lg">
+                <span className="font-medium">Munich Seminar</span>
+                <span className="text-warning font-bold">Pending</span>
               </div>
-              
-              <div className="flex items-center gap-3 p-3 bg-accent/50 rounded-lg">
-                <div className="w-8 h-8 rounded-full bg-warning flex items-center justify-center">
-                  <Calendar className="w-4 h-4 text-warning-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm">Stage event created</p>
-                  <p className="text-xs text-muted-foreground">Hamburg Workshop - €500 budget</p>
-                </div>
+              <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
+                <span className="font-medium">Berlin Conference</span>
+                <span className="text-primary font-bold">Upcoming</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Quick Actions
+              <Calendar className="w-5 h-5" />
+              Recent Activity
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-16 flex flex-col gap-1">
-                <Users className="w-5 h-5" />
-                <span className="text-xs">Add Client</span>
-              </Button>
-              
-              <Button variant="outline" className="h-16 flex flex-col gap-1">
-                <Phone className="w-5 h-5" />
-                <span className="text-xs">Log Call</span>
-              </Button>
-              
-              <Button variant="outline" className="h-16 flex flex-col gap-1">
-                <Calendar className="w-5 h-5" />
-                <span className="text-xs">New Stage</span>
-              </Button>
-              
-              <Button variant="outline" className="h-16 flex flex-col gap-1">
-                <DollarSign className="w-5 h-5" />
-                <span className="text-xs">Add Revenue</span>
-              </Button>
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">Latest client interactions</div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-2 bg-accent/30 rounded">
+                  <span>Max Mustermann - Contract signed</span>
+                  <Badge className="bg-success text-success-foreground">€3,200</Badge>
+                </div>
+                <div className="flex items-center justify-between p-2 bg-accent/30 rounded">
+                  <span>Anna Schmidt - Call scheduled</span>
+                  <Badge variant="outline">Feb 20</Badge>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>

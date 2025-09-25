@@ -3,6 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { 
   Phone, 
   Calendar, 
@@ -99,29 +107,71 @@ export default function SalesProcess() {
         </div>
       </div>
 
-      {/* Pipeline Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {pipelineStages.map((stage) => (
-          <Card 
-            key={stage.id}
-            className={`cursor-pointer transition-all hover:shadow-lg ${
-              selectedStage === stage.id ? 'ring-2 ring-primary' : ''
-            }`}
-            onClick={() => setSelectedStage(stage.id)}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className={`w-3 h-3 rounded-full ${stage.color}`} />
-                <span className="text-2xl font-bold">{stage.count}</span>
-              </div>
-              <h3 className="font-medium text-sm mb-1">{stage.name}</h3>
-              <p className="text-xs text-muted-foreground">
-                {stage.value > 0 ? `€${stage.value.toLocaleString()}` : 'No value yet'}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Sales Process Pipeline Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Sales Pipeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Stage</TableHead>
+                <TableHead>Zweitgespräch Date</TableHead>
+                <TableHead>Result</TableHead>
+                <TableHead>Revenue</TableHead>
+                <TableHead>Linked Stage</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell className="font-medium">Max Mustermann</TableCell>
+                <TableCell><Badge variant="secondary">Zweitgespräch</Badge></TableCell>
+                <TableCell>2024-01-15</TableCell>
+                <TableCell><Badge className="bg-success text-success-foreground">Yes</Badge></TableCell>
+                <TableCell>€3,200</TableCell>
+                <TableCell><Badge variant="outline">Hamburg Workshop</Badge></TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" className="bg-success/10 text-success border border-success/20">
+                    Edit Details
+                  </Button>
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Anna Schmidt</TableCell>
+                <TableCell><Badge variant="outline">Initial Call</Badge></TableCell>
+                <TableCell>-</TableCell>
+                <TableCell>-</TableCell>
+                <TableCell>-</TableCell>
+                <TableCell><Badge variant="outline">Munich Seminar</Badge></TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" className="bg-warning/10 text-warning border border-warning/20">
+                    Schedule Call
+                  </Button>
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Thomas Weber</TableCell>
+                <TableCell><Badge className="bg-success text-success-foreground">Abschluss</Badge></TableCell>
+                <TableCell>2024-01-10</TableCell>
+                <TableCell><Badge className="bg-success text-success-foreground">Yes</Badge></TableCell>
+                <TableCell>€2,850</TableCell>
+                <TableCell><Badge variant="outline">Berlin Conference</Badge></TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="sm" className="bg-primary/10 text-primary border border-primary/20">
+                    View Contract
+                  </Button>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* Pipeline Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

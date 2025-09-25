@@ -185,11 +185,10 @@ export default function Clients() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Last Contact</TableHead>
-                <TableHead>Revenue</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Source (Organic/Paid)</TableHead>
+                <TableHead>Linked Stage</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -198,29 +197,15 @@ export default function Clients() {
               {filteredClients.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell className="font-medium">{client.name}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Mail className="w-3 h-3" />
-                        {client.email}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Phone className="w-3 h-3" />
-                        {client.phone}
-                      </div>
-                    </div>
-                  </TableCell>
+                  <TableCell>{client.email}</TableCell>
+                  <TableCell>{client.phone}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
                       {sourceLabels[client.source as keyof typeof sourceLabels]}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {stageLabels[client.stage as keyof typeof stageLabels]}
-                  </TableCell>
-                  <TableCell>{client.lastContact}</TableCell>
-                  <TableCell>
-                    {client.revenue > 0 ? `€${client.revenue.toLocaleString()}` : "-"}
+                    <Badge variant="secondary">Hamburg Workshop</Badge>
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[client.status as keyof typeof statusColors]}>
@@ -229,11 +214,11 @@ export default function Clients() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">
-                        <Phone className="w-4 h-4" />
+                      <Button variant="ghost" size="sm" title="View Sales Process">
+                        <TrendingUp className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
-                        <Mail className="w-4 h-4" />
+                      <Button variant="ghost" size="sm" title="Add Note">
+                        <Calendar className="w-4 h-4" />
                       </Button>
                     </div>
                   </TableCell>

@@ -19,8 +19,10 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  Users
+  Users,
+  AlertTriangle
 } from "lucide-react";
+import { CashflowEntriesTable } from "./CashflowEntries";
 
 // Mock contracts data
 const mockContracts = [
@@ -172,10 +174,9 @@ export default function Contracts() {
                 <TableHead>Client</TableHead>
                 <TableHead>Start Date</TableHead>
                 <TableHead>Duration</TableHead>
-                <TableHead>Total Value</TableHead>
-                <TableHead>Monthly Amount</TableHead>
+                <TableHead>Revenue</TableHead>
+                <TableHead>Payment Frequency</TableHead>
                 <TableHead>Progress</TableHead>
-                <TableHead>Next Payment</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -188,19 +189,15 @@ export default function Contracts() {
                     <TableCell>{contract.startDate}</TableCell>
                     <TableCell>{contract.duration} months</TableCell>
                     <TableCell>€{contract.totalValue.toLocaleString()}</TableCell>
-                    <TableCell>€{contract.monthlyAmount.toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{contract.frequency}</Badge>
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-1">
                         <Progress value={progressPercent} className="h-2" />
                         <p className="text-xs text-muted-foreground">
                           {contract.paidMonths}/{contract.duration} months
                         </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        {contract.nextPayment}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -216,8 +213,10 @@ export default function Contracts() {
         </CardContent>
       </Card>
 
-      {/* Cashflow Forecast */}
+      {/* Cashflow Entries & Forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <CashflowEntriesTable />
+        
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
