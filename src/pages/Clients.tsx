@@ -32,29 +32,61 @@ const mockClients = [
     stage: "zweitgespraech",
     lastContact: "2024-01-15",
     revenue: 3200,
-    status: "active"
+    status: "kunde",
+    zweitgespraechDate: "2024-01-10",
+    linkedStage: null
   },
-    {
-      id: 2,
-      name: "Anna Schmidt",
-      email: "anna@example.com", 
-      phone: "+49 987 654321",
-      source: "paid",
-      stage: "zweitgespraech",
-      lastContact: "2024-01-14",
-      revenue: 0,
-      status: "active"
-    },
+  {
+    id: 2,
+    name: "Anna Schmidt",
+    email: "anna@example.com", 
+    phone: "+49 987 654321",
+    source: "paid",
+    stage: "zweitgespraech",
+    lastContact: "2024-01-25",
+    revenue: 0,
+    status: "geplant",
+    zweitgespraechDate: "2024-01-30",
+    linkedStage: "Hamburg Workshop"
+  },
   {
     id: 3,
     name: "Thomas Weber",
     email: "thomas@example.com",
     phone: "+49 555 123456",
     source: "organic",
-    stage: "abschluss",
+    stage: "zweitgespraech",
     lastContact: "2024-01-13",
     revenue: 2850,
-    status: "client"
+    status: "kunde",
+    zweitgespraechDate: "2024-01-08",
+    linkedStage: null
+  },
+  {
+    id: 4,
+    name: "Sarah Mueller",
+    email: "sarah@example.com",
+    phone: "+49 444 567890",
+    source: "paid",
+    stage: "zweitgespraech",
+    lastContact: "2024-01-18",
+    revenue: 0,
+    status: "pending",
+    zweitgespraechDate: "2024-01-18",
+    linkedStage: "Berlin Conference"
+  },
+  {
+    id: 5,
+    name: "Michael Richter",
+    email: "michael@example.com",
+    phone: "+49 333 987654",
+    source: "organic",
+    stage: "zweitgespraech",
+    lastContact: "2024-01-12",
+    revenue: 0,
+    status: "lost",
+    zweitgespraechDate: "2024-01-12",
+    linkedStage: null
   }
 ];
 
@@ -71,14 +103,16 @@ const sourceLabels = {
 };
 
 const statusColors = {
-  active: "bg-primary text-primary-foreground",    // Zweitgespräch geplant/laufend
-  client: "bg-success text-success-foreground",    // Vertrag abgeschlossen
-  lost: "bg-destructive text-destructive-foreground" // Nicht erschienen/kein Abschluss
+  geplant: "bg-warning text-warning-foreground",     // Zweitgespräch geplant
+  pending: "bg-primary text-primary-foreground",     // Zweitgespräch erledigt, Entscheidung ausstehend
+  kunde: "bg-success text-success-foreground",       // Vertrag abgeschlossen
+  lost: "bg-destructive text-destructive-foreground" // Abgelehnt nach Zweitgespräch
 };
 
 const statusLabels = {
-  active: "Aktiv", 
-  client: "Kunde",
+  geplant: "Geplant",
+  pending: "Ausstehend", 
+  kunde: "Kunde",
   lost: "Verloren"
 };
 
@@ -95,8 +129,8 @@ export default function Clients() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Clients</h1>
-          <p className="text-muted-foreground">Manage your client database and relationships</p>
+          <h1 className="text-3xl font-bold text-foreground">Kunden</h1>
+          <p className="text-muted-foreground">Verwalten Sie Ihre Kundendatenbank und Beziehungen</p>
         </div>
       </div>
 
@@ -109,8 +143,22 @@ export default function Clients() {
                 <TrendingUp className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">127</p>
-                <p className="text-xs text-muted-foreground">Total Clients</p>
+                <p className="text-2xl font-bold">{mockClients.length}</p>
+                <p className="text-xs text-muted-foreground">Gesamt Einträge</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{mockClients.filter(c => c.status === 'geplant').length}</p>
+                <p className="text-xs text-muted-foreground">Zweitgespräche geplant</p>
               </div>
             </div>
           </CardContent>
@@ -123,8 +171,8 @@ export default function Clients() {
                 <Phone className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">23</p>
-                <p className="text-xs text-muted-foreground">Aktive Zweitgespräche</p>
+                <p className="text-2xl font-bold">{mockClients.filter(c => ['pending', 'kunde', 'lost'].includes(c.status)).length}</p>
+                <p className="text-xs text-muted-foreground">Zweitgespräche erledigt</p>
               </div>
             </div>
           </CardContent>
@@ -134,25 +182,11 @@ export default function Clients() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-success" />
+                <Mail className="w-5 h-5 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold">8</p>
-                <p className="text-xs text-muted-foreground">Calls This Week</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-                <Mail className="w-5 h-5 text-accent-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">73%</p>
-                <p className="text-xs text-muted-foreground">Response Rate</p>
+                <p className="text-2xl font-bold">{mockClients.filter(c => c.status === 'kunde').length}</p>
+                <p className="text-xs text-muted-foreground">Abgeschlossene Kunden</p>
               </div>
             </div>
           </CardContent>
@@ -206,7 +240,11 @@ export default function Clients() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="secondary">Hamburg Workshop</Badge>
+                    {client.linkedStage ? (
+                      <Badge variant="secondary">{client.linkedStage}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[client.status as keyof typeof statusColors]}>
