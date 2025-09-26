@@ -71,10 +71,17 @@ const sourceLabels = {
 };
 
 const statusColors = {
-  active: "bg-success text-success-foreground",
-  prospect: "bg-warning text-warning-foreground", 
-  client: "bg-primary text-primary-foreground",
-  lost: "bg-destructive text-destructive-foreground"
+  prospect: "bg-warning text-warning-foreground",  // Interesse, noch kein Gespräch
+  active: "bg-primary text-primary-foreground",    // Zweitgespräch geplant/laufend
+  client: "bg-success text-success-foreground",    // Vertrag abgeschlossen
+  lost: "bg-destructive text-destructive-foreground" // Kein Interesse/verlorener Lead
+};
+
+const statusLabels = {
+  prospect: "Interessent",
+  active: "Aktiv", 
+  client: "Kunde",
+  lost: "Verloren"
 };
 
 export default function Clients() {
@@ -205,7 +212,7 @@ export default function Clients() {
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[client.status as keyof typeof statusColors]}>
-                      {client.status}
+                      {statusLabels[client.status as keyof typeof statusLabels]}
                     </Badge>
                   </TableCell>
                   <TableCell>

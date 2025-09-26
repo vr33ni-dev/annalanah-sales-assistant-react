@@ -35,16 +35,6 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Geschäftsübersicht und wichtige Kennzahlen</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" size="sm">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Bericht erstellen
-          </Button>
-          <Button size="sm">
-            <Plus className="w-4 h-4 mr-2" />
-            Schnell hinzufügen
-          </Button>
-        </div>
       </div>
 
       {/* KPI Grid */}

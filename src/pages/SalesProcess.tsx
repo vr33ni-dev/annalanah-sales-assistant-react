@@ -124,22 +124,89 @@ export default function SalesProcess() {
   };
 
   const handleFormSubmit = () => {
-    // This would integrate with your backend
-    console.log("Form submitted:", formData);
-    setShowForm(false);
-    setFormStep(1);
-    setFormData({
-      name: "",
-      zweitgespraechDate: null,
-      source: "",
-      linkedStage: "",
-      zweitgespraechResult: null,
-      abschluss: null,
-      revenue: "",
-      duration: "",
-      startDate: null,
-      frequency: ""
-    });
+    // Step 1: Create client entry and sales_process entry
+    if (formStep === 1) {
+      console.log("Creating client and sales process entry:", {
+        name: formData.name,
+        zweitgespraechDate: formData.zweitgespraechDate,
+        source: formData.source,
+        linkedStage: formData.linkedStage,
+        stage: "Geplant"
+      });
+      // Here you would call your backend API to create entries
+      // For now, we'll just update the UI
+      setShowForm(false);
+      setFormStep(1);
+      setFormData({
+        name: "",
+        zweitgespraechDate: null,
+        source: "",
+        linkedStage: "",
+        zweitgespraechResult: null,
+        abschluss: null,
+        revenue: "",
+        duration: "",
+        startDate: null,
+        frequency: ""
+      });
+      return;
+    }
+
+    // Step 2: Update zweitgespraech_result 
+    if (formStep === 2) {
+      console.log("Updating zweitgespraech result:", {
+        zweitgespraechResult: formData.zweitgespraechResult
+      });
+      // Update the sales_process entry
+      setShowForm(false);
+      setFormStep(1);
+      setFormData({
+        name: "",
+        zweitgespraechDate: null,
+        source: "",
+        linkedStage: "",
+        zweitgespraechResult: null,
+        abschluss: null,
+        revenue: "",
+        duration: "",
+        startDate: null,
+        frequency: ""
+      });
+      return;
+    }
+
+    // Step 3: Handle Abschluss and create contract + cashflow entries
+    if (formStep === 3) {
+      console.log("Processing Abschluss:", {
+        abschluss: formData.abschluss,
+        contractDetails: formData.abschluss ? {
+          revenue: formData.revenue,
+          duration: formData.duration,
+          startDate: formData.startDate,
+          frequency: formData.frequency
+        } : null
+      });
+      
+      if (formData.abschluss) {
+        // Create contract and generate cashflow_entries
+        console.log("Creating contract and cashflow entries");
+      }
+      
+      setShowForm(false);
+      setFormStep(1);
+      setFormData({
+        name: "",
+        zweitgespraechDate: null,
+        source: "",
+        linkedStage: "",
+        zweitgespraechResult: null,
+        abschluss: null,
+        revenue: "",
+        duration: "",
+        startDate: null,
+        frequency: ""
+      });
+    }
   };
 
   return (
@@ -526,26 +593,7 @@ export default function SalesProcess() {
       </Card>
 
       {/* KPI Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Pipeline Wert
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="text-2xl font-bold">€45,900</div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="flex-1 bg-muted rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full" style={{width: '75%'}}></div>
-                </div>
-                <span className="text-muted-foreground">75% zum Ziel</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         <Card>
           <CardHeader className="pb-3">
