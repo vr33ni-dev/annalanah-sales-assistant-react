@@ -34,17 +34,17 @@ const mockClients = [
     revenue: 3200,
     status: "active"
   },
-  {
-    id: 2,
-    name: "Anna Schmidt",
-    email: "anna@example.com", 
-    phone: "+49 987 654321",
-    source: "paid",
-    stage: "erstgespraech",
-    lastContact: "2024-01-14",
-    revenue: 0,
-    status: "prospect"
-  },
+    {
+      id: 2,
+      name: "Anna Schmidt",
+      email: "anna@example.com", 
+      phone: "+49 987 654321",
+      source: "paid",
+      stage: "zweitgespraech",
+      lastContact: "2024-01-14",
+      revenue: 0,
+      status: "active"
+    },
   {
     id: 3,
     name: "Thomas Weber",
@@ -71,14 +71,12 @@ const sourceLabels = {
 };
 
 const statusColors = {
-  prospect: "bg-warning text-warning-foreground",  // Interesse, noch kein Gespräch
   active: "bg-primary text-primary-foreground",    // Zweitgespräch geplant/laufend
   client: "bg-success text-success-foreground",    // Vertrag abgeschlossen
-  lost: "bg-destructive text-destructive-foreground" // Kein Interesse/verlorener Lead
+  lost: "bg-destructive text-destructive-foreground" // Nicht erschienen/kein Abschluss
 };
 
 const statusLabels = {
-  prospect: "Interessent",
   active: "Aktiv", 
   client: "Kunde",
   lost: "Verloren"
@@ -121,12 +119,12 @@ export default function Clients() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Phone className="w-5 h-5 text-warning" />
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Phone className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <p className="text-2xl font-bold">23</p>
-                <p className="text-xs text-muted-foreground">Active Prospects</p>
+                <p className="text-xs text-muted-foreground">Aktive Zweitgespräche</p>
               </div>
             </div>
           </CardContent>
