@@ -95,7 +95,7 @@ export default function Dashboard() {
         />
         
         <KPICard
-          title="Ausstehende Gespräche"
+          title="Ausstehende Zweitgespräche"
           value={mockData.pendingCalls}
           description="Zweitgespräch geplant"
           icon={Phone}
