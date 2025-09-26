@@ -161,10 +161,6 @@ export default function SalesProcess() {
             <CalendarPlus className="w-4 h-4 mr-2" />
             Zweitgespräch planen
           </Button>
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Neuer Kunde
-          </Button>
         </div>
       </div>
 

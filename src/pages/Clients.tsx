@@ -93,10 +93,6 @@ export default function Clients() {
           <h1 className="text-3xl font-bold text-foreground">Clients</h1>
           <p className="text-muted-foreground">Manage your client database and relationships</p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Client
-        </Button>
       </div>
 
       {/* Stats Cards */}

@@ -31,10 +31,6 @@ const navigationItems = [
   { title: "Bühnen & Events", url: "/stages", icon: Calendar },
 ];
 
-const quickActions = [
-  { title: "Umsatz hinzufügen", url: "/revenue", icon: DollarSign },
-  { title: "Berichte", url: "/reports", icon: BarChart3 },
-];
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -98,32 +94,6 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Quick Actions */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-2">
-            Schnellaktionen
-          </SidebarGroupLabel>
-          
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {quickActions.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      className={({ isActive }) => 
-                        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all ${getNavCls({ isActive })}`
-                      }
-                    >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
-                      {!isCollapsed && <span className="font-medium">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
     </Sidebar>
   );
