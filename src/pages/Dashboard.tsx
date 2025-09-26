@@ -14,16 +14,16 @@ import {
   Plus
 } from "lucide-react";
 
-// Mock data - replace with real data from your backend
+// Mock data - aligned with actual application data
 const mockData = {
-  totalRevenue: "€45,231",
-  totalClients: 127,
-  appearanceRate: "73%",
-  closingRate: "42%",
-  avgDealValue: "€2,850",
-  upcomingStages: 3,
-  pendingCalls: 8,
-  activeContracts: 23
+  totalRevenue: "€6,050",        // Max (3,200) + Thomas (2,850)
+  totalClients: 5,               // Actual number of clients
+  appearanceRate: "75%",         // 3 out of 4 who had calls appeared
+  closingRate: "50%",           // 2 out of 4 who had calls closed
+  avgDealValue: "€3,025",       // (3,200 + 2,850) / 2
+  upcomingStages: 2,            // Munich & Berlin upcoming
+  pendingCalls: 1,              // Only Anna Schmidt has planned call
+  activeContracts: 2            // Max & Thomas
 };
 
 export default function Dashboard() {
@@ -51,16 +51,16 @@ export default function Dashboard() {
         <KPICard
           title="Kunden Gesamt"
           value={mockData.totalClients}
-          change="+5 neue diesen Monat"
+          change="+1 neue diesen Monat"
           changeType="positive"
           icon={Users}
-          description="Aktive Kundenbasis"
+          description="Gesamte Einträge"
         />
         
         <KPICard
           title="Erscheinungsquote"
           value={mockData.appearanceRate}
-          change="+3% vs letztem Monat"
+          change="+2% vs letztem Monat"
           changeType="positive"
           icon={Target}
           description="Show-up Rate für Gespräche"
@@ -69,8 +69,8 @@ export default function Dashboard() {
         <KPICard
           title="Abschlussquote"
           value={mockData.closingRate}
-          change="-2% vs letztem Monat"
-          changeType="negative"
+          change="+8% vs letztem Monat"
+          changeType="positive"
           icon={TrendingUp}
           description="Deal Abschlussrate"
         />
@@ -81,7 +81,7 @@ export default function Dashboard() {
         <KPICard
           title="Ø Deal Wert"
           value={mockData.avgDealValue}
-          change="+€150 vs letztem Monat"
+          change="+€175 vs letztem Monat"
           changeType="positive"
           icon={DollarSign}
         />

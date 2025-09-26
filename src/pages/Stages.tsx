@@ -21,17 +21,18 @@ import {
   MapPin
 } from "lucide-react";
 
-// Mock stages data
+// Mock stages data - shows leads converted = people who became customers
 const mockStages = [
   {
     id: 1,
     name: "Hamburg Workshop",
-    date: "2024-02-15",
+    date: "2024-01-15",
     budget: 500,
     registrations: 25,
     participants: 18,
     leads: 3,
-    revenue: 2850,
+    leadsConverted: 2,  // Max & Thomas came from this event
+    revenue: 6050,      // Combined revenue from Max + Thomas
     status: "completed"
   },
   {
@@ -42,6 +43,7 @@ const mockStages = [
     registrations: 32,
     participants: 0,
     leads: 0,
+    leadsConverted: 0,
     revenue: 0,
     status: "upcoming"
   },
@@ -53,6 +55,7 @@ const mockStages = [
     registrations: 45,
     participants: 0,
     leads: 0,
+    leadsConverted: 0,
     revenue: 0,
     status: "upcoming"
   }
@@ -83,12 +86,12 @@ export default function Stages() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Stages & Events</h1>
-          <p className="text-muted-foreground">Manage marketing events and track performance</p>
+          <h1 className="text-3xl font-bold text-foreground">Bühnen & Events</h1>
+          <p className="text-muted-foreground">Marketing-Events verwalten und Performance verfolgen</p>
         </div>
         <Button>
           <Plus className="w-4 h-4 mr-2" />
-          Create Stage
+          Bühne erstellen
         </Button>
       </div>
 
@@ -102,7 +105,7 @@ export default function Stages() {
               </div>
               <div>
                 <p className="text-2xl font-bold">€{totalBudget.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Total Ad Budget</p>
+                <p className="text-xs text-muted-foreground">Gesamt Werbebudget</p>
               </div>
             </div>
           </CardContent>
@@ -116,7 +119,7 @@ export default function Stages() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{totalRegistrations}</p>
-                <p className="text-xs text-muted-foreground">Total Registrations</p>
+                <p className="text-xs text-muted-foreground">Gesamt Anmeldungen</p>
               </div>
             </div>
           </CardContent>
@@ -130,7 +133,7 @@ export default function Stages() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{showUpRate}%</p>
-                <p className="text-xs text-muted-foreground">Show-up Rate</p>
+                <p className="text-xs text-muted-foreground">Erscheinungsquote</p>
               </div>
             </div>
           </CardContent>
@@ -158,7 +161,7 @@ export default function Stages() {
             <CardTitle>Event Management</CardTitle>
             <div className="flex gap-2">
               <Input
-                placeholder="Search stages..."
+                placeholder="Bühnen suchen..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-64"
@@ -170,15 +173,16 @@ export default function Stages() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Stage Name</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Bühne Name</TableHead>
+                <TableHead>Datum</TableHead>
                 <TableHead>Budget</TableHead>
-                <TableHead>Registrations</TableHead>
-                <TableHead>Participants</TableHead>
-                <TableHead>Leads Generated</TableHead>
-                <TableHead>Revenue</TableHead>
+                <TableHead>Anmeldungen</TableHead>
+                <TableHead>Teilnehmer</TableHead>
+                <TableHead>Leads generiert</TableHead>
+                <TableHead>Kunden gewonnen</TableHead>
+                <TableHead>Umsatz</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -205,11 +209,14 @@ export default function Stages() {
                     {stage.leads > 0 ? stage.leads : "-"}
                   </TableCell>
                   <TableCell>
+                    {stage.leadsConverted > 0 ? stage.leadsConverted : "-"}
+                  </TableCell>
+                  <TableCell>
                     {stage.revenue > 0 ? `€${stage.revenue.toLocaleString()}` : "-"}
                   </TableCell>
                   <TableCell>
                     <Badge className={statusColors[stage.status as keyof typeof statusColors]}>
-                      {stage.status}
+                      {stage.status === 'completed' ? 'Abgeschlossen' : stage.status === 'upcoming' ? 'Geplant' : stage.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -233,10 +240,10 @@ export default function Stages() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5" />
-              Cost Per Participant
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="w-5 h-5" />
+            Kosten pro Teilnehmer
+          </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -246,11 +253,11 @@ export default function Stages() {
                   <div key={stage.id} className="flex items-center justify-between p-3 bg-accent/30 rounded-lg">
                     <div>
                       <p className="font-medium">{stage.name}</p>
-                      <p className="text-sm text-muted-foreground">{stage.participants} participants</p>
+                      <p className="text-sm text-muted-foreground">{stage.participants} Teilnehmer</p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold">€{costPerParticipant}</p>
-                      <p className="text-xs text-muted-foreground">per participant</p>
+                      <p className="text-xs text-muted-foreground">pro Teilnehmer</p>
                     </div>
                   </div>
                 );
@@ -261,10 +268,10 @@ export default function Stages() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Revenue Generated
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Generierter Umsatz
+          </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -274,7 +281,7 @@ export default function Stages() {
                   <div key={stage.id} className="flex items-center justify-between p-3 bg-success/10 rounded-lg">
                     <div>
                       <p className="font-medium">{stage.name}</p>
-                      <p className="text-sm text-muted-foreground">{stage.leads} leads converted</p>
+                      <p className="text-sm text-muted-foreground">{stage.leadsConverted} Kunden gewonnen</p>
                     </div>
                     <div className="text-right">
                       <p className="font-bold text-success">€{stage.revenue.toLocaleString()}</p>
