@@ -32,21 +32,25 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
-// Mock pipeline data
+// Mock pipeline data - aligned with Kunden
 const salesProcessEntries = [
   {
     id: 1,
     name: "Max Mustermann",
     phone: "+49 123 456789",
     email: "max@example.com",
-    stage: "Zweitgespräch",
-    zweitgespraechDate: "2024-01-20",
-    source: "bezahlt",
-    linkedStage: "Hamburg Workshop",
+    stage: "Abgeschlossen",
+    zweitgespraechDate: "2024-01-10",
+    source: "organisch",
+    linkedStage: null,
     zweitgespraechResult: true,
-    abschluss: null,
-    revenue: null,
-    contractDetails: null
+    abschluss: true,
+    revenue: 3200,
+    contractDetails: {
+      duration: "12 Monate",
+      startDate: "2024-01-15",
+      frequency: "monatlich"
+    }
   },
   {
     id: 2,
@@ -54,9 +58,9 @@ const salesProcessEntries = [
     phone: "+49 987 654321", 
     email: "anna@example.com",
     stage: "Geplant",
-    zweitgespraechDate: "2024-01-25",
-    source: "organisch",
-    linkedStage: null,
+    zweitgespraechDate: "2024-01-30",
+    source: "bezahlt",
+    linkedStage: "Hamburg Workshop",
     zweitgespraechResult: null,
     abschluss: null,
     revenue: null,
@@ -68,17 +72,45 @@ const salesProcessEntries = [
     phone: "+49 555 123456",
     email: "thomas@example.com", 
     stage: "Abgeschlossen",
-    zweitgespraechDate: "2024-01-10",
-    source: "bezahlt",
-    linkedStage: "Berlin Conference",
+    zweitgespraechDate: "2024-01-08",
+    source: "organisch",
+    linkedStage: null,
     zweitgespraechResult: true,
     abschluss: true,
     revenue: 2850,
     contractDetails: {
-      duration: "12 Monate",
-      startDate: "2024-01-15",
+      duration: "6 Monate",
+      startDate: "2024-01-10",
       frequency: "monatlich"
     }
+  },
+  {
+    id: 4,
+    name: "Sarah Mueller",
+    phone: "+49 444 567890",
+    email: "sarah@example.com",
+    stage: "Zweitgespräch",
+    zweitgespraechDate: "2024-01-18",
+    source: "bezahlt",
+    linkedStage: "Berlin Conference",
+    zweitgespraechResult: true,
+    abschluss: null,
+    revenue: null,
+    contractDetails: null
+  },
+  {
+    id: 5,
+    name: "Michael Richter",
+    phone: "+49 333 987654",
+    email: "michael@example.com",
+    stage: "Verloren",
+    zweitgespraechDate: "2024-01-12",
+    source: "organisch",
+    linkedStage: null,
+    zweitgespraechResult: false,
+    abschluss: false,
+    revenue: null,
+    contractDetails: null
   }
 ];
 
@@ -95,6 +127,7 @@ export default function SalesProcess() {
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState(1); // 1: Geplant, 2: Ergebnis, 3: Abschluss
   const [date, setDate] = useState();
+  const [statusFilter, setStatusFilter] = useState("all");
   
   // Form states
   const [formData, setFormData] = useState({
@@ -109,6 +142,11 @@ export default function SalesProcess() {
     startDate: null,
     frequency: ""
   });
+
+  // Filter entries based on status
+  const filteredEntries = statusFilter === "all" 
+    ? salesProcessEntries 
+    : salesProcessEntries.filter(entry => entry.stage.toLowerCase() === statusFilter.toLowerCase());
 
   const getStageColor = (stage) => {
     switch (stage) {
@@ -488,10 +526,24 @@ export default function SalesProcess() {
       {/* Sales Process Pipeline Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Verkaufspipeline
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Verkaufspipeline
+            </CardTitle>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Status filtern" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle Status</SelectItem>
+                <SelectItem value="geplant">Geplant</SelectItem>
+                <SelectItem value="zweitgespräch">Zweitgespräch</SelectItem>
+                <SelectItem value="abgeschlossen">Abgeschlossen</SelectItem>
+                <SelectItem value="verloren">Verloren</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -508,7 +560,7 @@ export default function SalesProcess() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {salesProcessEntries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">
                     <div>

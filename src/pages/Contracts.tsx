@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { CashflowEntriesTable } from "./CashflowEntries";
 
-// Mock contracts data
+// Mock contracts data - aligned with closed clients
 const mockContracts = [
   {
     id: 1,
@@ -32,9 +32,8 @@ const mockContracts = [
     startDate: "2024-01-15",
     duration: 12,
     totalValue: 3200,
-    frequency: "monthly",
+    frequency: "monatlich",
     monthlyAmount: 267,
-    status: "active",
     nextPayment: "2024-02-15",
     paidMonths: 1
   },
@@ -44,33 +43,22 @@ const mockContracts = [
     startDate: "2024-01-10",
     duration: 6,
     totalValue: 2850,
-    frequency: "monthly",
+    frequency: "monatlich",
     monthlyAmount: 475,
-    status: "active",
     nextPayment: "2024-02-10",
     paidMonths: 1
-  },
-  {
-    id: 3,
-    client: "Sarah Schmidt",
-    startDate: "2023-12-01",
-    duration: 24,
-    totalValue: 4800,
-    frequency: "monthly",
-    monthlyAmount: 200,
-    status: "overdue",
-    nextPayment: "2024-01-01",
-    paidMonths: 2
   }
 ];
 
 // Mock cashflow forecast data
+// Confirmed = Existing active contracts (guaranteed income)
+// Potential = Prospects/pending deals that may convert
 const cashflowForecast = [
   { month: "Feb 2024", expected: 942, confirmed: 742, potential: 200 },
-  { month: "Mar 2024", expected: 942, confirmed: 942, potential: 0 },
-  { month: "Apr 2024", expected: 1142, confirmed: 942, potential: 200 },
-  { month: "May 2024", expected: 1142, confirmed: 942, potential: 200 },
-  { month: "Jun 2024", expected: 1142, confirmed: 942, potential: 200 },
+  { month: "Mar 2024", expected: 942, confirmed: 742, potential: 200 },
+  { month: "Apr 2024", expected: 942, confirmed: 742, potential: 200 },
+  { month: "May 2024", expected: 942, confirmed: 742, potential: 200 },
+  { month: "Jun 2024", expected: 942, confirmed: 742, potential: 200 },
 ];
 
 const statusColors = {
@@ -82,8 +70,8 @@ const statusColors = {
 
 export default function Contracts() {
   const totalRevenue = mockContracts.reduce((sum, contract) => sum + contract.totalValue, 0);
-  const monthlyRecurring = mockContracts.filter(c => c.status === 'active').reduce((sum, contract) => sum + contract.monthlyAmount, 0);
-  const activeContracts = mockContracts.filter(c => c.status === 'active').length;
+  const monthlyRecurring = mockContracts.reduce((sum, contract) => sum + contract.monthlyAmount, 0);
+  const activeContracts = mockContracts.length;
   const avgContractValue = totalRevenue / mockContracts.length;
 
   return (
@@ -91,12 +79,12 @@ export default function Contracts() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Contracts & Cashflow</h1>
-          <p className="text-muted-foreground">Track contracts and revenue forecasting</p>
+          <h1 className="text-3xl font-bold text-foreground">Verträge & Cashflow</h1>
+          <p className="text-muted-foreground">Verträge verfolgen und Umsatzprognosen</p>
         </div>
         <Button>
           <FileText className="w-4 h-4 mr-2" />
-          New Contract
+          Neuer Vertrag
         </Button>
       </div>
 
@@ -110,7 +98,7 @@ export default function Contracts() {
               </div>
               <div>
                 <p className="text-2xl font-bold">€{totalRevenue.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Total Contract Value</p>
+                <p className="text-xs text-muted-foreground">Gesamter Vertragswert</p>
               </div>
             </div>
           </CardContent>
@@ -124,7 +112,7 @@ export default function Contracts() {
               </div>
               <div>
                 <p className="text-2xl font-bold">€{monthlyRecurring.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Monthly Recurring</p>
+                <p className="text-xs text-muted-foreground">Monatlich wiederkehrend</p>
               </div>
             </div>
           </CardContent>
@@ -138,7 +126,7 @@ export default function Contracts() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{activeContracts}</p>
-                <p className="text-xs text-muted-foreground">Active Contracts</p>
+                <p className="text-xs text-muted-foreground">Aktive Verträge</p>
               </div>
             </div>
           </CardContent>
@@ -152,7 +140,7 @@ export default function Contracts() {
               </div>
               <div>
                 <p className="text-2xl font-bold">€{Math.round(avgContractValue).toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Avg Contract Value</p>
+                <p className="text-xs text-muted-foreground">Ø Vertragswert</p>
               </div>
             </div>
           </CardContent>
@@ -164,20 +152,19 @@ export default function Contracts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Active Contracts
+            Aktive Verträge
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Start Date</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Revenue</TableHead>
-                <TableHead>Payment Frequency</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Kunde</TableHead>
+                <TableHead>Startdatum</TableHead>
+                <TableHead>Laufzeit</TableHead>
+                <TableHead>Umsatz</TableHead>
+                <TableHead>Zahlungsfrequenz</TableHead>
+                <TableHead>Fortschritt</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,7 +174,7 @@ export default function Contracts() {
                   <TableRow key={contract.id}>
                     <TableCell className="font-medium">{contract.client}</TableCell>
                     <TableCell>{contract.startDate}</TableCell>
-                    <TableCell>{contract.duration} months</TableCell>
+                    <TableCell>{contract.duration} Monate</TableCell>
                     <TableCell>€{contract.totalValue.toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{contract.frequency}</Badge>
@@ -196,14 +183,9 @@ export default function Contracts() {
                       <div className="space-y-1">
                         <Progress value={progressPercent} className="h-2" />
                         <p className="text-xs text-muted-foreground">
-                          {contract.paidMonths}/{contract.duration} months
+                          {contract.paidMonths}/{contract.duration} Monate
                         </p>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[contract.status as keyof typeof statusColors]}>
-                        {contract.status}
-                      </Badge>
                     </TableCell>
                   </TableRow>
                 );
@@ -219,10 +201,10 @@ export default function Contracts() {
         
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Cashflow Forecast
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Cashflow Prognose
+          </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -234,12 +216,12 @@ export default function Contracts() {
                   </div>
                   <div className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span className="text-success">Confirmed</span>
+                      <span className="text-success">Bestätigt (Aktive Verträge)</span>
                       <span>€{month.confirmed.toLocaleString()}</span>
                     </div>
                     {month.potential > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-warning">Potential</span>
+                        <span className="text-warning">Potentiell (Ausstehende Deals)</span>
                         <span>€{month.potential.toLocaleString()}</span>
                       </div>
                     )}
@@ -253,41 +235,30 @@ export default function Contracts() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" />
-              Payment Status
-            </CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            Zahlungsstatus
+          </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 bg-success/10 rounded-lg">
                 <CheckCircle className="w-8 h-8 text-success" />
                 <div className="flex-1">
-                  <p className="font-medium">On Track</p>
+                  <p className="font-medium">Planmäßig</p>
                   <p className="text-sm text-muted-foreground">
-                    {mockContracts.filter(c => c.status === 'active').length} contracts paying on time
+                    {mockContracts.length} Verträge zahlen pünktlich
                   </p>
                 </div>
                 <p className="font-bold text-success">€{monthlyRecurring.toLocaleString()}</p>
               </div>
 
-              <div className="flex items-center gap-3 p-3 bg-destructive/10 rounded-lg">
-                <AlertCircle className="w-8 h-8 text-destructive" />
-                <div className="flex-1">
-                  <p className="font-medium">Overdue</p>
-                  <p className="text-sm text-muted-foreground">
-                    {mockContracts.filter(c => c.status === 'overdue').length} contracts require attention
-                  </p>
-                </div>
-                <p className="font-bold text-destructive">€200</p>
-              </div>
-
               <div className="flex items-center gap-3 p-3 bg-warning/10 rounded-lg">
                 <Clock className="w-8 h-8 text-warning" />
                 <div className="flex-1">
-                  <p className="font-medium">Due Soon</p>
+                  <p className="font-medium">Bald fällig</p>
                   <p className="text-sm text-muted-foreground">
-                    2 payments due in next 7 days
+                    2 Zahlungen in den nächsten 7 Tagen fällig
                   </p>
                 </div>
                 <p className="font-bold text-warning">€742</p>
