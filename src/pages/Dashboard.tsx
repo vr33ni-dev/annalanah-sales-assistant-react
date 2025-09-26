@@ -79,11 +79,12 @@ export default function Dashboard() {
       {/* Secondary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
-          title="Ø Deal Wert"
-          value={mockData.avgDealValue}
-          change="+€175 vs letztem Monat"
+          title="Abgeschlossene Zweitgespräche"
+          value={3}
+          change="+1 diese Woche"
           changeType="positive"
-          icon={DollarSign}
+          icon={Phone}
+          description="Zweitgespräche durchgeführt"
         />
         
         <KPICard
