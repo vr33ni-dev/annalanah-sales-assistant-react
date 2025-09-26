@@ -1,8 +1,8 @@
-# Welcome to your Lovable project
+# Welcome to your Small Business Sales Assistant
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/d7957aff-f928-4b53-949a-0f1b1e33497c
+**URL**: <https://lovable.dev/projects/d7957aff-f928-4b53-949a-0f1b1e33497c>
 
 ## How can I edit this code?
 
