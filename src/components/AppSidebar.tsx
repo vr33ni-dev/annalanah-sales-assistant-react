@@ -59,7 +59,7 @@ export function AppSidebar() {
             </div>
             {!isCollapsed && (
               <div>
-                <h2 className="font-semibold text-foreground">Verkaufs Manager</h2>
+                <h2 className="font-semibold text-foreground">Anna's Sales Manager</h2>
                 <p className="text-xs text-muted-foreground">Business Dashboard</p>
               </div>
             )}
