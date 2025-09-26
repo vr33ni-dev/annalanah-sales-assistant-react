@@ -22,7 +22,7 @@ const mockData = {
   closingRate: "50%",           // 2 out of 4 who had calls closed
   avgDealValue: "€3,025",       // (3,200 + 2,850) / 2
   upcomingStages: 2,            // Munich & Berlin upcoming
-  pendingCalls: 1,              // Only Anna Schmidt has planned call
+  pendingCalls: 1,              // Only Anna Schmidt has scheduled call
   activeContracts: 2            // Max & Thomas
 };
 
@@ -80,7 +80,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Abgeschlossene Zweitgespräche"
-          value={3}
+          value={4}
           change="+1 diese Woche"
           changeType="positive"
           icon={Phone}
