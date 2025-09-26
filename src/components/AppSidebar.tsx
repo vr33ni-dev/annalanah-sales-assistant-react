@@ -25,15 +25,15 @@ import {
 
 const navigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Clients", url: "/clients", icon: Users },
-  { title: "Sales Process", url: "/sales", icon: TrendingUp },
-  { title: "Contracts & Cashflow", url: "/contracts", icon: FileText },
-  { title: "Stages & Events", url: "/stages", icon: Calendar },
+  { title: "Kunden", url: "/clients", icon: Users },
+  { title: "Verkaufsprozess", url: "/sales", icon: TrendingUp },
+  { title: "Verträge & Cashflow", url: "/contracts", icon: FileText },
+  { title: "Bühnen & Events", url: "/stages", icon: Calendar },
 ];
 
 const quickActions = [
-  { title: "Add Revenue", url: "/revenue", icon: DollarSign },
-  { title: "Reports", url: "/reports", icon: BarChart3 },
+  { title: "Umsatz hinzufügen", url: "/revenue", icon: DollarSign },
+  { title: "Berichte", url: "/reports", icon: BarChart3 },
 ];
 
 export function AppSidebar() {
@@ -63,7 +63,7 @@ export function AppSidebar() {
             </div>
             {!isCollapsed && (
               <div>
-                <h2 className="font-semibold text-foreground">Sales Manager</h2>
+                <h2 className="font-semibold text-foreground">Verkaufs Manager</h2>
                 <p className="text-xs text-muted-foreground">Business Dashboard</p>
               </div>
             )}
@@ -73,7 +73,7 @@ export function AppSidebar() {
         {/* Main Navigation */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-2">
-            Main Menu
+            Hauptmenü
           </SidebarGroupLabel>
           
           <SidebarGroupContent>
@@ -101,7 +101,7 @@ export function AppSidebar() {
         {/* Quick Actions */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-2">
-            Quick Actions
+            Schnellaktionen
           </SidebarGroupLabel>
           
           <SidebarGroupContent>

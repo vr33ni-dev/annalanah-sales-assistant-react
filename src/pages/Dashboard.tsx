@@ -33,16 +33,16 @@ export default function Dashboard() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">Business overview and key metrics</p>
+          <p className="text-muted-foreground">Geschäftsübersicht und wichtige Kennzahlen</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" size="sm">
             <BarChart3 className="w-4 h-4 mr-2" />
-            Generate Report
+            Bericht erstellen
           </Button>
           <Button size="sm">
             <Plus className="w-4 h-4 mr-2" />
-            Quick Add
+            Schnell hinzufügen
           </Button>
         </div>
       </div>
@@ -50,70 +50,70 @@ export default function Dashboard() {
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
-          title="Total Revenue"
+          title="Gesamtumsatz"
           value={mockData.totalRevenue}
-          change="+12% from last month"
+          change="+12% vom letzten Monat"
           changeType="positive"
           icon={DollarSign}
-          description="All-time revenue"
+          description="Gesamtumsatz aller Zeiten"
         />
         
         <KPICard
-          title="Total Clients"
+          title="Kunden Gesamt"
           value={mockData.totalClients}
-          change="+5 new this month"
+          change="+5 neue diesen Monat"
           changeType="positive"
           icon={Users}
-          description="Active client base"
+          description="Aktive Kundenbasis"
         />
         
         <KPICard
           title="Erscheinungsquote"
           value={mockData.appearanceRate}
-          change="+3% vs last month"
+          change="+3% vs letztem Monat"
           changeType="positive"
           icon={Target}
-          description="Show-up rate for calls"
+          description="Show-up Rate für Gespräche"
         />
         
         <KPICard
           title="Abschlussquote"
           value={mockData.closingRate}
-          change="-2% vs last month"
+          change="-2% vs letztem Monat"
           changeType="negative"
           icon={TrendingUp}
-          description="Deal closing rate"
+          description="Deal Abschlussrate"
         />
       </div>
 
       {/* Secondary Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
-          title="Avg Deal Value"
+          title="Ø Deal Wert"
           value={mockData.avgDealValue}
-          change="+€150 vs last month"
+          change="+€150 vs letztem Monat"
           changeType="positive"
           icon={DollarSign}
         />
         
         <KPICard
-          title="Upcoming Stages"
+          title="Kommende Bühnen"
           value={mockData.upcomingStages}
-          description="Events this month"
+          description="Events diesen Monat"
           icon={Calendar}
         />
         
         <KPICard
-          title="Pending Calls"
+          title="Ausstehende Gespräche"
           value={mockData.pendingCalls}
-          description="Zweitgespräch scheduled"
+          description="Zweitgespräch geplant"
           icon={Phone}
         />
         
         <KPICard
-          title="Active Contracts"
+          title="Aktive Verträge"
           value={mockData.activeContracts}
-          description="Generating revenue"
+          description="Umsatz generierend"
           icon={FileText}
         />
       </div>
@@ -124,7 +124,7 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
-              ROI per Stage
+              ROI pro Bühne
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -149,19 +149,19 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Recent Activity
+              Kürzliche Aktivitäten
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="text-sm text-muted-foreground">Latest client interactions</div>
+              <div className="text-sm text-muted-foreground">Neueste Kundeninteraktionen</div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-2 bg-accent/30 rounded">
-                  <span>Max Mustermann - Contract signed</span>
+                  <span>Max Mustermann - Vertrag unterschrieben</span>
                   <Badge className="bg-success text-success-foreground">€3,200</Badge>
                 </div>
                 <div className="flex items-center justify-between p-2 bg-accent/30 rounded">
-                  <span>Anna Schmidt - Call scheduled</span>
+                  <span>Anna Schmidt - Gespräch geplant</span>
                   <Badge variant="outline">Feb 20</Badge>
                 </div>
               </div>
