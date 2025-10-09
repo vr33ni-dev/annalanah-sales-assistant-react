@@ -8,45 +8,63 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Calendar } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Contract, getContracts } from "@/lib/api";
 
-// Mock cashflow entries data - aligned with contracts
-const cashflowEntries = [
-  {
-    id: 1,
-    contract: "Max Mustermann - 12M",
-    dueDate: "2024-02-15",
-    amount: 267
-  },
-  {
-    id: 2,
-    contract: "Thomas Weber - 6M", 
-    dueDate: "2024-02-10",
-    amount: 475
-  },
-  {
-    id: 3,
-    contract: "Max Mustermann - 12M",
-    dueDate: "2024-01-15",
-    amount: 267
-  },
-  {
-    id: 4,
-    contract: "Thomas Weber - 6M",
-    dueDate: "2024-01-10", 
-    amount: 475
+function calcNextDueAmount(c: Contract): number {
+  // monthly_amount is revenue_total / duration_months (from backend)
+  switch (c.payment_frequency) {
+    case "monthly":
+      return c.monthly_amount;
+    case "bi-monthly":
+      // paid every 2 months ⇒ amount is for 2 months
+      return c.monthly_amount * 2;
+    case "quarterly":
+      return c.monthly_amount * 3;
+    default:
+      return c.monthly_amount; // fallback
   }
-];
+}
 
 export function CashflowEntriesTable() {
+  const {
+    data: contracts = [],
+    isLoading,
+    isError,
+  } = useQuery<Contract[]>({
+    queryKey: ["contracts"],
+    queryFn: getContracts,
+  });
+
+  // Derive "entries" from contracts that have a next due date
+  const entries = (contracts ?? [])
+    .filter((c) => !!c.next_due_date)
+    .map((c) => ({
+      id: c.id,
+      contractLabel: `${c.client_name} - ${c.duration_months}M`,
+      dueDate: c.next_due_date as string,
+      amount: calcNextDueAmount(c),
+    }))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="w-5 h-5" />
-          Cashflow Einträge
+          Cashflow Einträge (nächste Fälligkeiten)
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {isLoading ? (
+          <div>Loading…</div>
+        ) : isError ? (
+          <div className="text-red-500">Fehler beim Laden der Cashflows.</div>
+        ) : entries.length === 0 ? (
+          <div className="text-muted-foreground">
+            Keine anstehenden Zahlungen.
+          </div>
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -56,20 +74,25 @@ export function CashflowEntriesTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {cashflowEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">{entry.contract}</TableCell>
+              {entries.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="font-medium">
+                    {e.contractLabel}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
-                      {entry.dueDate}
+                      {e.dueDate}
                     </div>
                   </TableCell>
-                  <TableCell>€{entry.amount.toLocaleString()}</TableCell>
+                  <TableCell>
+                    €{Math.round(e.amount).toLocaleString()}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        )}
       </CardContent>
     </Card>
   );

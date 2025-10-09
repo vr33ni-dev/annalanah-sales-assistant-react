@@ -5,11 +5,24 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: process.env.VITE_BASE_PATH || "/", // Set VITE_BASE_PATH="/<repo>/" in build step for GH Pages.
   server: {
     host: "::",
-    port: 8080,
+    port: 5002,
+    // proxy /api to backend (no CORS in dev)
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        secure: false,
+        // optional: rewrite if your backend doesn't include /api prefix
+        // rewrite: (path) => path.replace(/^\/api/, "/api"),
+      },
+    },
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), mode === "development" && componentTagger()].filter(
+    Boolean
+  ),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
