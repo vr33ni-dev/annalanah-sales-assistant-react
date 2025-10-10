@@ -16,7 +16,7 @@ jobs:
       - run: npm run build
         env:
           NODE_ENV: production
-          VITE_API_BASE: http://localhost:8080.com # prod API URL
+          VITE_API_BASE: http://localhost:8080 # prod API URL
           VITE_BASE_PATH: /annalanah-sales-assistant-react/ # or "/repo/" for project pages
       - uses: peaceiris/actions-gh-pages@v3
         with:
