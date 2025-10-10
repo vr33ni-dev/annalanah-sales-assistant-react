@@ -1,20 +1,33 @@
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_API_URL
-  ? `${String(import.meta.env.VITE_API_URL).replace(/\/$/, "")}/api`
-  : "/api";
+// Use relative paths in dev (Vite proxy) and absolute API in prod (GitHub Pages)
+const API_BASE = import.meta.env.DEV
+  ? "" // dev: /api proxied to http://localhost:8080
+  : (import.meta.env.VITE_API_BASE || "").replace(/\/$/, ""); // prod: e.g. https://api.yourapp.com
+
+export const AUTH_BASE = API_BASE; // same host as API
 
 const api = axios.create({
-  baseURL,
-  headers: { "Content-Type": "application/json" },
+  baseURL: `${API_BASE}/api`,
   withCredentials: true,
+  headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err?.response?.status === 401) {
-      window.location.href = "/auth/google";
+    const status = err?.response?.status;
+    if (status === 401) {
+      // Avoid redirect loops if we’re already trying to auth
+      const href = window.location.href;
+      const isAuthPath = href.includes("/auth/google");
+      if (!isAuthPath) {
+        const returnTo = encodeURIComponent(href);
+        // dev: relative path works via proxy; prod: absolute API URL
+        const loginUrl = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
+        window.location.href = loginUrl;
+        return; // stop promise chain
+      }
     }
     return Promise.reject(err);
   }
