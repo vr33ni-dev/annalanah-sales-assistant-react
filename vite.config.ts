@@ -7,7 +7,7 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   base:
     process.env.NODE_ENV === "production"
-      ? "/sales-assistant-react/"
+      ? "/annalanah-sales-assistant-react/"
       : "/" /* npm run dev → base / → works fine on localhost:5002; npm run build in CI → base /<repo>/ → assets resolve correctly on GitHub Pages*/,
   server: {
     host: "::",
