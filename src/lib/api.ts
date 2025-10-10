@@ -7,8 +7,18 @@ const baseURL = import.meta.env.VITE_API_URL
 const api = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" },
-  withCredentials: false,
+  withCredentials: true,
 });
+
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err?.response?.status === 401) {
+      window.location.href = "/auth/google";
+    }
+    return Promise.reject(err);
+  }
+);
 
 export default api;
 

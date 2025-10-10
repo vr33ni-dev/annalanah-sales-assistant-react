@@ -11,10 +11,11 @@ export default defineConfig(({ mode }) => ({
     port: 5002,
     // proxy /api to backend (no CORS in dev)
     proxy: {
+      "/auth": "http://localhost:8080",
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
-        secure: false,
+        // secure: false,
         // optional: rewrite if your backend doesn't include /api prefix
         // rewrite: (path) => path.replace(/^\/api/, "/api"),
       },

@@ -1,5 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import UserMenu from "./UserMenu";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,12 +16,10 @@ export function Layout({ children }: LayoutProps) {
           <header className="h-14 border-b border-card-border bg-card flex items-center px-4 gap-4">
             <SidebarTrigger />
             <div className="flex-1" />
+            <UserMenu />
           </header>
-          
           {/* Main Content */}
-          <main className="flex-1 p-6 bg-background">
-            {children}
-          </main>
+          <main className="flex-1 p-6 bg-background">{children}</main>
         </div>
       </div>
     </SidebarProvider>
