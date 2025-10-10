@@ -5,7 +5,10 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: process.env.VITE_BASE_PATH || "/", // Set VITE_BASE_PATH="/<repo>/" in build step for GH Pages.
+  base:
+    process.env.NODE_ENV === "production"
+      ? "/sales-assistant-react/"
+      : "/" /* npm run dev → base / → works fine on localhost:5002; npm run build in CI → base /<repo>/ → assets resolve correctly on GitHub Pages*/,
   server: {
     host: "::",
     port: 5002,
