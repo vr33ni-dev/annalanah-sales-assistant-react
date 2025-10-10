@@ -3,7 +3,7 @@ name: PR Preview (GitHub Pages)
 
 on:
   pull_request:
-    branches: [main]
+    branches: [dev]
 
 permissions:
   contents: write
