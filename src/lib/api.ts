@@ -12,8 +12,7 @@ function getApiBase() {
   return url.origin; // e.g. https://api-yourapp.onrender.com
 }
 
-export const AUTH_BASE = getApiBase();
-
+export const AUTH_BASE = getApiBase(); // "" in dev, "https://...render.com" in prod
 const api = axios.create({
   baseURL: `${AUTH_BASE}/api`,
   withCredentials: true,
