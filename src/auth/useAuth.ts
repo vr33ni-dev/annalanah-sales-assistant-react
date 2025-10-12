@@ -36,7 +36,9 @@ export function useLogout() {
       });
     },
     onSuccess: () => {
+      qc.setQueryData(["me"], null); // immediate UI update
       qc.invalidateQueries({ queryKey: ["me"] });
+      // optional: window.location.reload(); // force hard reload if needed
     },
   });
 }

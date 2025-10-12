@@ -22,7 +22,11 @@ const api = axios.create({
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err?.response?.status === 401) {
+    const status = err?.response?.status;
+    const reqUrl = err?.config?.url || "";
+    // don't auto-redirect for the "me" probe (let AuthGate show Login)
+    const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
+    if (status === 401 && !isMeProbe) {
       const returnTo = encodeURIComponent(window.location.href);
       window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
       return;
