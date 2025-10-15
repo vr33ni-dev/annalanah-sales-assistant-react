@@ -8,24 +8,20 @@ declare global {
   }
 }
 
-/** Compute the API origin baked at build time */
 function getApiBase(): string {
-  // Local dev: use Vite proxy (calls /api on the same origin)
-  if (import.meta.env.DEV) return "";
-
-  const raw = (import.meta.env.VITE_API_BASE || "").trim();
-  if (!raw) {
-    throw new Error("VITE_API_BASE is not set in production build");
+  if (import.meta.env.PROD) {
+    const raw = (import.meta.env.VITE_API_BASE || "").trim();
+    if (!raw) throw new Error("VITE_API_BASE is not set in production build");
+    const url = new URL(raw);
+    return url.origin;
   }
-  const url = new URL(raw); // validates & strips any path
-  return url.origin; // e.g. https://annalanah-sales-assistant-server-dev.onrender.com
+  return "";
 }
 
-export const AUTH_BASE = getApiBase(); // "" in dev, "https://…onrender.com" in prod
+export const AUTH_BASE = getApiBase();
 window.__AUTH_BASE__ = AUTH_BASE;
 console.log("[api] AUTH_BASE =", AUTH_BASE || "(dev-proxy)");
 
-// Axios instance
 const api = axios.create({
   baseURL: `${AUTH_BASE}/api`,
   withCredentials: true,
