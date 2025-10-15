@@ -6,6 +6,7 @@ import { componentTagger } from "lovable-tagger";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   base: "/",
+  build: { sourcemap: mode !== "prod" }, // enable maps for dev build/site
   // process.env.NODE_ENV === "production" ? "/annalanah-sales-assistant-react/" : "/" /* npm run dev → base / → works fine on localhost:5002; npm run build in CI → base /<repo>/ → assets resolve correctly on GitHub Pages*/,
   server: {
     host: "::",
