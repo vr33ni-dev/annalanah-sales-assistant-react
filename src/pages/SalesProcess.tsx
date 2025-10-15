@@ -184,24 +184,9 @@ export default function SalesProcessView() {
   // Mutations
   const mStart = useMutation({
     mutationFn: startSalesProcess,
-    onSuccess: (res) => {
-      // log once so you can inspect what Render returns in the browser console
-      console.debug("startSalesProcess response:", res);
-
-      const { salesProcessId, clientId } = pickIdsFromStartResponse(res);
-
-      // store them only if present; don't assume res.client exists
-      setFormData((prev) => ({
-        ...prev,
-        salesProcessId: salesProcessId ?? prev.salesProcessId,
-        clientId: clientId ?? prev.clientId,
-      }));
-
-      // always refetch list; table will show the new item regardless of ids
-      qc.invalidateQueries({ queryKey: ["sales"] });
-
-      // close & reset UI
-      resetAll();
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sales"] }); // refetch list to show the new row
+      resetAll(); // close & reset the form
     },
     onError: (err: unknown) => {
       alert(

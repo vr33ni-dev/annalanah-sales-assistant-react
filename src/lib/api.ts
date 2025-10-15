@@ -49,7 +49,6 @@ function suppressAuthRedirectNow(): boolean {
   return Date.now() < until;
 }
 
-// Global response interceptor
 api.interceptors.response.use(
   (r) => r,
   (err) => {
@@ -196,9 +195,8 @@ export interface StartSalesProcessResponse {
  */
 export const startSalesProcess = async (
   payload: StartSalesProcessRequest
-): Promise<StartSalesProcessResponse> => {
-  const { data } = await api.post("/sales/start", payload);
-  return data as StartSalesProcessResponse;
+): Promise<void> => {
+  await api.post("/sales/start", payload); // don't expect JSON back
 };
 
 /* Contracts */
