@@ -1,3 +1,4 @@
+// src/pages/SalesProcess.tsx
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -60,8 +61,11 @@ import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 
 // ---- mappings (backend → UI labels) ----------------------------------------
-
 type SalesStage = "zweitgespraech" | "abschluss" | "lost";
+// Add right under the SalesStage/labels
+type SalesProcessWithStageId = SalesProcess & {
+  stage_id?: number | null; // what the API actually returns
+};
 
 const stageLabel: Record<SalesStage, string> = {
   zweitgespraech: "Zweitgespräch",
@@ -76,26 +80,33 @@ const stageBadgeClass: Record<SalesStage, string> = {
 };
 
 // ---- component --------------------------------------------------------------
-
 export default function SalesProcessView() {
   const qc = useQueryClient();
   const { enabled } = useAuthEnabled();
 
   // Data (gated + array-safe)
+  // sales
   const {
     data: sales = [],
     isFetching: loadingSales,
     isError: errorSales,
-  } = useQuery<SalesProcess[]>({
+  } = useQuery<SalesProcessWithStageId[]>({
     queryKey: ["sales"],
-    queryFn: getSalesProcesses,
+    queryFn: getSalesProcesses as unknown as () => Promise<
+      SalesProcessWithStageId[]
+    >,
     enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<SalesProcess>,
+    select: asArray<SalesProcessWithStageId>,
   });
 
-  const { data: stages = [], isFetching: loadingStages } = useQuery<Stage[]>({
+  // stages (unchanged, but keep the generic for safety)
+  const {
+    data: stages = [],
+    isFetching: loadingStages,
+    isError: errorStages,
+  } = useQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
     enabled,
@@ -161,24 +172,14 @@ export default function SalesProcessView() {
       }));
       qc.invalidateQueries({ queryKey: ["sales"] });
       // close & reset
-      setShowForm(false);
-      setFormStep(1);
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        source: "",
-        stageId: null,
-        zweitgespraechDate: null,
-        salesProcessId: undefined,
-        zweitgespraechResult: null,
-        abschluss: null,
-        revenue: "",
-        contractDuration: "",
-        contractStart: null,
-        contractFrequency: "",
-        clientId: undefined,
-      });
+      resetAll();
+    },
+    onError: (err: unknown) => {
+      alert(
+        `Fehler beim Anlegen (POST /api/sales/start): ${extractErrorMessage(
+          err
+        )}`
+      );
     },
   });
 
@@ -223,6 +224,7 @@ export default function SalesProcessView() {
     },
   });
 
+  // Derived
   const filteredEntries = useMemo(() => {
     if (statusFilter === "all") return sales;
     return sales.filter((e) => {
@@ -238,19 +240,20 @@ export default function SalesProcessView() {
     });
   }, [sales, statusFilter]);
 
-  // UI
+  // UI guards
   if (
-    (loadingSales && sales.length === 0) ||
-    (loadingStages && stages.length === 0)
+    ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
+    errorStages
   ) {
+    if (errorSales) {
+      return (
+        <div className="p-6 text-red-500">Fehler beim Laden der Pipeline.</div>
+      );
+    }
     return <div className="p-6">Lade Verkaufsdaten…</div>;
   }
-  if (errorSales) {
-    return (
-      <div className="p-6 text-red-500">Fehler beim Laden der Pipeline.</div>
-    );
-  }
 
+  // Validations
   const isContractValid =
     !!formData.revenue &&
     Number(formData.revenue) > 0 &&
@@ -262,7 +265,8 @@ export default function SalesProcessView() {
 
   const canSubmit = formData.abschluss !== true || isContractValid;
 
-  const resetAfterStep = () => {
+  // Helpers
+  function resetAll() {
     setShowForm(false);
     setFormStep(1);
     setFormData({
@@ -281,8 +285,9 @@ export default function SalesProcessView() {
       contractFrequency: "",
       clientId: undefined,
     });
-  };
+  }
 
+  // Submit flow
   const handleSubmit = async () => {
     if (formStep === 1) {
       if (!formData.name || !formData.zweitgespraechDate || !formData.source)
@@ -311,7 +316,7 @@ export default function SalesProcessView() {
         id: formData.salesProcessId,
         payload: { zweitgespraech_result: formData.zweitgespraechResult },
       });
-      resetAfterStep();
+      resetAll();
       return;
     }
 
@@ -341,8 +346,23 @@ export default function SalesProcessView() {
       }
 
       await mPatch.mutateAsync({ id: formData.salesProcessId, payload });
-      // If needed, you could call mCreateContract here (backend already auto-creates).
-      resetAfterStep();
+
+      // If you still need a manual contract creation (backend already auto-creates on close-won):
+      // if (formData.abschluss && isContractValid && formData.clientId) {
+      //   await mCreateContract.mutateAsync({
+      //     client_id: formData.clientId,
+      //     sales_process_id: formData.salesProcessId,
+      //     start_date: format(formData.contractStart!, "yyyy-MM-dd"),
+      //     duration_months: Number(formData.contractDuration),
+      //     revenue_total: Number(formData.revenue),
+      //     payment_frequency: formData.contractFrequency as
+      //       | "monthly"
+      //       | "bi-monthly"
+      //       | "quarterly",
+      //   });
+      // }
+
+      resetAll();
       return;
     }
   };
@@ -388,8 +408,127 @@ export default function SalesProcessView() {
             {/* Step 1 */}
             {formStep === 1 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* inputs ... (unchanged) */}
-                {/* ... name, email, phone, date picker, source, stage select ... */}
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name (Vor- und Nachname)</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder="Max Mustermann"
+                    className="bg-success/5 border-success/30 focus:border-success"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                    placeholder="max@example.com"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Telefon</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    placeholder="+49 123 456789"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Datum des Zweitgesprächs</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
+                          !formData.zweitgespraechDate &&
+                            "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.zweitgespraechDate
+                          ? format(formData.zweitgespraechDate, "PPP", {
+                              locale: de,
+                            })
+                          : "Datum auswählen"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={formData.zweitgespraechDate ?? undefined}
+                        onSelect={(date) =>
+                          setFormData({
+                            ...formData,
+                            zweitgespraechDate: date ?? null,
+                          })
+                        }
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Quelle</Label>
+                  <Select
+                    value={formData.source ?? ""}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        source: value as "organic" | "paid",
+                      })
+                    }
+                  >
+                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                      <SelectValue placeholder="Quelle auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="organic">Organisch</SelectItem>
+                      <SelectItem value="paid">Bezahlt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.source === "paid" && (
+                  <div className="space-y-2">
+                    <Label>Bühne auswählen</Label>
+                    <Select
+                      value={String(formData.stageId ?? "")}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, stageId: Number(value) })
+                      }
+                    >
+                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                        <SelectValue placeholder="Bühne auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map((st) => (
+                          <SelectItem key={st.id} value={String(st.id)}>
+                            {st.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="col-span-full flex gap-3">
                   <Button
                     onClick={handleSubmit}
@@ -410,8 +549,41 @@ export default function SalesProcessView() {
 
             {/* Step 2 */}
             {formStep === 2 && (
-              <div className="space-y-4">
-                {/* content ... (unchanged) */}
+              <div className="space-y-6">
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Zweitgespräch am:{" "}
+                    {formData.zweitgespraechDate
+                      ? format(formData.zweitgespraechDate, "PPP", {
+                          locale: de,
+                        })
+                      : "—"}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Ist der Kunde erschienen?</Label>
+                  <div className="flex items-center space-x-3">
+                    <Switch
+                      checked={formData.zweitgespraechResult === true}
+                      onCheckedChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          zweitgespraechResult: checked,
+                        })
+                      }
+                    />
+                    <span className="text-sm">
+                      {formData.zweitgespraechResult === true
+                        ? "Ja, erschienen"
+                        : formData.zweitgespraechResult === false
+                        ? "Nein, nicht erschienen"
+                        : "Bitte auswählen"}
+                    </span>
+                  </div>
+                </div>
+
                 <div className="flex gap-3">
                   <Button onClick={() => setFormStep(1)} variant="outline">
                     Zurück
@@ -428,8 +600,135 @@ export default function SalesProcessView() {
 
             {/* Step 3 */}
             {formStep === 3 && (
-              <div className="space-y-4">
-                {/* closing fields ... (unchanged) */}
+              <div className="space-y-6">
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Erschienen: {formData.zweitgespraechResult ? "Ja" : "Nein"}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Abschluss erfolgreich?</Label>
+                  <div className="flex items-center space-x-3">
+                    <Switch
+                      checked={formData.abschluss === true}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, abschluss: checked })
+                      }
+                    />
+                    <span className="text-sm">
+                      {formData.abschluss === true
+                        ? "Ja, Vertrag abgeschlossen"
+                        : formData.abschluss === false
+                        ? "Nein, kein Abschluss"
+                        : "Bitte auswählen"}
+                    </span>
+                  </div>
+                </div>
+
+                {formData.abschluss && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-success/10 rounded-lg">
+                    <div className="space-y-2">
+                      <Label>Umsatz (€)</Label>
+                      <Input
+                        type="number"
+                        value={formData.revenue}
+                        onChange={(e) =>
+                          setFormData({ ...formData, revenue: e.target.value })
+                        }
+                        placeholder="4800"
+                        className="bg-success/5 border-success/30"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Vertragsdauer (Monate)</Label>
+                      <Select
+                        value={formData.contractDuration ?? ""}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, contractDuration: value })
+                        }
+                      >
+                        <SelectTrigger className="bg-success/5 border-success/30">
+                          <SelectValue placeholder="Dauer auswählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="6">6</SelectItem>
+                          <SelectItem value="12">12</SelectItem>
+                          <SelectItem value="24">24</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Startdatum</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-success/5 border-success/30",
+                              !formData.contractStart && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.contractStart
+                              ? format(formData.contractStart, "PPP", {
+                                  locale: de,
+                                })
+                              : "Startdatum auswählen"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={formData.contractStart ?? undefined}
+                            onSelect={(date) =>
+                              setFormData({
+                                ...formData,
+                                contractStart: date ?? null,
+                              })
+                            }
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Zahlungsfrequenz</Label>
+                      <Select
+                        value={formData.contractFrequency ?? ""}
+                        onValueChange={(value) =>
+                          setFormData({
+                            ...formData,
+                            contractFrequency: value as
+                              | "monthly"
+                              | "bi-monthly"
+                              | "quarterly",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="bg-success/5 border-success/30">
+                          <SelectValue placeholder="Frequenz auswählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="monthly">Monatlich</SelectItem>
+                          <SelectItem value="bi-monthly">
+                            Zweimonatlich
+                          </SelectItem>
+                          <SelectItem value="quarterly">
+                            Quartalsweise
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <Button
                     onClick={() => setFormStep(2)}
@@ -499,11 +798,14 @@ export default function SalesProcessView() {
             </TableHeader>
             <TableBody>
               {filteredEntries.map((e) => {
-                const linkedStageName = e.stage_id
-                  ? stages.find((s) => s.id === e.stage_id)?.name ?? null
-                  : null;
+                const linkedStageName =
+                  typeof e.stage_id === "number"
+                    ? stages.find((s) => s.id === e.stage_id)?.name ?? null
+                    : null;
+
                 return (
                   <TableRow key={e.id}>
+                    {/* Kunde */}
                     <TableCell className="font-medium">
                       <div className="flex flex-col">
                         <span>{e.client_name}</span>
@@ -514,17 +816,23 @@ export default function SalesProcessView() {
                         )}
                       </div>
                     </TableCell>
+
+                    {/* Stage / Status */}
                     <TableCell>
                       <Badge className={stageBadgeClass[e.stage as SalesStage]}>
                         {stageLabel[e.stage as SalesStage]}
                       </Badge>
                     </TableCell>
+
+                    {/* Zweitgespräch Datum */}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <CalendarIcon className="w-4 h-4 text-muted-foreground" />
                         {e.zweitgespraech_date ?? "-"}
                       </div>
                     </TableCell>
+
+                    {/* Zweitgespräch Ergebnis */}
                     <TableCell>
                       {e.zweitgespraech_result === true && (
                         <Badge className="bg-success text-success-foreground">
@@ -545,6 +853,8 @@ export default function SalesProcessView() {
                         </Badge>
                       )}
                     </TableCell>
+
+                    {/* Quelle */}
                     <TableCell>
                       <Badge variant="secondary">
                         {e.client_source
@@ -554,6 +864,8 @@ export default function SalesProcessView() {
                           : "-"}
                       </Badge>
                     </TableCell>
+
+                    {/* Verknüpfte Bühne */}
                     <TableCell>
                       {linkedStageName ? (
                         <Badge variant="outline">{linkedStageName}</Badge>
@@ -561,6 +873,8 @@ export default function SalesProcessView() {
                         <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
+
+                    {/* Umsatz */}
                     <TableCell>
                       {e.revenue != null ? (
                         <span className="font-medium text-success">
@@ -570,6 +884,8 @@ export default function SalesProcessView() {
                         <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
+
+                    {/* Aktionen */}
                     <TableCell>
                       <div className="flex gap-2">
                         {e.stage === "zweitgespraech" &&
