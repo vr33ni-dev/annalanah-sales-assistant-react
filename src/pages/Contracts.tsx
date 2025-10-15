@@ -86,7 +86,8 @@ export default function Contracts() {
   }
 
   // KPIs
-  const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
+  const rows = contracts ?? []; // ← default to array
+  const totalRevenue = rows.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
     0

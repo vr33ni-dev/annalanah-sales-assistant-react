@@ -11,14 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { 
-  Plus, 
-  Calendar, 
+import {
+  Plus,
+  Calendar,
   DollarSign,
   Users,
   Target,
   TrendingUp,
-  MapPin
+  MapPin,
 } from "lucide-react";
 
 // Mock stages data - shows leads converted = people who became customers
@@ -31,9 +31,9 @@ const mockStages = [
     registrations: 25,
     participants: 18,
     leads: 3,
-    leadsConverted: 2,  // Max & Thomas came from this event
-    revenue: 6050,      // Combined revenue from Max + Thomas
-    status: "completed"
+    leadsConverted: 2, // Max & Thomas came from this event
+    revenue: 6050, // Combined revenue from Max + Thomas
+    status: "completed",
   },
   {
     id: 2,
@@ -45,7 +45,7 @@ const mockStages = [
     leads: 0,
     leadsConverted: 0,
     revenue: 0,
-    status: "upcoming"
+    status: "upcoming",
   },
   {
     id: 3,
@@ -57,8 +57,8 @@ const mockStages = [
     leads: 0,
     leadsConverted: 0,
     revenue: 0,
-    status: "upcoming"
-  }
+    status: "upcoming",
+  },
 ];
 
 const statusColors = {
@@ -70,24 +70,43 @@ const statusColors = {
 export default function Stages() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredStages = mockStages.filter(stage =>
+  const filteredStages = mockStages.filter((stage) =>
     stage.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalBudget = mockStages.reduce((sum, stage) => sum + stage.budget, 0);
-  const totalRegistrations = mockStages.reduce((sum, stage) => sum + stage.registrations, 0);
-  const totalParticipants = mockStages.reduce((sum, stage) => sum + stage.participants, 0);
-  const totalRevenue = mockStages.reduce((sum, stage) => sum + stage.revenue, 0);
-  const showUpRate = totalRegistrations > 0 ? Math.round((totalParticipants / totalRegistrations) * 100) : 0;
-  const roi = totalBudget > 0 ? Math.round(((totalRevenue - totalBudget) / totalBudget) * 100) : 0;
+  const totalRegistrations = mockStages.reduce(
+    (sum, stage) => sum + stage.registrations,
+    0
+  );
+  const totalParticipants = mockStages.reduce(
+    (sum, stage) => sum + stage.participants,
+    0
+  );
+  const totalRevenue = mockStages.reduce(
+    (sum, stage) => sum + stage.revenue,
+    0
+  );
+  const showUpRate =
+    totalRegistrations > 0
+      ? Math.round((totalParticipants / totalRegistrations) * 100)
+      : 0;
+  const roi =
+    totalBudget > 0
+      ? Math.round(((totalRevenue - totalBudget) / totalBudget) * 100)
+      : 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Bühnen & Events</h1>
-          <p className="text-muted-foreground">Marketing-Events verwalten und Performance verfolgen</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            Bühnen & Events
+          </h1>
+          <p className="text-muted-foreground">
+            Marketing-Events verwalten und Performance verfolgen
+          </p>
         </div>
         <Button>
           <Plus className="w-4 h-4 mr-2" />
@@ -104,8 +123,12 @@ export default function Stages() {
                 <DollarSign className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">€{totalBudget.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Gesamt Werbebudget</p>
+                <p className="text-2xl font-bold">
+                  €{totalBudget.toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Gesamt Werbebudget
+                </p>
               </div>
             </div>
           </CardContent>
@@ -119,7 +142,9 @@ export default function Stages() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{totalRegistrations}</p>
-                <p className="text-xs text-muted-foreground">Gesamt Anmeldungen</p>
+                <p className="text-xs text-muted-foreground">
+                  Gesamt Anmeldungen
+                </p>
               </div>
             </div>
           </CardContent>
@@ -133,7 +158,9 @@ export default function Stages() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{showUpRate}%</p>
-                <p className="text-xs text-muted-foreground">Erscheinungsquote</p>
+                <p className="text-xs text-muted-foreground">
+                  Erscheinungsquote
+                </p>
               </div>
             </div>
           </CardContent>
@@ -146,7 +173,10 @@ export default function Stages() {
                 <TrendingUp className="w-5 h-5 text-accent-foreground" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{roi > 0 ? '+' : ''}{roi}%</p>
+                <p className="text-2xl font-bold">
+                  {roi > 0 ? "+" : ""}
+                  {roi}%
+                </p>
                 <p className="text-xs text-muted-foreground">ROI</p>
               </div>
             </div>
@@ -205,18 +235,26 @@ export default function Stages() {
                   <TableCell>
                     {stage.participants > 0 ? stage.participants : "-"}
                   </TableCell>
-                  <TableCell>
-                    {stage.leads > 0 ? stage.leads : "-"}
-                  </TableCell>
+                  <TableCell>{stage.leads > 0 ? stage.leads : "-"}</TableCell>
                   <TableCell>
                     {stage.leadsConverted > 0 ? stage.leadsConverted : "-"}
                   </TableCell>
                   <TableCell>
-                    {stage.revenue > 0 ? `€${stage.revenue.toLocaleString()}` : "-"}
+                    {stage.revenue > 0
+                      ? `€${stage.revenue.toLocaleString()}`
+                      : "-"}
                   </TableCell>
                   <TableCell>
-                    <Badge className={statusColors[stage.status as keyof typeof statusColors]}>
-                      {stage.status === 'completed' ? 'Abgeschlossen' : stage.status === 'upcoming' ? 'Geplant' : stage.status}
+                    <Badge
+                      className={
+                        statusColors[stage.status as keyof typeof statusColors]
+                      }
+                    >
+                      {stage.status === "completed"
+                        ? "Abgeschlossen"
+                        : stage.status === "upcoming"
+                        ? "Geplant"
+                        : stage.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -240,56 +278,80 @@ export default function Stages() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            Kosten pro Teilnehmer
-          </CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Kosten pro Teilnehmer
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockStages.filter(s => s.participants > 0).map((stage) => {
-                const costPerParticipant = Math.round(stage.budget / stage.participants);
-                return (
-                  <div key={stage.id} className="flex items-center justify-between p-3 bg-accent/30 rounded-lg">
-                    <div>
-                      <p className="font-medium">{stage.name}</p>
-                      <p className="text-sm text-muted-foreground">{stage.participants} Teilnehmer</p>
+              {mockStages
+                .filter((s) => s.participants > 0)
+                .map((stage) => {
+                  const costPerParticipant = Math.round(
+                    stage.budget / stage.participants
+                  );
+                  return (
+                    <div
+                      key={stage.id}
+                      className="flex items-center justify-between p-3 bg-accent/30 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">{stage.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {stage.participants} Teilnehmer
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">€{costPerParticipant}</p>
+                        <p className="text-xs text-muted-foreground">
+                          pro Teilnehmer
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold">€{costPerParticipant}</p>
-                      <p className="text-xs text-muted-foreground">pro Teilnehmer</p>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            Generierter Umsatz
-          </CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Generierter Umsatz
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockStages.filter(s => s.revenue > 0).map((stage) => {
-                const roiPercent = Math.round(((stage.revenue - stage.budget) / stage.budget) * 100);
-                return (
-                  <div key={stage.id} className="flex items-center justify-between p-3 bg-success/10 rounded-lg">
-                    <div>
-                      <p className="font-medium">{stage.name}</p>
-                      <p className="text-sm text-muted-foreground">{stage.leadsConverted} Kunden gewonnen</p>
+              {mockStages
+                .filter((s) => s.revenue > 0)
+                .map((stage) => {
+                  const roiPercent = Math.round(
+                    ((stage.revenue - stage.budget) / stage.budget) * 100
+                  );
+                  return (
+                    <div
+                      key={stage.id}
+                      className="flex items-center justify-between p-3 bg-success/10 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">{stage.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {stage.leadsConverted} Kunden gewonnen
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-success">
+                          €{stage.revenue.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-success">
+                          +{roiPercent}% ROI
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold text-success">€{stage.revenue.toLocaleString()}</p>
-                      <p className="text-xs text-success">+{roiPercent}% ROI</p>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </CardContent>
         </Card>

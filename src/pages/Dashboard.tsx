@@ -79,7 +79,8 @@ export default function Dashboard() {
   if (error)
     return <div className="p-6 text-red-500">Error loading dashboard data</div>;
 
-  const totalRevenueNumber = contracts.reduce(
+  const rows = contracts ?? []; // ← default to array
+  const totalRevenueNumber = rows.reduce(
     (sum, c) => sum + (c.revenue_total ?? 0),
     0
   );
