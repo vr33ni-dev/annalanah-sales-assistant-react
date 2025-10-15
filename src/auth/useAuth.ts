@@ -2,6 +2,7 @@ import api, { AUTH_BASE } from "@/lib/api";
 import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 export type Me = { email: string; name: string; exp?: string };
+import { QueryClient } from "@tanstack/react-query";
 
 async function fetchMe(): Promise<Me | null> {
   try {
@@ -25,30 +26,33 @@ export function useMe() {
   });
 }
 
-export function useLogout() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      window.__LOGGING_OUT = true; // ⬅️ tell interceptor to chill
+export async function logout(qc?: QueryClient) {
+  try {
+    // Block interceptor's 401→/auth redirect for a short time
+    window.__LOGGING_OUT = true;
+    sessionStorage.setItem(
+      "suppressAuthRedirectUntil",
+      String(Date.now() + 5000) // 5s grace window
+    );
+
+    // Best-effort: clear client-side caches/state
+    try {
+      qc?.clear?.();
+    } catch {
+      /* empty */
+    }
+
+    // Tell server to clear the session cookie
+    // Prefer POST; fallback GET if that's how your route is wired.
+    await api.post("/auth/logout").catch(async () => {
+      // Fallback in case your API is mounted as a public route
       await fetch(`${AUTH_BASE}/auth/logout`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
       });
-    },
-    onSuccess: () => {
-      qc.setQueryData(["me"], null);
-      qc.invalidateQueries({ queryKey: ["me"] });
-    },
-    onSettled: () => {
-      // Navigate to a public route and force a clean reload so no protected components mount
-      const url = new URL(window.location.href);
-      url.searchParams.set("auth", "logout");
-      window.location.replace(url.pathname + "?" + url.searchParams.toString());
-      // optional: clear the flag after a moment
-      setTimeout(() => {
-        window.__LOGGING_OUT = false;
-      }, 2000);
-    },
-  });
+    });
+  } finally {
+    // Hard navigation so *all* in-memory state is gone
+    window.location.href = "/login?auth=logged_out";
+  }
 }

@@ -55,10 +55,11 @@ api.interceptors.response.use(
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
     const onPublicRoute =
       window.location.pathname === "/login" || window.location.pathname === "/";
-
+    const isAuthRoute = reqUrl.includes("/auth/");
     if (
       status === 401 &&
       !isMeProbe &&
+      !isAuthRoute &&
       !window.__LOGGING_OUT && // don't redirect during logout
       !onPublicRoute &&
       !suppressAuthRedirectNow() // ⬅️ use it here
