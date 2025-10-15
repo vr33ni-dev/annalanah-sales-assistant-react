@@ -53,15 +53,15 @@ api.interceptors.response.use(
     const reqUrl = err?.config?.url || "";
 
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
-
     const onPublicRoute =
-      window.location.pathname === "/login" || window.location.pathname === "/"; // adjust if you have a dedicated public route
+      window.location.pathname === "/login" || window.location.pathname === "/";
 
     if (
       status === 401 &&
       !isMeProbe &&
-      !window.__LOGGING_OUT && // ⬅️ don’t auto-redirect during logout
-      !onPublicRoute
+      !window.__LOGGING_OUT && // don't redirect during logout
+      !onPublicRoute &&
+      !suppressAuthRedirectNow() // ⬅️ use it here
     ) {
       const returnTo = encodeURIComponent(window.location.href);
       window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
