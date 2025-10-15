@@ -33,6 +33,17 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+function suppressAuthRedirectNow(): boolean {
+  // 1) URL flag set by logout
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("auth") === "logged_out") return true;
+
+  // 2) short-lived session flag set by logout
+  const untilStr = sessionStorage.getItem("suppressAuthRedirectUntil");
+  const until = untilStr ? Number(untilStr) : 0;
+  return Date.now() < until;
+}
+
 // Global response interceptor
 api.interceptors.response.use(
   (r) => r,
@@ -41,10 +52,10 @@ api.interceptors.response.use(
     const reqUrl: string = err?.config?.url || "";
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
 
-    if (status === 401 && !isMeProbe) {
+    if (status === 401 && !isMeProbe && !suppressAuthRedirectNow()) {
       const returnTo = encodeURIComponent(window.location.href);
       window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
-      return; // stop chain
+      return;
     }
     return Promise.reject(err);
   }

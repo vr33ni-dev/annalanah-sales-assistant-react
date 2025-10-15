@@ -21,26 +21,21 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Client, getClients } from "@/lib/api";
-
-const stageLabels = {
-  erstgespraech: "First Call",
-  zweitgespraech: "Second Call",
-  abschluss: "Closed",
-  verloren: "Lost",
-};
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { asArray } from "@/lib/safe";
 
 const sourceLabels = {
   organic: "Organic",
   paid: "Paid Ads",
-};
+} as const;
 
 const statusColors = {
-  follow_up_scheduled: "bg-warning text-warning-foreground", // Zweitgespräch geplant
-  awaiting_response: "bg-primary text-primary-foreground", // Zweitgespräch erledigt, Entscheidung ausstehend
-  active: "bg-success text-success-foreground", // Vertrag abgeschlossen
-  lost: "bg-destructive text-destructive-foreground", // Abgelehnt nach Zweitgespräch
-  inactive: "bg-muted text-muted-foreground", // Inaktiv
-};
+  follow_up_scheduled: "bg-warning text-warning-foreground",
+  awaiting_response: "bg-primary text-primary-foreground",
+  active: "bg-success text-success-foreground",
+  lost: "bg-destructive text-destructive-foreground",
+  inactive: "bg-muted text-muted-foreground",
+} as const;
 
 const statusLabels = {
   follow_up_scheduled: "Zweitgespräch geplant",
@@ -48,37 +43,35 @@ const statusLabels = {
   active: "Kunde",
   lost: "Verloren",
   inactive: "Inaktiv",
-};
+} as const;
 
 export default function Clients() {
   const [searchTerm, setSearchTerm] = useState("");
+  const { enabled } = useAuthEnabled();
 
-  const {
-    data: clients = [],
-    isLoading: loadingClients,
-    isError: errorClients,
-  } = useQuery<Client[]>({
+  const { data, isFetching, error } = useQuery({
     queryKey: ["clients"],
     queryFn: getClients,
+    enabled, // only run after /api/me
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (d) => asArray<Client>(d), // guarantees an array
   });
 
-  // helper to lowercase safely
+  const clients = data ?? [];
+
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
 
-  const filteredClients = (clients ?? [])
-    .filter(Boolean)
-    .filter(
-      (client) =>
-        toLower(client.name).includes(toLower(searchTerm)) ||
-        toLower(client.email).includes(toLower(searchTerm))
-    );
+  const filteredClients = clients.filter(
+    (c) =>
+      toLower(c.name).includes(toLower(searchTerm)) ||
+      toLower(c.email).includes(toLower(searchTerm))
+  );
 
-  const loading = loadingClients;
-  const error = errorClients;
-
-  if (loading) return <div className="p-6">Loading…</div>;
+  if (isFetching && clients.length === 0)
+    return <div className="p-6">Loading…</div>;
   if (error)
-    return <div className="p-6 text-red-500">Error loading dashboard data</div>;
+    return <div className="p-6 text-red-500">Error loading clients.</div>;
 
   return (
     <div className="space-y-6">
@@ -177,7 +170,7 @@ export default function Clients() {
             <CardTitle>Client Database</CardTitle>
             <div className="flex gap-2">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search clients..."
                   value={searchTerm}
@@ -213,7 +206,9 @@ export default function Clients() {
                   <TableCell>{client.phone}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {sourceLabels[client.source as keyof typeof sourceLabels]}
+                      {sourceLabels[
+                        client.source as keyof typeof sourceLabels
+                      ] ?? client.source}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -228,10 +223,14 @@ export default function Clients() {
                   <TableCell>
                     <Badge
                       className={
-                        statusColors[client.status as keyof typeof statusColors]
+                        statusColors[
+                          client.status as keyof typeof statusColors
+                        ] ?? "bg-muted"
                       }
                     >
-                      {statusLabels[client.status as keyof typeof statusLabels]}
+                      {statusLabels[
+                        client.status as keyof typeof statusLabels
+                      ] ?? client.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -250,6 +249,16 @@ export default function Clients() {
                   </TableCell>
                 </TableRow>
               ))}
+              {filteredClients.length === 0 && !isFetching && (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="text-center text-muted-foreground"
+                  >
+                    Keine Einträge gefunden.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

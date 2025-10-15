@@ -10,34 +10,40 @@ import {
 import { Calendar } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Contract, getContracts } from "@/lib/api";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { asArray } from "@/lib/safe";
 
 function calcNextDueAmount(c: Contract): number {
-  // monthly_amount is revenue_total / duration_months (from backend)
   switch (c.payment_frequency) {
     case "monthly":
       return c.monthly_amount;
     case "bi-monthly":
-      // paid every 2 months ⇒ amount is for 2 months
       return c.monthly_amount * 2;
     case "quarterly":
       return c.monthly_amount * 3;
     default:
-      return c.monthly_amount; // fallback
+      return c.monthly_amount;
   }
 }
 
 export function CashflowEntriesTable() {
+  const { enabled } = useAuthEnabled();
+
   const {
-    data: contracts = [],
-    isLoading,
+    data = [],
+    isFetching,
     isError,
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
+    enabled, // ← only run once /api/me succeeded
+    retry: false, // ← avoid redirect loops on 401
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Contract>, // ← guarantee an array for the component
   });
 
   // Derive "entries" from contracts that have a next due date
-  const entries = (contracts ?? [])
+  const entries = data
     .filter((c) => !!c.next_due_date)
     .map((c) => ({
       id: c.id,
@@ -46,6 +52,20 @@ export function CashflowEntriesTable() {
       amount: calcNextDueAmount(c),
     }))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  if (isFetching && data.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            Cashflow Einträge (nächste Fälligkeiten)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>Loading…</CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -56,9 +76,7 @@ export function CashflowEntriesTable() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
-          <div>Loading…</div>
-        ) : isError ? (
+        {isError ? (
           <div className="text-red-500">Fehler beim Laden der Cashflows.</div>
         ) : entries.length === 0 ? (
           <div className="text-muted-foreground">

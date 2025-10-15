@@ -38,7 +38,14 @@ export function useLogout() {
     onSuccess: () => {
       qc.setQueryData(["me"], null);
       qc.invalidateQueries({ queryKey: ["me"] });
-      // Hard navigation to ensure no stale state and that cookies are re-evaluated
+
+      // prevent immediate re-login for a few seconds
+      sessionStorage.setItem(
+        "suppressAuthRedirectUntil",
+        String(Date.now() + 8000) // 8s is plenty
+      );
+
+      // add ?auth=logged_out and reload
       const url = new URL(window.location.href);
       url.searchParams.set("auth", "logged_out");
       window.location.replace(url.toString());

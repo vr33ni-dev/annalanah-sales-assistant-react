@@ -16,71 +16,83 @@ import {
   getContracts,
   getSalesProcesses,
   getStages,
-  Client,
-  Contract,
-  SalesProcess,
-  Stage,
+  type Client,
+  type Contract,
+  type SalesProcess,
+  type Stage,
 } from "@/lib/api";
-
-// // Mock data - aligned with actual application data
-// const mockData = {
-//   totalRevenue: "€6,050",        // Max (3,200) + Thomas (2,850)
-//   totalClients: 5,               // Actual number of clients
-//   appearanceRate: "75%",         // 3 out of 4 who had calls appeared
-//   closingRate: "50%",           // 2 out of 4 who had calls closed
-//   avgDealValue: "€3,025",       // (3,200 + 2,850) / 2
-//   upcomingStages: 2,            // Munich & Berlin upcoming
-//   pendingCalls: 1,              // Only Anna Schmidt has scheduled call
-//   activeContracts: 2            // Max & Thomas
-// };
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { asArray } from "@/lib/safe";
 
 export default function Dashboard() {
+  const { enabled } = useAuthEnabled();
+
   const {
     data: clients = [],
-    isLoading: loadingClients,
+    isFetching: loadingClients,
     isError: errorClients,
   } = useQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: getClients,
+    enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Client>,
   });
 
   const {
     data: contracts = [],
-    isLoading: loadingContracts,
+    isFetching: loadingContracts,
     isError: errorContracts,
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
+    enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Contract>,
   });
 
   const {
     data: salesProcesses = [],
-    isLoading: loadingSales,
+    isFetching: loadingSales,
     isError: errorSales,
   } = useQuery<SalesProcess[]>({
     queryKey: ["salesProcesses"],
     queryFn: getSalesProcesses,
+    enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<SalesProcess>,
   });
 
   const {
     data: stages = [],
-    isLoading: loadingStages,
+    isFetching: loadingStages,
     isError: errorStages,
   } = useQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
+    enabled,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Stage>,
   });
 
-  const loading =
-    loadingClients || loadingContracts || loadingSales || loadingStages;
-  const error = errorClients || errorContracts || errorSales || errorStages;
+  const initialLoading =
+    (loadingClients && clients.length === 0) ||
+    (loadingContracts && contracts.length === 0) ||
+    (loadingSales && salesProcesses.length === 0) ||
+    (loadingStages && stages.length === 0);
 
-  if (loading) return <div className="p-6">Loading…</div>;
-  if (error)
+  const anyError = errorClients || errorContracts || errorSales || errorStages;
+
+  if (initialLoading) return <div className="p-6">Loading…</div>;
+  if (anyError)
     return <div className="p-6 text-red-500">Error loading dashboard data</div>;
 
-  const rows = contracts ?? []; // ← default to array
-  const totalRevenueNumber = rows.reduce(
+  // KPIs (arrays guaranteed)
+  const totalRevenueNumber = contracts.reduce(
     (sum, c) => sum + (c.revenue_total ?? 0),
     0
   );
@@ -135,7 +147,6 @@ export default function Dashboard() {
           icon={DollarSign}
           description="Gesamtumsatz aller Zeiten"
         />
-
         <KPICard
           title="Kunden Gesamt"
           value={totalClients}
@@ -144,7 +155,6 @@ export default function Dashboard() {
           icon={Users}
           description="Gesamte Einträge"
         />
-
         <KPICard
           title="Erscheinungsquote"
           value={appearanceRate}
@@ -153,7 +163,6 @@ export default function Dashboard() {
           icon={Target}
           description="Show-up Rate für Gespräche"
         />
-
         <KPICard
           title="Abschlussquote"
           value={closingRate}
@@ -174,21 +183,18 @@ export default function Dashboard() {
           icon={Phone}
           description="Zweitgespräche durchgeführt"
         />
-
         <KPICard
           title="Kommende Bühnen"
           value={upcomingStages}
           description="Events diesen Monat"
           icon={Calendar}
         />
-
         <KPICard
           title="Ausstehende Zweitgespräche"
           value={pendingCalls}
           description="Zweitgespräch geplant"
           icon={Phone}
         />
-
         <KPICard
           title="Aktive Verträge"
           value={activeContracts}

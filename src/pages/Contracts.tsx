@@ -14,10 +14,8 @@ import {
   FileText,
   DollarSign,
   TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  Clock,
   Users,
+  Calendar,
 } from "lucide-react";
 import { CashflowEntriesTable } from "./CashflowEntries";
 import { useQuery } from "@tanstack/react-query";
@@ -27,11 +25,11 @@ import {
   getCashflowForecast,
   type CashflowRow,
 } from "@/lib/api";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { asArray } from "@/lib/safe";
 
 // ---- helpers ---------------------------------------------------------------
-
 function calcNextDueAmount(c: Contract): number {
-  // monthly_amount is revenue_total / duration_months (from backend)
   switch (c.payment_frequency) {
     case "monthly":
       return c.monthly_amount;
@@ -43,7 +41,6 @@ function calcNextDueAmount(c: Contract): number {
       return c.monthly_amount;
   }
 }
-
 // "YYYY-MM" -> "Oct 2025"
 function labelFromYm(ym: string) {
   const [y, m] = ym.split("-").map(Number);
@@ -52,31 +49,40 @@ function labelFromYm(ym: string) {
     year: "numeric",
   }).format(new Date(y, m - 1, 1));
 }
-
 // ----------------------------------------------------------------------------
 
 export default function Contracts() {
+  const { enabled } = useAuthEnabled();
+
   // Contracts for table + KPIs
   const {
     data: contracts = [],
-    isLoading: loadingContracts,
+    isFetching: loadingContracts,
     isError: errorContracts,
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
+    enabled, // ← only run when /api/me succeeded
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Contract>, // ← guarantee an array
   });
 
   // Cashflow forecast (server-side aggregation)
   const {
     data: forecast = [],
-    isLoading: loadingForecast,
+    isFetching: loadingForecast,
     isError: errorForecast,
   } = useQuery<CashflowRow[]>({
     queryKey: ["cashflow-forecast"],
     queryFn: getCashflowForecast,
+    enabled, // ← same gate
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<CashflowRow>, // ← guarantee an array
   });
 
-  if (loadingContracts) {
+  if (loadingContracts && contracts.length === 0) {
     return <div className="p-6">Lade Verträge…</div>;
   }
   if (errorContracts) {
@@ -85,9 +91,8 @@ export default function Contracts() {
     );
   }
 
-  // KPIs
-  const rows = contracts ?? []; // ← default to array
-  const totalRevenue = rows.reduce((sum, c) => sum + c.revenue_total, 0);
+  // KPIs (safe: contracts is always an array)
+  const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
     0
@@ -205,7 +210,7 @@ export default function Contracts() {
             <TableBody>
               {contracts.map((contract) => {
                 const progressPercent =
-                  (contract.paid_months / contract.duration_months) * 100; // months-based
+                  (contract.paid_months / contract.duration_months) * 100;
                 return (
                   <TableRow key={contract.id}>
                     <TableCell className="font-medium">
@@ -253,7 +258,7 @@ export default function Contracts() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingForecast ? (
+            {loadingForecast && forecast.length === 0 ? (
               <div>Forecast wird geladen…</div>
             ) : errorForecast ? (
               <div className="text-red-500">
