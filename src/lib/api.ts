@@ -1,41 +1,60 @@
 // src/lib/api.ts
 import axios from "axios";
 
-function getApiBase() {
-  if (import.meta.env.DEV) return ""; // dev proxy → /api
-  const raw = (import.meta.env.VITE_API_BASE || "").trim();
-  if (!raw) {
-    // Fail fast so you notice misconfig instead of silently calling Pages
-    throw new Error("VITE_API_BASE is not set in production build");
+declare global {
+  interface Window {
+    __AUTH_BASE__?: string;
   }
-  const url = new URL(raw); // validates & strips paths
-  return url.origin; // e.g. https://api-yourapp.onrender.com
 }
 
-export const AUTH_BASE = getApiBase(); // "" in dev, "https://...render.com" in prod
+/** Compute the API origin baked at build time */
+function getApiBase(): string {
+  // Local dev: use Vite proxy (calls /api on the same origin)
+  if (import.meta.env.DEV) return "";
+
+  const raw = (import.meta.env.VITE_API_BASE || "").trim();
+  if (!raw) {
+    throw new Error("VITE_API_BASE is not set in production build");
+  }
+  const url = new URL(raw); // validates & strips any path
+  return url.origin; // e.g. https://annalanah-sales-assistant-server-dev.onrender.com
+}
+
+export const AUTH_BASE = getApiBase(); // "" in dev, "https://…onrender.com" in prod
+
+// Expose for quick sanity checks in the browser console (optional)
+window.__AUTH_BASE__ = AUTH_BASE;
+console.log("[api] AUTH_BASE =", AUTH_BASE || "(dev-proxy)");
+
+// Axios instance
 const api = axios.create({
   baseURL: `${AUTH_BASE}/api`,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
 
+// Global response interceptor
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    const status = err?.response?.status;
-    const reqUrl = err?.config?.url || "";
-    // don't auto-redirect for the "me" probe (let AuthGate show Login)
+    const status: number | undefined = err?.response?.status;
+    const reqUrl: string = err?.config?.url || "";
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
+
     if (status === 401 && !isMeProbe) {
       const returnTo = encodeURIComponent(window.location.href);
       window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
-      return;
+      return; // stop chain
     }
     return Promise.reject(err);
   }
 );
 
 export default api;
+
+/* ------------------------------------------------------------------ */
+/* Helpers */
+const asArray = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
 
 /* Clients */
 export interface Client {
@@ -49,28 +68,28 @@ export interface Client {
 }
 
 export const getClients = async (): Promise<Client[]> => {
-  const { data } = await api.get<Client[]>("/clients");
-  return data;
+  const { data } = await api.get("/clients");
+  return asArray<Client>(data);
 };
 
 export const getClientById = async (id: string | number): Promise<Client> => {
-  const { data } = await api.get<Client>(`/clients/${id}`);
-  return data;
+  const { data } = await api.get(`/clients/${id}`);
+  return data as Client;
 };
 
 export const createClient = async (
   payload: Partial<Client>
 ): Promise<Client> => {
-  const { data } = await api.post<Client>("/clients", payload);
-  return data;
+  const { data } = await api.post("/clients", payload);
+  return data as Client;
 };
 
 export const updateClient = async (
   id: string | number,
   payload: Partial<Client>
 ): Promise<Client> => {
-  const { data } = await api.put<Client>(`/clients/${id}`, payload);
-  return data;
+  const { data } = await api.put(`/clients/${id}`, payload);
+  return data as Client;
 };
 
 export const deleteClient = async (id: string | number): Promise<void> => {
@@ -94,22 +113,22 @@ export interface SalesProcess {
 }
 
 export const getSalesProcesses = async (): Promise<SalesProcess[]> => {
-  const { data } = await api.get<SalesProcess[]>("/sales");
-  return data;
+  const { data } = await api.get("/sales");
+  return asArray<SalesProcess>(data);
 };
 
 export const getSalesProcessById = async (
   id: string | number
 ): Promise<SalesProcess> => {
-  const { data } = await api.get<SalesProcess>(`/sales/${id}`);
-  return data;
+  const { data } = await api.get(`/sales/${id}`);
+  return data as SalesProcess;
 };
 
 export const createSalesProcess = async (
   payload: Partial<SalesProcess>
 ): Promise<SalesProcess> => {
-  const { data } = await api.post<SalesProcess>("/sales", payload);
-  return data;
+  const { data } = await api.post("/sales", payload);
+  return data as SalesProcess;
 };
 
 // Narrow the update payload to only fields the backend accepts on PATCH
@@ -126,8 +145,8 @@ export const updateSalesProcess = async (
   id: string | number,
   payload: SalesProcessUpdateRequest
 ): Promise<SalesProcess> => {
-  const { data } = await api.patch<SalesProcess>(`/sales/${id}`, payload);
-  return data;
+  const { data } = await api.patch(`/sales/${id}`, payload);
+  return data as SalesProcess;
 };
 
 export interface StartSalesProcessRequest {
@@ -153,11 +172,8 @@ export interface StartSalesProcessResponse {
 export const startSalesProcess = async (
   payload: StartSalesProcessRequest
 ): Promise<StartSalesProcessResponse> => {
-  const { data } = await api.post<StartSalesProcessResponse>(
-    "/sales/start",
-    payload
-  );
-  return data;
+  const { data } = await api.post("/sales/start", payload);
+  return data as StartSalesProcessResponse;
 };
 
 /* Contracts */
@@ -178,30 +194,30 @@ export interface Contract {
 }
 
 export const getContracts = async (): Promise<Contract[]> => {
-  const { data } = await api.get<Contract[]>("/contracts");
-  return data;
+  const { data } = await api.get("/contracts");
+  return asArray<Contract>(data);
 };
 
 export const getContractById = async (
   id: string | number
 ): Promise<Contract> => {
-  const { data } = await api.get<Contract>(`/contracts/${id}`);
-  return data;
+  const { data } = await api.get(`/contracts/${id}`);
+  return data as Contract;
 };
 
 export const createContract = async (
   payload: Partial<Contract>
 ): Promise<Contract> => {
-  const { data } = await api.post<Contract>("/contracts", payload);
-  return data;
+  const { data } = await api.post("/contracts", payload);
+  return data as Contract;
 };
 
 export const updateContract = async (
   id: string | number,
   payload: Partial<Contract>
 ): Promise<Contract> => {
-  const { data } = await api.patch<Contract>(`/contracts/${id}`, payload);
-  return data;
+  const { data } = await api.patch(`/contracts/${id}`, payload);
+  return data as Contract;
 };
 
 /* Stages */
@@ -215,18 +231,18 @@ export interface Stage {
 }
 
 export const getStages = async (): Promise<Stage[]> => {
-  const { data } = await api.get<Stage[]>("/stages");
-  return data;
+  const { data } = await api.get("/stages");
+  return asArray<Stage>(data);
 };
 
 export const getStageById = async (id: string | number): Promise<Stage> => {
-  const { data } = await api.get<Stage>(`/stages/${id}`);
-  return data;
+  const { data } = await api.get(`/stages/${id}`);
+  return data as Stage;
 };
 
 export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
-  const { data } = await api.post<Stage>("/stages", payload);
-  return data;
+  const { data } = await api.post("/stages", payload);
+  return data as Stage;
 };
 
 /**
@@ -245,15 +261,6 @@ export const updateStageStats = async (
 };
 
 /* Stage participants & assignments */
-/**
- * POST /api/stages/{id}/participants
- *
- * Two valid request shapes:
- *  - Existing client: { client_id: number, attended: boolean }
- *  - Lead (no client): { lead_name: string, lead_email?: string, lead_phone?: string, attended: boolean }
- *
- * Backend returns 201 Created with no body -> use void
- */
 export interface AddStageParticipantExisting {
   client_id: number;
   attended: boolean;
@@ -275,10 +282,6 @@ export const addStageParticipant = async (
   await api.post(`/stages/${stageId}/participants`, payload);
 };
 
-/**
- * PATCH /api/stages/{id}/participants/{participant_id}
- * body: { attended?: boolean } -> backend returns 204 No Content
- */
 export interface UpdateStageParticipantRequest {
   attended?: boolean;
 }
@@ -301,6 +304,7 @@ export const assignClientToStage = async (
   await api.post(`/stages/${stageId}/assign-client`, payload);
 };
 
+/* Cashflow */
 export interface CashflowRow {
   month: string; // "2025-10"
   confirmed: number;
@@ -308,7 +312,16 @@ export interface CashflowRow {
   expected: number;
 }
 
+const isCashflowRow = (x: unknown): x is CashflowRow =>
+  typeof x === "object" &&
+  x !== null &&
+  typeof (x as { month?: unknown }).month === "string" &&
+  typeof (x as { confirmed?: unknown }).confirmed === "number" &&
+  typeof (x as { potential?: unknown }).potential === "number" &&
+  typeof (x as { expected?: unknown }).expected === "number";
+
 export const getCashflowForecast = async (): Promise<CashflowRow[]> => {
-  const { data } = await api.get<CashflowRow[]>("/cashflow/forecast");
-  return data;
+  const { data } = await api.get("/cashflow/forecast");
+  const arr = asArray<unknown>(data);
+  return arr.filter(isCashflowRow);
 };
