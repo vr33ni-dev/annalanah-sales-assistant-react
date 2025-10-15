@@ -4,10 +4,6 @@ import axios from "axios";
 declare global {
   interface Window {
     __LOGGING_OUT?: boolean;
-  }
-}
-declare global {
-  interface Window {
     __AUTH_BASE__?: string;
   }
 }
@@ -26,8 +22,6 @@ function getApiBase(): string {
 }
 
 export const AUTH_BASE = getApiBase(); // "" in dev, "https://…onrender.com" in prod
-
-// Expose for quick sanity checks in the browser console (optional)
 window.__AUTH_BASE__ = AUTH_BASE;
 console.log("[api] AUTH_BASE =", AUTH_BASE || "(dev-proxy)");
 
@@ -37,6 +31,9 @@ const api = axios.create({
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
+
+// (Optional) now it's safe to log:
+console.log("[api] axios baseURL =", api.defaults.baseURL);
 
 function suppressAuthRedirectNow(): boolean {
   // 1) URL flag set by logout
