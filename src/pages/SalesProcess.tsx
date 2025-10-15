@@ -60,6 +60,26 @@ import {
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 
+function pickIdsFromStartResponse(res: unknown): {
+  salesProcessId?: number;
+  clientId?: number;
+} {
+  // try the "rich" shape first
+  const r = res as {
+    sales_process_id?: number;
+    client?: { id?: number } | null;
+    sales_process?: { id?: number; client_id?: number } | null;
+    id?: number;
+    client_id?: number;
+  };
+
+  const salesProcessId = r?.sales_process_id ?? r?.sales_process?.id ?? r?.id; // some backends just return created id
+
+  const clientId = r?.client?.id ?? r?.sales_process?.client_id ?? r?.client_id;
+
+  return { salesProcessId, clientId };
+}
+
 // ---- mappings (backend → UI labels) ----------------------------------------
 type SalesStage = "zweitgespraech" | "abschluss" | "lost";
 // Add right under the SalesStage/labels
@@ -165,13 +185,22 @@ export default function SalesProcessView() {
   const mStart = useMutation({
     mutationFn: startSalesProcess,
     onSuccess: (res) => {
+      // log once so you can inspect what Render returns in the browser console
+      console.debug("startSalesProcess response:", res);
+
+      const { salesProcessId, clientId } = pickIdsFromStartResponse(res);
+
+      // store them only if present; don't assume res.client exists
       setFormData((prev) => ({
         ...prev,
-        salesProcessId: res.sales_process_id,
-        clientId: res.client.id,
+        salesProcessId: salesProcessId ?? prev.salesProcessId,
+        clientId: clientId ?? prev.clientId,
       }));
+
+      // always refetch list; table will show the new item regardless of ids
       qc.invalidateQueries({ queryKey: ["sales"] });
-      // close & reset
+
+      // close & reset UI
       resetAll();
     },
     onError: (err: unknown) => {
