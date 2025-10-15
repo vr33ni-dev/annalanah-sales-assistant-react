@@ -29,6 +29,7 @@ export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
+      window.__LOGGING_OUT = true; // ⬅️ tell interceptor to chill
       await fetch(`${AUTH_BASE}/auth/logout`, {
         method: "POST",
         credentials: "include",
@@ -38,17 +39,16 @@ export function useLogout() {
     onSuccess: () => {
       qc.setQueryData(["me"], null);
       qc.invalidateQueries({ queryKey: ["me"] });
-
-      // prevent immediate re-login for a few seconds
-      sessionStorage.setItem(
-        "suppressAuthRedirectUntil",
-        String(Date.now() + 8000) // 8s is plenty
-      );
-
-      // add ?auth=logged_out and reload
+    },
+    onSettled: () => {
+      // Navigate to a public route and force a clean reload so no protected components mount
       const url = new URL(window.location.href);
-      url.searchParams.set("auth", "logged_out");
-      window.location.replace(url.toString());
+      url.searchParams.set("auth", "logout");
+      window.location.replace(url.pathname + "?" + url.searchParams.toString());
+      // optional: clear the flag after a moment
+      setTimeout(() => {
+        window.__LOGGING_OUT = false;
+      }, 2000);
     },
   });
 }

@@ -3,6 +3,11 @@ import axios from "axios";
 
 declare global {
   interface Window {
+    __LOGGING_OUT?: boolean;
+  }
+}
+declare global {
+  interface Window {
     __AUTH_BASE__?: string;
   }
 }
@@ -48,11 +53,20 @@ function suppressAuthRedirectNow(): boolean {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    const status: number | undefined = err?.response?.status;
-    const reqUrl: string = err?.config?.url || "";
+    const status = err?.response?.status;
+    const reqUrl = err?.config?.url || "";
+
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
 
-    if (status === 401 && !isMeProbe && !suppressAuthRedirectNow()) {
+    const onPublicRoute =
+      window.location.pathname === "/login" || window.location.pathname === "/"; // adjust if you have a dedicated public route
+
+    if (
+      status === 401 &&
+      !isMeProbe &&
+      !window.__LOGGING_OUT && // ⬅️ don’t auto-redirect during logout
+      !onPublicRoute
+    ) {
       const returnTo = encodeURIComponent(window.location.href);
       window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
       return;
