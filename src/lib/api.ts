@@ -8,36 +8,27 @@ declare global {
   }
 }
 
-function getApiBase(): string {
-  // Prefer an explicit env var if present (works in dev/staging/prod)
-  const raw = (import.meta.env.VITE_API_BASE || "").trim();
-  if (raw) {
-    const url = new URL(raw); // validates and strips any path
-    return url.origin; // e.g. https://annalanah-sales-assistant-server-dev.onrender.com
-  }
-  // Otherwise use dev proxy
-  return "";
-}
-
-export const AUTH_BASE = getApiBase();
+/**
+ * Same-origin setup:
+ * - AUTH_BASE is empty => use relative paths so requests stay on the frontend origin.
+ * - Render rewrites proxy /api/* and /auth/* to the Go backend.
+ */
+export const AUTH_BASE = ""; // same-origin
 window.__AUTH_BASE__ = AUTH_BASE;
-console.log("[api] AUTH_BASE =", AUTH_BASE || "(dev-proxy)");
 
 const api = axios.create({
-  baseURL: `${AUTH_BASE}/api`,
-  withCredentials: true,
+  baseURL: "/api", // same-origin path
+  withCredentials: true, // fine to keep; first-party cookie anyway
   headers: { "Content-Type": "application/json" },
 });
 
-// (Optional) now it's safe to log:
+// Helpful log
 console.log("[api] axios baseURL =", api.defaults.baseURL);
 
 function suppressAuthRedirectNow(): boolean {
-  // 1) URL flag set by logout
   const params = new URLSearchParams(window.location.search);
   if (params.get("auth") === "logged_out") return true;
 
-  // 2) short-lived session flag set by logout
   const untilStr = sessionStorage.getItem("suppressAuthRedirectUntil");
   const until = untilStr ? Number(untilStr) : 0;
   return Date.now() < until;
@@ -53,16 +44,18 @@ api.interceptors.response.use(
     const onPublicRoute =
       window.location.pathname === "/login" || window.location.pathname === "/";
     const isAuthRoute = reqUrl.includes("/auth/");
+
     if (
       status === 401 &&
       !isMeProbe &&
       !isAuthRoute &&
-      !window.__LOGGING_OUT && // don't redirect during logout
+      !window.__LOGGING_OUT &&
       !onPublicRoute &&
-      !suppressAuthRedirectNow() // ⬅️ use it here
+      !suppressAuthRedirectNow()
     ) {
       const returnTo = encodeURIComponent(window.location.href);
-      window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
+      // Same-origin redirect to auth start
+      window.location.href = `/auth/google?redirect=${returnTo}`;
       return;
     }
     return Promise.reject(err);
@@ -127,7 +120,7 @@ export interface SalesProcess {
   zweitgespraech_date?: string | null;
   zweitgespraech_result?: boolean | null;
   abschluss?: boolean | null;
-  revenue?: number | null; // null unless abschluss === true
+  revenue?: number | null;
   stage_id?: number | null;
 }
 
@@ -185,13 +178,11 @@ export interface StartSalesProcessResponse {
 
 /**
  * POST /sales/start
- * backend creates a client and sales_process and returns
- * { sales_process_id, client, sales_process }
  */
 export const startSalesProcess = async (
   payload: StartSalesProcessRequest
 ): Promise<void> => {
-  await api.post("/sales/start", payload); // don't expect JSON back
+  await api.post("/sales/start", payload);
 };
 
 /* Contracts */
@@ -264,8 +255,7 @@ export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
 };
 
 /**
- * PATCH /stages/{id}/stats
- * backend returns 204 No Content; use void return
+ * PATCH /stages/{id}/stats — 204 No Content
  */
 export interface UpdateStageStatsRequest {
   registrations?: number | null;
@@ -312,8 +302,7 @@ export const updateStageParticipant = async (
 };
 
 /**
- * POST /api/stages/{id}/assign-client
- * body: { client_id: number } -> backend returns 201 Created with no body
+ * POST /api/stages/{id}/assign-client — 201 Created
  */
 export const assignClientToStage = async (
   stageId: string | number,
@@ -329,7 +318,6 @@ export interface CashflowRow {
   potential: number;
   expected: number;
 }
-
 const isCashflowRow = (x: unknown): x is CashflowRow =>
   typeof x === "object" &&
   x !== null &&

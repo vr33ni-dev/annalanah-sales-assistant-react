@@ -1,12 +1,13 @@
-// Login.tsx
+// src/pages/Login.tsx
 import { Button } from "@/components/ui/button";
-import { AUTH_BASE } from "@/lib/api"; // or wherever you export it
 
 export default function Login() {
   const goLogin = () => {
     const returnTo = encodeURIComponent(window.location.href);
-    window.location.href = `${AUTH_BASE}/auth/google?redirect=${returnTo}`;
+    // Same-origin route (Render rewrite proxies this to the API)
+    window.location.href = `/auth/google?redirect=${returnTo}`;
   };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-sm w-full border rounded-xl p-6 bg-card">
