@@ -14,6 +14,7 @@ declare global {
  * - Render rewrites proxy /api/* and /auth/* to the Go backend.
  */
 export const AUTH_BASE = ""; // same-origin
+export const API_BASE = "/api"; // same-origin
 window.__AUTH_BASE__ = AUTH_BASE;
 
 const api = axios.create({
