@@ -9,12 +9,13 @@ declare global {
 }
 
 function getApiBase(): string {
-  if (import.meta.env.PROD) {
-    const raw = (import.meta.env.VITE_API_BASE || "").trim();
-    if (!raw) throw new Error("VITE_API_BASE is not set in production build");
-    const url = new URL(raw);
-    return url.origin;
+  // Prefer an explicit env var if present (works in dev/staging/prod)
+  const raw = (import.meta.env.VITE_API_BASE || "").trim();
+  if (raw) {
+    const url = new URL(raw); // validates and strips any path
+    return url.origin; // e.g. https://annalanah-sales-assistant-server-dev.onrender.com
   }
+  // Otherwise use dev proxy
   return "";
 }
 
