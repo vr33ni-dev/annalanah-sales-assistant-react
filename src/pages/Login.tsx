@@ -7,7 +7,7 @@ export default function Login() {
     // Same-origin route (Render rewrite proxies this to the API)
     window.location.href = `/auth/google?redirect=${encodeURIComponent(
       window.location.href
-    )}`;
+    )}&debug=1`;
   };
 
   return (
