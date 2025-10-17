@@ -1,7 +1,13 @@
 // src/auth/useAuth.ts
-import api, { AUTH_BASE } from "@/lib/api";
+import api from "@/lib/api";
 import axios from "axios";
 import { useQuery, useQueryClient, QueryClient } from "@tanstack/react-query";
+
+declare global {
+  interface Window {
+    __LOGGING_OUT?: boolean;
+  }
+}
 
 export type Me = { email: string; name: string; exp?: string };
 
@@ -39,12 +45,10 @@ export async function logout(qc?: QueryClient) {
       /* noop */
     }
 
-    // prefer POST, fall back to a direct call to the auth origin
-    await api.post("/auth/logout").catch(async () => {
-      await fetch(`${AUTH_BASE}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+    // Same-origin logout (works locally via Vite proxy and on Render via rewrites)
+    await fetch("/auth/logout", {
+      method: "POST",
+      credentials: "include",
     });
   } finally {
     window.location.href = "/login?auth=logged_out";
