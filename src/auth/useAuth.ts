@@ -45,7 +45,7 @@ export async function logout(qc?: QueryClient) {
       /* noop */
     }
 
-    // Same-origin logout (works locally via Vite proxy and on Render via rewrites)
+    // ✅ Hit the correct route (NOT /api/auth/logout)
     await fetch("/auth/logout", {
       method: "POST",
       credentials: "include",
@@ -55,7 +55,6 @@ export async function logout(qc?: QueryClient) {
   }
 }
 
-// Small hook you can call from components
 export function useLogout() {
   const qc = useQueryClient();
   return () => logout(qc);

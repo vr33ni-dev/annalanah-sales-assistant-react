@@ -112,10 +112,6 @@ export default function Contracts() {
             Verträge verfolgen und Umsatzprognosen
           </p>
         </div>
-        <Button>
-          <FileText className="w-4 h-4 mr-2" />
-          Neuer Vertrag
-        </Button>
       </div>
 
       {/* Stats Cards */}
