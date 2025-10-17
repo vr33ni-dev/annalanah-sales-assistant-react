@@ -5,7 +5,9 @@ export default function Login() {
   const goLogin = () => {
     const returnTo = encodeURIComponent(window.location.href);
     // Same-origin route (Render rewrite proxies this to the API)
-    window.location.href = `/auth/google?redirect=${returnTo}`;
+    window.location.href = `/auth/google?redirect=${encodeURIComponent(
+      window.location.href
+    )}`;
   };
 
   return (

@@ -14,7 +14,6 @@ declare global {
  * - Render rewrites proxy /api/* and /auth/* to the Go backend.
  */
 export const AUTH_BASE = ""; // same-origin
-export const API_BASE = "/api"; // same-origin
 window.__AUTH_BASE__ = AUTH_BASE;
 
 const api = axios.create({
@@ -56,7 +55,9 @@ api.interceptors.response.use(
     ) {
       const returnTo = encodeURIComponent(window.location.href);
       // Same-origin redirect to auth start
-      window.location.href = `/auth/google?redirect=${returnTo}`;
+      window.location.href = `/auth/google?redirect=${encodeURIComponent(
+        window.location.href
+      )}`;
       return;
     }
     return Promise.reject(err);

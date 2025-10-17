@@ -13,18 +13,8 @@ export default defineConfig(({ mode }) => ({
     port: 5002,
     // proxy /api to backend (no CORS in dev)
     proxy: {
-      "/auth": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-        secure: false,
-        cookieDomainRewrite: "", // set cookies for localhost:5173
-      },
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-        secure: false,
-        cookieDomainRewrite: "",
-      },
+      "/api": { target: "http://localhost:8080", changeOrigin: true },
+      "/auth": { target: "http://localhost:8080", changeOrigin: true },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(
