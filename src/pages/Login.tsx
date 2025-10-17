@@ -6,11 +6,11 @@ export default function Login() {
     const here = window.location.href;
     // Avoid looping back to /login after auth
     const target = window.location.pathname === "/login" ? "/" : here;
-    const returnTo = encodeURIComponent(target);
 
     // Same-origin route; Render rewrite proxies this to the API
-    window.location.href = `/auth/google?redirect=${returnTo}`;
-    // tip: drop &debug=1 in prod; only add it temporarily when you want extra logs
+    window.location.href = `/auth/google?redirect=${encodeURIComponent(
+      location.href
+    )}`;
   };
 
   return (

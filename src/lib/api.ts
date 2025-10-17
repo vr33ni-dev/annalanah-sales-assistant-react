@@ -1,24 +1,16 @@
 // src/lib/api.ts
 import axios from "axios";
 
-declare global {
-  interface Window {
-    __LOGGING_OUT?: boolean;
-    __AUTH_BASE__?: string;
-  }
-}
-
 /**
  * Same-origin setup:
- * - AUTH_BASE is empty => use relative paths so requests stay on the frontend origin.
- * - Render rewrites proxy /api/* and /auth/* to the Go backend.
+ * - In prod, the Static Site rewrites /api/* and /auth/* to your Go backend.
+ * - In dev, Vite proxy handles /api and /auth (see vite.config.ts).
+ * - No absolute hosts here → avoids third-party cookie issues.
  */
-export const AUTH_BASE = ""; // same-origin
-window.__AUTH_BASE__ = AUTH_BASE;
 
 const api = axios.create({
-  baseURL: "/api", // same-origin path
-  withCredentials: true, // fine to keep; first-party cookie anyway
+  baseURL: "/api",
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -34,6 +26,7 @@ function suppressAuthRedirectNow(): boolean {
   return Date.now() < until;
 }
 
+// Global 401 handler → kick off login (same-origin)
 api.interceptors.response.use(
   (r) => r,
   (err) => {
@@ -49,12 +42,9 @@ api.interceptors.response.use(
       status === 401 &&
       !isMeProbe &&
       !isAuthRoute &&
-      !window.__LOGGING_OUT &&
       !onPublicRoute &&
       !suppressAuthRedirectNow()
     ) {
-      const returnTo = encodeURIComponent(window.location.href);
-      // Same-origin redirect to auth start
       window.location.href = `/auth/google?redirect=${encodeURIComponent(
         window.location.href
       )}`;
