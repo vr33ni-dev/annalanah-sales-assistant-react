@@ -47,7 +47,7 @@ export async function logout(qc?: QueryClient) {
   } catch {
     // ignore; just continue
   } finally {
-    window.location.href = "/login?auth=logged_out";
+    window.location.href = "/auth/logout";
   }
 }
 export function useLogout() {
