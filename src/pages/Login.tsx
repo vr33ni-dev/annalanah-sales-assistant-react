@@ -3,11 +3,8 @@ import { Button } from "@/components/ui/button";
 
 export default function Login() {
   const goLogin = () => {
-    // If we’re on /login, send users back to the app root after auth
     const target =
-      window.location.pathname === "/login" ? "/" : window.location.href;
-
-    // Same-origin route; Render rewrite proxies this to the API
+      window.location.pathname === "/auth/login" ? "/" : window.location.href;
     window.location.href = `/auth/google?redirect=${encodeURIComponent(
       target
     )}`;

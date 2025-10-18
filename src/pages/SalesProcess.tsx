@@ -60,26 +60,6 @@ import {
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 
-function pickIdsFromStartResponse(res: unknown): {
-  salesProcessId?: number;
-  clientId?: number;
-} {
-  // try the "rich" shape first
-  const r = res as {
-    sales_process_id?: number;
-    client?: { id?: number } | null;
-    sales_process?: { id?: number; client_id?: number } | null;
-    id?: number;
-    client_id?: number;
-  };
-
-  const salesProcessId = r?.sales_process_id ?? r?.sales_process?.id ?? r?.id; // some backends just return created id
-
-  const clientId = r?.client?.id ?? r?.sales_process?.client_id ?? r?.client_id;
-
-  return { salesProcessId, clientId };
-}
-
 // ---- mappings (backend → UI labels) ----------------------------------------
 type SalesStage = "zweitgespraech" | "abschluss" | "lost";
 // Add right under the SalesStage/labels
