@@ -30,26 +30,24 @@ export function useMe() {
   });
 }
 
-export async function logout(qc?: QueryClient) {
+export function logout(qc?: QueryClient) {
+  // keep UI cache from flashing stale private data
   try {
-    window.__LOGGING_OUT = true;
-    sessionStorage.setItem(
-      "suppressAuthRedirectUntil",
-      String(Date.now() + 5000)
-    );
-    try {
-      qc?.clear?.();
-    } catch {
-      /* add catch block */
-    }
-
-    await api.post("/logout"); // <- hits /api/logout (same-origin)
+    qc?.clear?.();
   } catch {
-    // ignore; just continue
-  } finally {
-    window.location.href = "/auth/logout";
+    /* noop */
   }
+
+  // prevent the 401 interceptor from auto-kicking you back into /auth
+  sessionStorage.setItem(
+    "suppressAuthRedirectUntil",
+    String(Date.now() + 5000)
+  );
+
+  // let the backend clear cookies; it will 302 → /login?auth=logged_out
+  window.location.assign("/auth/logout");
 }
+
 export function useLogout() {
   const qc = useQueryClient();
   return () => logout(qc);

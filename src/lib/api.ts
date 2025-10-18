@@ -27,15 +27,15 @@ function suppressAuthRedirectNow(): boolean {
 }
 
 // Global 401 handler → kick off login (same-origin)
+// src/lib/api.ts
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     const status = err?.response?.status;
     const reqUrl = err?.config?.url || "";
-
     const isMeProbe = reqUrl.endsWith("/me") || reqUrl.endsWith("/api/me");
     const onPublicRoute =
-      window.location.pathname === "/login" || window.location.pathname === "/";
+      location.pathname === "/login" || location.pathname === "/";
     const isAuthRoute = reqUrl.includes("/auth/");
 
     if (
@@ -43,10 +43,11 @@ api.interceptors.response.use(
       !isMeProbe &&
       !isAuthRoute &&
       !onPublicRoute &&
-      !suppressAuthRedirectNow()
+      Date.now() >=
+        Number(sessionStorage.getItem("suppressAuthRedirectUntil") || 0)
     ) {
-      window.location.href = `/auth/google?redirect=${encodeURIComponent(
-        window.location.href
+      location.href = `/auth/google?redirect=${encodeURIComponent(
+        location.href
       )}`;
       return;
     }
