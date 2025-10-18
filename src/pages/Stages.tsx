@@ -30,8 +30,10 @@ import {
   Target,
   TrendingUp,
   MapPin,
+  Pencil,
+  Info,
 } from "lucide-react";
-import { getStages, createStage, Stage } from "@/lib/api";
+import { getStages, createStage, updateStageStats, Stage } from "@/lib/api";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -191,6 +193,101 @@ function CreateStageDialog() {
   );
 }
 
+/* ------------------------- Edit Dialog ------------------------- */
+
+function EditStageDialog({ stage }: { stage: Stage }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [registrations, setRegistrations] = useState<string>(
+    stage.registrations != null ? String(stage.registrations) : ""
+  );
+  const [participants, setParticipants] = useState<string>(
+    stage.participants != null ? String(stage.participants) : ""
+  );
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      await updateStageStats(stage.id, {
+        registrations: toNumberOrNull(registrations),
+        participants: toNumberOrNull(participants),
+      });
+    },
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["stages"] });
+      setOpen(false);
+    },
+  });
+
+  const canSubmit = !isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" title="Bearbeiten">
+          <Pencil className="w-4 h-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bühne bearbeiten</DialogTitle>
+        </DialogHeader>
+
+        <div className="rounded-md border p-3 text-sm text-muted-foreground flex items-start gap-2">
+          <Info className="w-4 h-4 mt-0.5" />
+          <p>
+            Aktuell unterstützt das Backend das Aktualisieren von{" "}
+            <strong>Anmeldungen</strong> und <strong>Teilnehmern</strong>. Name,
+            Datum und Budget werden in einem separaten Endpoint ergänzt.
+          </p>
+        </div>
+
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-1">
+            <Label>Name</Label>
+            <Input value={stage.name} disabled />
+          </div>
+
+          <div className="grid gap-1">
+            <Label>Datum</Label>
+            <Input value={formatDate(stage.date)} disabled />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-registrations-${stage.id}`}>
+              Anmeldungen
+            </Label>
+            <Input
+              id={`edit-registrations-${stage.id}`}
+              inputMode="numeric"
+              value={registrations}
+              onChange={(e) => setRegistrations(e.target.value)}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor={`edit-participants-${stage.id}`}>Teilnehmer</Label>
+            <Input
+              id={`edit-participants-${stage.id}`}
+              inputMode="numeric"
+              value={participants}
+              onChange={(e) => setParticipants(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-3">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Abbrechen
+          </Button>
+          <Button disabled={!canSubmit} onClick={() => mutate()}>
+            {isPending ? "Speichern…" : "Speichern"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ---------------------------- Page ---------------------------- */
 
 export default function Stages() {
@@ -198,7 +295,7 @@ export default function Stages() {
 
   const { data, isLoading, isError, error, refetch } = useQuery<Stage[]>({
     queryKey: ["stages"],
-    queryFn: getStages, // GET /api/stages → Stage[]
+    queryFn: getStages,
     staleTime: 60_000,
   });
 
@@ -398,20 +495,36 @@ export default function Stages() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" title="Teilnehmer">
+                      <div className="flex gap-1">
+                        {/* Placeholder actions (clickable) */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Teilnehmer (demnächst)"
+                          onClick={() => alert("Teilnehmer-Ansicht kommt bald")}
+                        >
                           <Users className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" title="Performance">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Performance (demnächst)"
+                          onClick={() =>
+                            alert("Performance-Ansicht kommt bald")
+                          }
+                        >
                           <TrendingUp className="w-4 h-4" />
                         </Button>
+
+                        {/* Real Edit action */}
+                        <EditStageDialog stage={stage} />
                       </div>
                     </TableCell>
                   </TableRow>
                 );
               })}
 
-              {!isLoading && filteredStages.length === 0 && (
+              {filteredStages.length === 0 && !isLoading && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8">
                     <p className="text-sm text-muted-foreground">

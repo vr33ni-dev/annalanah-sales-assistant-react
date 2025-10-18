@@ -1,9 +1,15 @@
-// App.tsx
+// src/App.tsx
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Outlet,
+  Navigate,
+} from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
@@ -17,7 +23,22 @@ import { useEffect } from "react";
 
 const queryClient = new QueryClient();
 
+/**
+ * Wraps the authed area with AuthGate and the app Layout.
+ * All routes nested under this element require auth.
+ */
+function ProtectedShell() {
+  return (
+    <AuthGate fallback={<Navigate to="/login" replace />}>
+      <Layout>
+        <Outlet />
+      </Layout>
+    </AuthGate>
+  );
+}
+
 const App = () => {
+  // Clean up ?auth=... query flag (used after logout)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -28,7 +49,6 @@ const App = () => {
         window.location.pathname +
         (newSearch ? "?" + newSearch : "") +
         window.location.hash;
-      // replace so back button stays normal, and force a fresh load so cookies are sent on subsequent XHRs
       window.location.replace(newUrl);
     }
   }, []);
@@ -39,18 +59,21 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <AuthGate fallback={<Login />}>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/clients" element={<Clients />} />
-                <Route path="/sales" element={<SalesProcess />} />
-                <Route path="/contracts" element={<Contracts />} />
-                <Route path="/stages" element={<Stages />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Layout>
-          </AuthGate>
+          <Routes>
+            {/* Public route */}
+            <Route path="/login" element={<Login />} />
+
+            {/* Everything below here is protected */}
+            <Route element={<ProtectedShell />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/clients" element={<Clients />} />
+              <Route path="/sales" element={<SalesProcess />} />
+              <Route path="/contracts" element={<Contracts />} />
+              <Route path="/stages" element={<Stages />} />
+              {/* Protected 404 fallback */}
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
