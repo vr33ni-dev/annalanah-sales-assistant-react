@@ -9,6 +9,13 @@ declare global {
   }
 }
 
+// --- cross-tab logout broadcast ---
+const ch = new BroadcastChannel("auth");
+export const broadcastLogout = () => ch.postMessage({ type: "logout" });
+export const onAuthMessage = (fn: () => void) => {
+  ch.onmessage = (e) => e.data?.type === "logout" && fn();
+};
+
 export type Me = { email: string; name: string; exp?: string };
 
 async function fetchMe(): Promise<Me | null> {
@@ -31,20 +38,20 @@ export function useMe() {
 }
 
 export function logout(qc?: QueryClient) {
-  // keep UI cache from flashing stale private data
   try {
     qc?.clear?.();
   } catch {
-    /* noop */
+    /* empty */
   }
 
-  // prevent the 401 interceptor from auto-kicking you back into /auth
   sessionStorage.setItem(
     "suppressAuthRedirectUntil",
     String(Date.now() + 5000)
   );
 
-  // let the backend clear cookies; it will 302 → /login?auth=logged_out
+  // notify other tabs before redirect
+  broadcastLogout();
+
   window.location.assign("/auth/logout");
 }
 
