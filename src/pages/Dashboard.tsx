@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
+import StageCard from "./StageCard";
 
 export default function Dashboard() {
   const { enabled } = useAuthEnabled();
@@ -206,28 +207,8 @@ export default function Dashboard() {
       {/* Dashboard Header with ROI per Stage */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              ROI pro Bühne
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 bg-success/10 rounded-lg">
-                <span className="font-medium">Hamburg Workshop</span>
-                <span className="text-success font-bold">+480% ROI</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-warning/10 rounded-lg">
-                <span className="font-medium">Munich Seminar</span>
-                <span className="text-warning font-bold">Pending</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
-                <span className="font-medium">Berlin Conference</span>
-                <span className="text-primary font-bold">Upcoming</span>
-              </div>
-            </div>
-          </CardContent>
+          <CardHeader>Workshops</CardHeader>
+          <StageCard />
         </Card>
 
         <Card>

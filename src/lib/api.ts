@@ -304,6 +304,27 @@ export const assignClientToStage = async (
   await api.post(`/stages/${stageId}/assign-client`, payload);
 };
 
+// Settings
+export interface Setting {
+  key: string;
+  value: string;
+}
+
+export const getNumericSetting = async (
+  key: string,
+  fallback: number
+): Promise<number> => {
+  try {
+    const { data } = await api.get<Setting>(
+      `/settings/${encodeURIComponent(key)}`
+    );
+    const n = Number((data?.value ?? "").toString().trim());
+    return Number.isFinite(n) ? n : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 /* Cashflow */
 export interface CashflowRow {
   month: string; // "2025-10"
