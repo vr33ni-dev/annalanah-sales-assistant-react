@@ -36,10 +36,10 @@ export function CashflowEntriesTable() {
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    enabled, // ← only run once /api/me succeeded
-    retry: false, // ← avoid redirect loops on 401
+    enabled,
+    retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<Contract>, // ← guarantee an array for the component
+    select: asArray<Contract>,
   });
 
   // Derive "entries" from contracts that have a next due date

@@ -1,7 +1,9 @@
+// src/pages/Contracts.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { MetricChip } from "@/components/MetricChip";
+
 import {
   Table,
   TableBody,
@@ -16,7 +18,13 @@ import {
   TrendingUp,
   Users,
   Calendar,
+  Info,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { CashflowEntriesTable } from "./CashflowEntries";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -28,20 +36,36 @@ import {
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 
-// ---- helpers ---------------------------------------------------------------
-function calcNextDueAmount(c: Contract): number {
-  switch (c.payment_frequency) {
-    case "monthly":
-      return c.monthly_amount;
-    case "bi-monthly":
-      return c.monthly_amount * 2;
-    case "quarterly":
-      return c.monthly_amount * 3;
-    default:
-      return c.monthly_amount;
-  }
+/* ---------------- helpers ---------------- */
+
+// add months to a YYYY-MM-DD string safely
+function addMonthsIso(iso: string, m: number): string {
+  const [y, mo, d] = iso.split("-").map(Number);
+  const dt = new Date(y, mo - 1, d);
+  dt.setMonth(dt.getMonth() + m);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(dt.getDate()).padStart(2, "0")}`;
 }
-// "YYYY-MM" -> "Oct 2025"
+
+function parseIso(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// count calendar months overlap between [a1, a2) and [b1, b2) (end exclusive)
+function monthsOverlap(a1: Date, a2: Date, b1: Date, b2: Date): number {
+  const s = a1 > b1 ? a1 : b1;
+  const e = a2 < b2 ? a2 : b2;
+  if (e <= s) return 0;
+  const months =
+    (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+  // include current month if e is past the 1st
+  const includeE = e.getDate() > 1 ? 1 : 0;
+  return Math.max(0, months + includeE);
+}
+
 function labelFromYm(ym: string) {
   const [y, m] = ym.split("-").map(Number);
   return new Intl.DateTimeFormat(undefined, {
@@ -49,7 +73,12 @@ function labelFromYm(ym: string) {
     year: "numeric",
   }).format(new Date(y, m - 1, 1));
 }
-// ----------------------------------------------------------------------------
+
+function euro(n: number) {
+  return `€${Math.round(n).toLocaleString()}`;
+}
+
+/* --------------- page ------------------- */
 
 export default function Contracts() {
   const { enabled } = useAuthEnabled();
@@ -62,10 +91,10 @@ export default function Contracts() {
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    enabled, // ← only run when /api/me succeeded
+    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<Contract>, // ← guarantee an array
+    select: asArray<Contract>,
   });
 
   // Cashflow forecast (server-side aggregation)
@@ -76,10 +105,10 @@ export default function Contracts() {
   } = useQuery<CashflowRow[]>({
     queryKey: ["cashflow-forecast"],
     queryFn: getCashflowForecast,
-    enabled, // ← same gate
+    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<CashflowRow>, // ← guarantee an array
+    select: asArray<CashflowRow>,
   });
 
   if (loadingContracts && contracts.length === 0) {
@@ -91,7 +120,8 @@ export default function Contracts() {
     );
   }
 
-  // KPIs (safe: contracts is always an array)
+  /* ---------------- KPIs from contracts ---------------- */
+
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
@@ -99,6 +129,63 @@ export default function Contracts() {
   );
   const activeContracts = contracts.length;
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
+
+  /* ---- YTD average monthly cashflow (1.1. bis jetzt), REALIZED by paid_months ---- */
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
+  const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
+
+  let ytdCashIn = 0;
+
+  for (const c of contracts) {
+    // contract active range
+    const start = parseIso(c.start_date);
+    const end = parseIso(addMonthsIso(c.start_date, c.duration_months)); // exclusive
+    // overlap with current year
+    const monthsActiveThisYear = monthsOverlap(start, end, startOfYear, now);
+    if (monthsActiveThisYear <= 0) continue;
+    // realized: use paid_months bounded by active months this year
+    const paidInThisYear = Math.min(c.paid_months, monthsActiveThisYear);
+    ytdCashIn += paidInThisYear * c.monthly_amount;
+  }
+
+  const avgMonthlyYtd =
+    monthsElapsedYtd > 0 ? Math.round(ytdCashIn / monthsElapsedYtd) : 0;
+
+  /* ---- Next 3 months (CONFIRMED ONLY) ---- */
+  const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+
+  const futureMonths = (forecast ?? [])
+    .filter((r) => r.month >= nowYm) // keep current & future months
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  const next3 = futureMonths.slice(0, 3);
+
+  const next3Display = next3.map((r) => {
+    const confirmed = Math.round(r.confirmed ?? 0);
+    // Cashflow KPI should use confirmed only (no pipeline)
+    const total = confirmed;
+
+    return {
+      ym: r.month,
+      label: labelFromYm(r.month),
+      confirmed,
+      potential: Math.round(r.potential ?? 0), // kept for popover breakdown if desired
+      total,
+    };
+  });
+
+  const avgNext3 =
+    next3Display.length > 0
+      ? Math.round(
+          next3Display.reduce((s, r) => s + r.total, 0) / next3Display.length
+        )
+      : 0;
+
+  /* ----------------- Render ----------------- */
 
   return (
     <div className="space-y-6">
@@ -114,73 +201,97 @@ export default function Contracts() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  €{totalRevenue.toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Gesamter Vertragswert
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* KPI chips inline (wrap to next line, no card row) */}
+      <div className="flex flex-wrap items-stretch gap-3">
+        <MetricChip
+          icon={<DollarSign className="w-4 h-4" />}
+          iconBg="bg-success/10 text-success"
+          value={euro(totalRevenue)}
+          label="Gesamter Vertragswert"
+          popover={
+            `Summe der revenue_total über alle aktiven Verträge\n` +
+            `= ${
+              contracts.map((c) => euro(c.revenue_total)).join(" + ") || "0"
+            }\n` +
+            `= ${euro(totalRevenue)}`
+          }
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  €{monthlyRecurring.toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Monatlich wiederkehrend
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricChip
+          icon={<FileText className="w-4 h-4" />}
+          iconBg="bg-warning/10 text-warning"
+          value={String(activeContracts)}
+          label="Aktive Verträge"
+          popover={`Anzahl aktiver Verträge = ${activeContracts}`}
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{activeContracts}</p>
-                <p className="text-xs text-muted-foreground">Aktive Verträge</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricChip
+          icon={<Users className="w-4 h-4" />}
+          iconBg="bg-accent/20 text-accent-foreground"
+          value={euro(Math.round(avgContractValue))}
+          label="Ø Vertragswert"
+          popover={
+            `Ø Vertragswert = Gesamt-Vertragswert / Anzahl Verträge\n` +
+            `= ${euro(totalRevenue)} / ${activeContracts || 1}\n` +
+            `= ${euro(Math.round(avgContractValue))}`
+          }
+        />
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-                <Users className="w-5 h-5 text-accent-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  €{Math.round(avgContractValue).toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">Ø Vertragswert</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricChip
+          icon={<Calendar className="w-4 h-4" />}
+          iconBg="bg-success/10 text-success"
+          value={euro(avgMonthlyYtd)}
+          label="Ø monatlicher Cashflow YTD"
+          popover={
+            `Zeitraum: 01.01.–heute (${monthsElapsedYtd} Monate)\n` +
+            `YTD Cash-In (realisiert) ≈ Σ(min(paid_months, Monate aktiv in ${now.getFullYear()}) × monthly_amount)\n` +
+            `= ${
+              contracts.length
+                ? contracts
+                    .map((c) => {
+                      const start = parseIso(c.start_date);
+                      const end = parseIso(
+                        addMonthsIso(c.start_date, c.duration_months)
+                      );
+                      const monthsActiveThisYear = monthsOverlap(
+                        start,
+                        end,
+                        new Date(now.getFullYear(), 0, 1),
+                        now
+                      );
+                      const paidInThisYear = Math.min(
+                        c.paid_months,
+                        monthsActiveThisYear
+                      );
+                      return `${paidInThisYear}×${euro(c.monthly_amount)}`;
+                    })
+                    .join(" + ")
+                : "0"
+            }\n` +
+            `= ${euro(ytdCashIn)}\n` +
+            `Ø/Monat YTD = ${euro(ytdCashIn)} / ${monthsElapsedYtd} = ${euro(
+              avgMonthlyYtd
+            )}`
+          }
+        />
+
+        <MetricChip
+          icon={<TrendingUp className="w-4 h-4" />}
+          iconBg="bg-primary/10 text-primary"
+          value={next3Display.length ? euro(avgNext3) : "–"}
+          label="Ø bestätigter Cashflow/Monat, nächste 3"
+          popover={
+            next3Display.length
+              ? `Ø aus bestätigten Cashflows (ohne Potenzial)\n` +
+                next3Display
+                  .map((r) => `${r.label}: ${euro(r.confirmed)}`)
+                  .join("\n") +
+                `\nØ der nächsten 3 = (${next3Display
+                  .map((r) => euro(r.confirmed))
+                  .join(" + ")}) / ${next3Display.length} = ${euro(avgNext3)}`
+              : "Keine Forecast-Daten für die nächsten 3 Monate."
+          }
+        />
       </div>
 
       {/* Contracts Table */}
@@ -264,31 +375,44 @@ export default function Contracts() {
               <div className="text-muted-foreground">Keine Prognosedaten.</div>
             ) : (
               <div className="space-y-4">
-                {forecast.map((row) => (
-                  <div key={row.month} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">
-                        {labelFromYm(row.month)}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-success">
-                          Bestätigt (Aktive Verträge)
+                {forecast.map((row) => {
+                  const total = Math.round(
+                    (row.confirmed ?? 0) + (row.potential ?? 0)
+                  );
+                  return (
+                    <div key={row.month} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">
+                          {labelFromYm(row.month)}
                         </span>
-                        <span>€{row.confirmed.toLocaleString()}</span>
                       </div>
-                      {row.potential > 0 && (
+                      <div className="space-y-1">
                         <div className="flex justify-between text-sm">
-                          <span className="text-warning">
-                            Potentiell (Ausstehende Deals)
+                          <span className="text-success">
+                            Bestätigt (Aktive Verträge)
                           </span>
-                          <span>€{row.potential.toLocaleString()}</span>
+                          <span>€{row.confirmed.toLocaleString()}</span>
                         </div>
-                      )}
+                        {row.potential > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-warning">
+                              Potenziell (Ausstehende Deals)
+                            </span>
+                            <span>€{row.potential.toLocaleString()}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm">
+                          <span className="font-medium">
+                            Gesamt (Bestätigt + Potenziell)
+                          </span>
+                          <span className="font-medium">
+                            €{total.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

@@ -46,6 +46,7 @@ import {
   Stage,
   getNumericSetting,
 } from "@/lib/api";
+import { MetricChip } from "@/components/MetricChip";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -429,88 +430,40 @@ export default function Stages() {
       )}
 
       {/* Compact Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="shadow-none">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center">
-                <DollarSign className="w-4 h-4 text-primary" />
-              </div>
-              <div className="leading-tight">
-                <p className="text-xl font-bold">
-                  €{totals.budget.toLocaleString()}
-                </p>
-                <p className="text-xs text-muted-foreground">Budget gesamt</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-wrap items-stretch gap-3">
+        <MetricChip
+          icon={<DollarSign className="w-4 h-4" />}
+          iconBg="bg-primary/10 text-primary"
+          value={`€${totals.budget.toLocaleString()}`}
+          label="Budget gesamt"
+        />
 
-        {/* Closing-Rate (with click popover showing formula) */}
-        <Card className="shadow-none">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-success/10 flex items-center justify-center">
-                <Target className="w-4 h-4 text-success" />
-              </div>
-              <div className="leading-tight">
-                <p className="text-xl font-bold">
-                  {fmtPct(totals.closingRate)}
-                </p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground cursor-pointer inline-flex items-center gap-1"
-                    >
-                      Closing-Rate
-                      <Info className="w-3.5 h-3.5" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="whitespace-pre-line text-xs">
-                    {closingText(
-                      totals.participants,
-                      totals.registrations,
-                      totals.closingRate ?? undefined
-                    )}
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricChip
+          icon={<Target className="w-4 h-4" />}
+          iconBg="bg-success/10 text-success"
+          value={fmtPct(totals.closingRate)}
+          label="Closing-Rate"
+          popover={
+            // same calculation text you already build
+            closingText(
+              totals.participants,
+              totals.registrations,
+              totals.closingRate ?? undefined
+            )
+          }
+        />
 
-        {/* ROI total (Umsatz/Budget) with click popover */}
-        <Card className="shadow-none">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-accent/20 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-accent-foreground" />
-              </div>
-              <div className="leading-tight">
-                <p className="text-xl font-bold">{fmtPct(totals.roiPct)}</p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-xs text-muted-foreground cursor-pointer inline-flex items-center gap-1"
-                    >
-                      ROI gesamt
-                      <Info className="w-3.5 h-3.5" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="whitespace-pre-line text-xs">
-                    {roiText(
-                      isAvgReady ? totals.revenue : null,
-                      totals.budget,
-                      totals.roiPct ?? undefined
-                    )}
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <MetricChip
+          icon={<TrendingUp className="w-4 h-4" />}
+          iconBg="bg-accent/20 text-accent-foreground"
+          value={fmtPct(totals.roiPct)}
+          label="ROI gesamt"
+          popover={roiText(
+            isAvgReady ? totals.revenue : null,
+            totals.budget,
+            totals.roiPct ?? undefined
+          )}
+        />
       </div>
 
       {/* Stages Table */}
