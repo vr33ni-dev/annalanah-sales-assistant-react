@@ -305,10 +305,12 @@ export const assignClientToStage = async (
 };
 
 // Settings
-export interface Setting {
+type Setting = {
   key: string;
-  value: string;
-}
+  value_numeric?: number | null;
+  value_text?: string | null;
+  updated_at?: string;
+};
 
 export const getNumericSetting = async (
   key: string,
@@ -318,8 +320,13 @@ export const getNumericSetting = async (
     const { data } = await api.get<Setting>(
       `/settings/${encodeURIComponent(key)}`
     );
-    const n = Number((data?.value ?? "").toString().trim());
-    return Number.isFinite(n) ? n : fallback;
+    const v =
+      typeof data?.value_numeric === "number"
+        ? data.value_numeric
+        : Number(data?.value_text ?? NaN); // just in case you store numeric as text
+
+    // use fallback if missing, NaN, or non-positive (prevents -100% ROI)
+    return Number.isFinite(v) && v > 0 ? v : fallback;
   } catch {
     return fallback;
   }

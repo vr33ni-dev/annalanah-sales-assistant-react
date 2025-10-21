@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
+import {
   Table,
   TableBody,
   TableCell,
@@ -33,7 +39,13 @@ import {
   Pencil,
   Info,
 } from "lucide-react";
-import { getStages, createStage, updateStageStats, Stage } from "@/lib/api";
+import {
+  getStages,
+  createStage,
+  updateStageStats,
+  Stage,
+  getNumericSetting,
+} from "@/lib/api";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -48,7 +60,7 @@ const num = (v: number | null | undefined): number =>
   typeof v === "number" && Number.isFinite(v) ? v : 0;
 
 const formatDate = (iso?: string | null): string => {
-  if (!iso) return "-";
+  if (!iso) return "–";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 };
@@ -69,12 +81,36 @@ const toNumberOrNull = (s: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-type CreateStagePayload = {
-  name: string;
-  date?: string | null;
-  ad_budget?: number | null;
-  registrations?: number | null;
-  participants?: number | null;
+const fmtPct = (v: number | null | undefined) =>
+  typeof v === "number" && Number.isFinite(v) ? `${v}%` : "–";
+const fmtMoney = (v: number | null | undefined) =>
+  typeof v === "number" && v > 0 ? `€${v.toLocaleString()}` : "–";
+
+const pct = (n: number) => `${n}%`;
+const euro = (n: number) => `€${n.toLocaleString()}`;
+
+const closingText = (
+  participants: number,
+  registrations: number,
+  closing?: number | null
+) => {
+  if (!(registrations > 0)) return "Closing-Rate: nicht genug Daten.";
+  const val = typeof closing === "number" ? pct(closing) : "–";
+  return `Closing-Rate = (Teilnehmer / Anmeldungen) × 100
+= (${participants} / ${registrations}) × 100 = ${val}`;
+};
+
+// “ROI” here = Umsatz/Budget × 100 (i.e., ROAS but labeled ROI)
+const roiText = (
+  revenue?: number | null,
+  budget?: number | null,
+  roi?: number | null
+) => {
+  if (!(budget && budget > 0) || revenue == null)
+    return "ROI: nicht genug Daten.";
+  const val = typeof roi === "number" ? `${roi}%` : "–";
+  return `ROI = (Umsatz / Budget) × 100
+= (${euro(revenue)} / ${euro(budget)}) × 100 = ${val}`;
 };
 
 /* ------------------------- Create Dialog ------------------------- */
@@ -90,7 +126,7 @@ function CreateStageDialog() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
-      const payload: CreateStagePayload = {
+      const payload = {
         name: name.trim(),
         date: date.trim() === "" ? null : date.trim(),
         ad_budget: toNumberOrNull(adBudget),
@@ -299,6 +335,18 @@ export default function Stages() {
     staleTime: 60_000,
   });
 
+  // Average revenue per participant (used to estimate Umsatz)
+  const { data: avgRev, isLoading: avgRevLoading } = useQuery({
+    queryKey: ["avg_revenue_per_participant"],
+    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    staleTime: 5 * 60_000,
+  });
+
+  // Treat non-positive average as "not ready"
+  const effectiveAvgRev =
+    typeof avgRev === "number" && avgRev > 0 ? avgRev : undefined;
+  const isAvgReady = !!effectiveAvgRev && !avgRevLoading;
+
   const stages: Stage[] = data ?? [];
 
   const filteredStages = useMemo<Stage[]>(() => {
@@ -310,22 +358,34 @@ export default function Stages() {
   const totals = useMemo(() => {
     const acc = stages.reduce(
       (agg, s) => {
-        agg.budget += num(s.ad_budget);
-        agg.registrations += num(s.registrations);
-        agg.participants += num(s.participants);
+        const budget = num(s.ad_budget);
+        const regs = num(s.registrations);
+        const parts = num(s.participants);
+        agg.budget += budget;
+        agg.registrations += regs;
+        agg.participants += parts;
+        if (isAvgReady) agg.revenue += parts * (effectiveAvgRev as number);
         return agg;
       },
-      { budget: 0, registrations: 0, participants: 0 }
+      { budget: 0, registrations: 0, participants: 0, revenue: 0 }
     );
-    const showUpRate =
+
+    const closingRate =
       acc.registrations > 0
         ? Math.round((acc.participants / acc.registrations) * 100)
-        : 0;
-    return { ...acc, showUpRate, roi: 0 };
-  }, [stages]);
+        : null;
+
+    // "ROI" as Umsatz/Budget × 100 (ROAS math)
+    const roiPct =
+      isAvgReady && acc.budget > 0
+        ? Math.round((acc.revenue / acc.budget) * 100)
+        : null;
+
+    return { ...acc, closingRate, roiPct };
+  }, [stages, isAvgReady, effectiveAvgRev]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -347,88 +407,106 @@ export default function Stages() {
       {/* Loading / Error */}
       {isLoading && (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
+          <CardContent className="p-4 text-sm text-muted-foreground">
             Lädt Bühnen…
           </CardContent>
         </Card>
       )}
       {isError && (
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <p className="text-destructive font-medium">
               Fehler beim Laden der Bühnen
             </p>
             <p className="text-muted-foreground text-sm mt-1">
               {(error as Error)?.message ?? "Unbekannter Fehler"}
             </p>
-            <Button className="mt-4" onClick={() => refetch()}>
+            <Button className="mt-3" onClick={() => refetch()}>
               Erneut versuchen
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
+      {/* Compact Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="shadow-none">
+          <CardContent className="p-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-primary" />
+              <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-primary" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">
+              <div className="leading-tight">
+                <p className="text-xl font-bold">
                   €{totals.budget.toLocaleString()}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Gesamt Werbebudget
-                </p>
+                <p className="text-xs text-muted-foreground">Budget gesamt</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        {/* Closing-Rate (with click popover showing formula) */}
+        <Card className="shadow-none">
+          <CardContent className="p-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Users className="w-5 h-5 text-warning" />
+              <div className="w-8 h-8 rounded bg-success/10 flex items-center justify-center">
+                <Target className="w-4 h-4 text-success" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{totals.registrations}</p>
-                <p className="text-xs text-muted-foreground">
-                  Gesamt Anmeldungen
+              <div className="leading-tight">
+                <p className="text-xl font-bold">
+                  {fmtPct(totals.closingRate)}
                 </p>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground cursor-pointer inline-flex items-center gap-1"
+                    >
+                      Closing-Rate
+                      <Info className="w-3.5 h-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="whitespace-pre-line text-xs">
+                    {closingText(
+                      totals.participants,
+                      totals.registrations,
+                      totals.closingRate ?? undefined
+                    )}
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4">
+        {/* ROI total (Umsatz/Budget) with click popover */}
+        <Card className="shadow-none">
+          <CardContent className="p-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <Target className="w-5 h-5 text-success" />
+              <div className="w-8 h-8 rounded bg-accent/20 flex items-center justify-center">
+                <TrendingUp className="w-4 h-4 text-accent-foreground" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{totals.showUpRate}%</p>
-                <p className="text-xs text-muted-foreground">
-                  Erscheinungsquote
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-accent-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">0%</p>
-                <p className="text-xs text-muted-foreground">ROI</p>
+              <div className="leading-tight">
+                <p className="text-xl font-bold">{fmtPct(totals.roiPct)}</p>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground cursor-pointer inline-flex items-center gap-1"
+                    >
+                      ROI gesamt
+                      <Info className="w-3.5 h-3.5" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="whitespace-pre-line text-xs">
+                    {roiText(
+                      isAvgReady ? totals.revenue : null,
+                      totals.budget,
+                      totals.roiPct ?? undefined
+                    )}
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </CardContent>
@@ -437,7 +515,7 @@ export default function Stages() {
 
       {/* Stages Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="py-3">
           <div className="flex justify-between items-center">
             <CardTitle>Event Management</CardTitle>
             <div className="flex gap-2">
@@ -445,22 +523,23 @@ export default function Stages() {
                 placeholder="Bühnen suchen..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-64"
+                className="w-64 h-9"
               />
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Bühnenname</TableHead>
-                <TableHead>Datum</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Anmeldungen</TableHead>
-                <TableHead>Teilnehmer</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Aktionen</TableHead>
+              <TableRow className="h-9">
+                <TableHead className="py-2">Bühne</TableHead>
+                <TableHead className="py-2">Datum</TableHead>
+                <TableHead className="py-2">Budget</TableHead>
+                <TableHead className="py-2">Anm.</TableHead>
+                <TableHead className="py-2">Teiln.</TableHead>
+                <TableHead className="py-2">Performance</TableHead>
+                <TableHead className="py-2">Status</TableHead>
+                <TableHead className="py-2 text-right">Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -470,37 +549,99 @@ export default function Stages() {
                 const regs = num(stage.registrations);
                 const parts = num(stage.participants);
 
+                const revenue = isAvgReady
+                  ? parts * (effectiveAvgRev as number)
+                  : null;
+
+                // "ROI" per row = Umsatz/Budget × 100
+                const roiPct =
+                  isAvgReady && budget > 0 && revenue != null
+                    ? Math.round((revenue / budget) * 100)
+                    : null;
+
+                const closingRate =
+                  regs > 0 ? Math.round((parts / regs) * 100) : null;
+
+                const roiClass =
+                  roiPct == null
+                    ? ""
+                    : roiPct >= 100
+                    ? "text-success"
+                    : "text-destructive";
+
                 return (
-                  <TableRow key={stage.id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={stage.id} className="h-10">
+                    <TableCell className="py-1.5">
                       <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                        {stage.name}
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="font-medium text-sm">
+                          {stage.name}
+                        </span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        {formatDate(stage.date)}
+                    <TableCell className="py-1.5 text-sm">
+                      {formatDate(stage.date)}
+                    </TableCell>
+                    <TableCell className="py-1.5 text-sm">
+                      {fmtMoney(budget)}
+                    </TableCell>
+                    <TableCell className="py-1.5 text-sm">
+                      {regs > 0 ? regs : "–"}
+                    </TableCell>
+                    <TableCell className="py-1.5 text-sm">
+                      {parts > 0 ? parts : "–"}
+                    </TableCell>
+
+                    {/* Performance cell: Umsatz, ROI (as Umsatz/Budget), Closing with click popovers */}
+                    <TableCell className="py-1.5 text-xs">
+                      <div className="flex flex-wrap gap-1">
+                        <span className="px-1.5 py-0.5 rounded bg-accent/40">
+                          Umsatz: {fmtMoney(revenue ?? null)}
+                        </span>
+
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className={`px-1.5 py-0.5 rounded bg-accent/40 ${roiClass} cursor-pointer`}
+                            >
+                              ROI: {fmtPct(roiPct ?? undefined)}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="whitespace-pre-line text-xs">
+                            {roiText(revenue, budget, roiPct ?? undefined)}
+                          </PopoverContent>
+                        </Popover>
+
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="px-1.5 py-0.5 rounded bg-accent/40 cursor-pointer"
+                            >
+                              CR: {fmtPct(closingRate ?? undefined)}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="whitespace-pre-line text-xs">
+                            {closingText(parts, regs, closingRate ?? undefined)}
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {budget > 0 ? `€${budget.toLocaleString()}` : "-"}
-                    </TableCell>
-                    <TableCell>{regs > 0 ? regs : "-"}</TableCell>
-                    <TableCell>{parts > 0 ? parts : "-"}</TableCell>
-                    <TableCell>
+
+                    <TableCell className="py-1.5">
                       <Badge className={statusColors[status]}>
                         {status === "completed" ? "Abgeschlossen" : "Geplant"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {/* Placeholder actions (clickable) */}
+
+                    <TableCell className="py-1.5 text-right">
+                      <div className="flex justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
                           title="Teilnehmer (demnächst)"
+                          className="h-8 w-8 p-0"
                           onClick={() => alert("Teilnehmer-Ansicht kommt bald")}
                         >
                           <Users className="w-4 h-4" />
@@ -509,14 +650,13 @@ export default function Stages() {
                           variant="ghost"
                           size="sm"
                           title="Performance (demnächst)"
+                          className="h-8 w-8 p-0"
                           onClick={() =>
                             alert("Performance-Ansicht kommt bald")
                           }
                         >
                           <TrendingUp className="w-4 h-4" />
                         </Button>
-
-                        {/* Real Edit action */}
                         <EditStageDialog stage={stage} />
                       </div>
                     </TableCell>
@@ -526,7 +666,7 @@ export default function Stages() {
 
               {filteredStages.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-6">
                     <p className="text-sm text-muted-foreground">
                       Keine Bühnen gefunden.
                     </p>
@@ -535,72 +675,19 @@ export default function Stages() {
               )}
             </TableBody>
           </Table>
+
+          {/* Compact inline insights */}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Ø Umsatz/Teilnehmer:{" "}
+            {isAvgReady
+              ? `€${(effectiveAvgRev as number).toLocaleString()}`
+              : "–"}
+            {" • "}
+            Geschätzter Umsatz gesamt:{" "}
+            {fmtMoney(isAvgReady ? totals.revenue : null)}
+          </p>
         </CardContent>
       </Card>
-
-      {/* Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5" />
-              Kosten pro Teilnehmer
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {stages
-                .filter((s) => num(s.participants) > 0 && num(s.ad_budget) > 0)
-                .map((s) => {
-                  const cpp = Math.round(
-                    num(s.ad_budget) / Math.max(1, num(s.participants))
-                  );
-                  return (
-                    <div
-                      key={s.id}
-                      className="flex items-center justify-between p-3 bg-accent/30 rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium">{s.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {num(s.participants)} Teilnehmer
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">€{cpp.toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">
-                          pro Teilnehmer
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              {stages.filter(
-                (s) => num(s.participants) > 0 && num(s.ad_budget) > 0
-              ).length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Noch keine Daten vorhanden.
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Generierter Umsatz
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Umsatz- und Lead-Metriken werden angezeigt, sobald diese Felder
-              vom Backend bereitgestellt werden.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
