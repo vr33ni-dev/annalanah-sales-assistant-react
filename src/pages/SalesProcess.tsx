@@ -53,7 +53,6 @@ import {
   getStages,
   startSalesProcess,
   updateSalesProcess,
-  createContract,
   SalesProcessUpdateRequest,
 } from "@/lib/api";
 
@@ -144,6 +143,7 @@ export default function SalesProcessView() {
     contractStart?: Date | null;
     contractFrequency?: "monthly" | "bi-monthly" | "quarterly" | "";
     clientId?: number;
+    completedAt: string | null;
   }>({
     name: "",
     email: "",
@@ -159,6 +159,7 @@ export default function SalesProcessView() {
     contractStart: null,
     contractFrequency: "",
     clientId: undefined,
+    completedAt: null,
   });
 
   // Mutations
@@ -187,31 +188,6 @@ export default function SalesProcessView() {
     onError: (err: unknown) => {
       alert(
         `Fehler beim Aktualisieren (PATCH /api/sales): ${extractErrorMessage(
-          err
-        )}`
-      );
-    },
-  });
-
-  type CreateContractVars = {
-    client_id: number;
-    sales_process_id: number;
-    start_date: string;
-    duration_months: number;
-    revenue_total: number;
-    payment_frequency: "monthly" | "bi-monthly" | "quarterly";
-  };
-
-  const mCreateContract = useMutation<
-    Awaited<ReturnType<typeof createContract>>,
-    unknown,
-    CreateContractVars
-  >({
-    mutationFn: (payload) => createContract(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["contracts"] }),
-    onError: (err: unknown) => {
-      alert(
-        `Fehler beim Vertrag anlegen (POST /api/contracts): ${extractErrorMessage(
           err
         )}`
       );
@@ -278,6 +254,7 @@ export default function SalesProcessView() {
       contractStart: null,
       contractFrequency: "",
       clientId: undefined,
+      completedAt: null,
     });
   }
 
@@ -326,6 +303,9 @@ export default function SalesProcessView() {
         zweitgespraech_result: formData.zweitgespraechResult ?? true,
         abschluss: formData.abschluss ?? null,
         revenue: revenueNum,
+        completed_at: formData.completedAt
+          ? format(formData.completedAt, "yyyy-MM-dd")
+          : undefined, // 🆕 include if selected
       };
 
       if (formData.abschluss) {
@@ -719,6 +699,46 @@ export default function SalesProcessView() {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Abschlussdatum</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-success/5 border-success/30",
+                              !formData.completedAt && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.completedAt
+                              ? format(formData.completedAt, "PPP", {
+                                  locale: de,
+                                })
+                              : "Datum auswählen"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={
+                              formData.completedAt
+                                ? new Date(formData.completedAt)
+                                : undefined
+                            }
+                            onSelect={(date) =>
+                              setFormData({
+                                ...formData,
+                                completedAt: date ? date.toISOString() : null,
+                              })
+                            }
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
                 )}

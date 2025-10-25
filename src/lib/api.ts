@@ -145,6 +145,7 @@ export type SalesProcessUpdateRequest = {
   contract_duration_months?: number;
   contract_start_date?: string; // YYYY-MM-DD
   contract_frequency?: "monthly" | "bi-monthly" | "quarterly";
+  completed_at?: string; // abschluss date / reflecting field in client table as well
 };
 
 export const updateSalesProcess = async (
