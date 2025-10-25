@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -12,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Pencil, Save } from "lucide-react";
+import { Search, Pencil, Save, X } from "lucide-react";
 import { Client, getClients } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
@@ -77,18 +78,19 @@ export default function Clients() {
 
   const handleSave = async () => {
     if (!editingClientId) return;
+
     const payload = {
-      ...clients.find((c) => c.id === editingClientId),
+      id: editingClientId,
       ...editedClient,
     };
+
     await fetch(`/api/clients/${editingClientId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    setEditingClientId(null);
 
-    // ✅ Refetch client data
+    setEditingClientId(null);
     queryClient.invalidateQueries({ queryKey: ["clients"] });
   };
 
@@ -177,42 +179,111 @@ export default function Clients() {
                       client.email
                     )}
                   </TableCell>
-                  <TableCell>{client.phone}</TableCell>
-                  <TableCell>
-                    {sourceLabels[client.source as keyof typeof sourceLabels] ??
-                      client.source}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        statusColors[
-                          client.status as keyof typeof statusColors
-                        ] ?? "bg-muted"
-                      }
-                    >
-                      {statusLabels[
-                        client.status as keyof typeof statusLabels
-                      ] ?? client.status}
-                    </Badge>
-                  </TableCell>
                   <TableCell>
                     {editingClientId === client.id ? (
                       <Input
-                        type="date"
-                        value={editedClient.completed_at?.slice(0, 10) || ""}
+                        value={editedClient.phone || ""}
                         onChange={(e) =>
                           setEditedClient({
                             ...editedClient,
-                            completed_at: e.target.value,
+                            phone: e.target.value,
                           })
                         }
                       />
+                    ) : (
+                      client.phone
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingClientId === client.id ? (
+                      <select
+                        className="border rounded px-2 py-1"
+                        value={editedClient.source || ""}
+                        onChange={(e) =>
+                          setEditedClient({
+                            ...editedClient,
+                            source: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="organic">Organic</option>
+                        <option value="paid">Paid Ads</option>
+                      </select>
+                    ) : (
+                      sourceLabels[
+                        client.source as keyof typeof sourceLabels
+                      ] ?? client.source
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    {editingClientId === client.id ? (
+                      <select
+                        className="border rounded px-2 py-1"
+                        value={editedClient.status || ""}
+                        onChange={(e) =>
+                          setEditedClient({
+                            ...editedClient,
+                            status: e.target.value,
+                          })
+                        }
+                      >
+                        {Object.entries(statusLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Badge
+                        className={
+                          statusColors[
+                            client.status as keyof typeof statusColors
+                          ] ?? "bg-muted"
+                        }
+                      >
+                        {statusLabels[
+                          client.status as keyof typeof statusLabels
+                        ] ?? client.status}
+                      </Badge>
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    {editingClientId === client.id ? (
+                      <div className="relative w-[160px]">
+                        <Input
+                          type="date"
+                          value={editedClient.completed_at?.slice(0, 10) || ""}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setEditedClient({
+                              ...editedClient,
+                              completed_at: raw ? raw : null,
+                            });
+                          }}
+                          className="pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditedClient({
+                              ...editedClient,
+                              completed_at: null,
+                            })
+                          }
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     ) : client.completed_at ? (
                       new Date(client.completed_at).toISOString().split("T")[0]
                     ) : (
                       "-"
                     )}
                   </TableCell>
+
                   <TableCell className="flex gap-2">
                     {editingClientId === client.id ? (
                       <Button size="sm" onClick={handleSave}>
