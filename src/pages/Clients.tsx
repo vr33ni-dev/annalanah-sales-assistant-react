@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -11,15 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Search,
-  Filter,
-  Phone,
-  Mail,
-  Calendar,
-  TrendingUp,
-} from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Search, Pencil, Save } from "lucide-react";
 import { Client, getClients } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
@@ -47,26 +40,57 @@ const statusLabels = {
 
 export default function Clients() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterMonth, setFilterMonth] = useState("");
+  const [editingClientId, setEditingClientId] = useState<number | null>(null);
+  const [editedClient, setEditedClient] = useState<Partial<Client>>({});
+
   const { enabled } = useAuthEnabled();
+  const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useQuery({
     queryKey: ["clients"],
     queryFn: getClients,
-    enabled, // only run after /api/me
+    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: (d) => asArray<Client>(d), // guarantees an array
+    select: (d) => asArray<Client>(d),
   });
 
   const clients = data ?? [];
 
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
 
-  const filteredClients = clients.filter(
-    (c) =>
+  const filteredClients = clients.filter((c) => {
+    const matchesSearch =
       toLower(c.name).includes(toLower(searchTerm)) ||
-      toLower(c.email).includes(toLower(searchTerm))
-  );
+      toLower(c.email).includes(toLower(searchTerm));
+    const matchesMonth = filterMonth
+      ? c.completed_at?.startsWith(filterMonth)
+      : true;
+    return matchesSearch && matchesMonth;
+  });
+
+  const handleEdit = (client: Client) => {
+    setEditingClientId(client.id);
+    setEditedClient(client);
+  };
+
+  const handleSave = async () => {
+    if (!editingClientId) return;
+    const payload = {
+      ...clients.find((c) => c.id === editingClientId),
+      ...editedClient,
+    };
+    await fetch(`/api/clients/${editingClientId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setEditingClientId(null);
+
+    // ✅ Refetch client data
+    queryClient.invalidateQueries({ queryKey: ["clients"] });
+  };
 
   if (isFetching && clients.length === 0)
     return <div className="p-6">Loading…</div>;
@@ -75,7 +99,6 @@ export default function Clients() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Kunden</h1>
@@ -83,87 +106,14 @@ export default function Clients() {
             Verwalten Sie Ihre Kundendatenbank und Beziehungen
           </p>
         </div>
+        <Input
+          type="month"
+          value={filterMonth}
+          onChange={(e) => setFilterMonth(e.target.value)}
+          className="w-40"
+        />
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{clients.length}</p>
-                <p className="text-xs text-muted-foreground">Gesamt Einträge</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {
-                    clients.filter((c) => c.status === "follow_up_scheduled")
-                      .length
-                  }
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Zweitgespräche geplant
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Phone className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {
-                    clients.filter((c) =>
-                      ["awaiting_response", "active", "lost"].includes(c.status)
-                    ).length
-                  }
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Zweitgespräche erledigt
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <Mail className="w-5 h-5 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {clients.filter((c) => c.status === "active").length}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Abgeschlossene Kunden
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Client Table */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -178,10 +128,6 @@ export default function Clients() {
                   className="pl-9 w-64"
                 />
               </div>
-              <Button variant="outline" size="sm">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -192,33 +138,49 @@ export default function Clients() {
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Source (Organic/Paid)</TableHead>
-                <TableHead>Linked Stage</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Completed At</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredClients.map((client) => (
                 <TableRow key={client.id}>
-                  <TableCell className="font-medium">{client.name}</TableCell>
-                  <TableCell>{client.email}</TableCell>
-                  <TableCell>{client.phone}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">
-                      {sourceLabels[
-                        client.source as keyof typeof sourceLabels
-                      ] ?? client.source}
-                    </Badge>
+                    {editingClientId === client.id ? (
+                      <Input
+                        value={editedClient.name || ""}
+                        onChange={(e) =>
+                          setEditedClient({
+                            ...editedClient,
+                            name: e.target.value,
+                          })
+                        }
+                      />
+                    ) : (
+                      client.name
+                    )}
                   </TableCell>
                   <TableCell>
-                    {client.source_stage_name ? (
-                      <Badge variant="secondary">
-                        {client.source_stage_name}
-                      </Badge>
+                    {editingClientId === client.id ? (
+                      <Input
+                        value={editedClient.email || ""}
+                        onChange={(e) =>
+                          setEditedClient({
+                            ...editedClient,
+                            email: e.target.value,
+                          })
+                        }
+                      />
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      client.email
                     )}
+                  </TableCell>
+                  <TableCell>{client.phone}</TableCell>
+                  <TableCell>
+                    {sourceLabels[client.source as keyof typeof sourceLabels] ??
+                      client.source}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -234,18 +196,33 @@ export default function Clients() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="View Sales Process"
-                      >
-                        <TrendingUp className="w-4 h-4" />
+                    {editingClientId === client.id ? (
+                      <Input
+                        type="date"
+                        value={editedClient.completed_at?.slice(0, 10) || ""}
+                        onChange={(e) =>
+                          setEditedClient({
+                            ...editedClient,
+                            completed_at: e.target.value,
+                          })
+                        }
+                      />
+                    ) : client.completed_at ? (
+                      new Date(client.completed_at).toISOString().split("T")[0]
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell className="flex gap-2">
+                    {editingClientId === client.id ? (
+                      <Button size="sm" onClick={handleSave}>
+                        <Save className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" title="Add Note">
-                        <Calendar className="w-4 h-4" />
+                    ) : (
+                      <Button size="sm" onClick={() => handleEdit(client)}>
+                        <Pencil className="w-4 h-4" />
                       </Button>
-                    </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

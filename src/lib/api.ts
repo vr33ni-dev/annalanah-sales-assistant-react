@@ -70,6 +70,7 @@ export interface Client {
   source: string;
   source_stage_name: string | null;
   status: string;
+  completed_at?: string | null;
 }
 
 export const getClients = async (): Promise<Client[]> => {
