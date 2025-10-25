@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Pencil, Save, X } from "lucide-react";
+import { Search, Pencil, Save, X, Trash } from "lucide-react";
 import { Client, getClients } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
@@ -78,6 +78,12 @@ export default function Clients() {
 
   const handleSave = async () => {
     if (!editingClientId) return;
+
+    // ✅ validation: require completed_at if Kunde
+    if (editedClient.status === "active" && !editedClient.completed_at) {
+      alert("Bitte das Abschlussdatum angeben (erforderlich für Kunden).");
+      return;
+    }
 
     const payload = {
       id: editingClientId,
@@ -251,31 +257,39 @@ export default function Clients() {
 
                   <TableCell>
                     {editingClientId === client.id ? (
-                      <div className="relative w-[160px]">
+                      <div className="relative w-[180px]">
                         <Input
                           type="date"
                           value={editedClient.completed_at?.slice(0, 10) || ""}
-                          onChange={(e) => {
-                            const raw = e.target.value;
+                          onChange={(e) =>
                             setEditedClient({
                               ...editedClient,
-                              completed_at: raw ? raw : null,
-                            });
-                          }}
-                          className="pr-10"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditedClient({
-                              ...editedClient,
-                              completed_at: null,
+                              completed_at: e.target.value || null,
                             })
                           }
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                          disabled={editedClient.status !== "active"}
+                          required={editedClient.status === "active"} // ✅ required if Kunde
+                          className={`pr-8 ${
+                            editedClient.status !== "active"
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
+                        />
+                        {editedClient.status === "active" &&
+                          editedClient.completed_at && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditedClient({
+                                  ...editedClient,
+                                  completed_at: null,
+                                })
+                              }
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
                       </div>
                     ) : client.completed_at ? (
                       new Date(client.completed_at).toISOString().split("T")[0]
@@ -286,13 +300,47 @@ export default function Clients() {
 
                   <TableCell className="flex gap-2">
                     {editingClientId === client.id ? (
-                      <Button size="sm" onClick={handleSave}>
-                        <Save className="w-4 h-4" />
-                      </Button>
+                      <>
+                        <Button size="sm" onClick={handleSave}>
+                          <Save className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingClientId(null);
+                            setEditedClient({});
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </>
                     ) : (
-                      <Button size="sm" onClick={() => handleEdit(client)}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
+                      <>
+                        <Button size="sm" onClick={() => handleEdit(client)}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            const confirmed = window.confirm(
+                              "Kunde wirklich löschen?"
+                            );
+                            if (!confirmed) return;
+
+                            await fetch(`/api/clients/${client.id}`, {
+                              method: "DELETE",
+                            });
+
+                            queryClient.invalidateQueries({
+                              queryKey: ["clients"],
+                            });
+                          }}
+                        >
+                          <Trash className="w-4 h-4" />
+                        </Button>
+                      </>
                     )}
                   </TableCell>
                 </TableRow>
