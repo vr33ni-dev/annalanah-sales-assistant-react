@@ -5,6 +5,7 @@ import { format, parseISO } from "date-fns";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { extractErrorMessage } from "@/helpers/error";
+import { useNavigate } from "react-router-dom";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ const stageBadgeClass: Record<SalesStage, string> = {
 export default function SalesProcessView() {
   const qc = useQueryClient();
   const { enabled } = useAuthEnabled();
+  const navigate = useNavigate();
 
   // Data (gated + array-safe)
   // sales
@@ -952,7 +954,13 @@ export default function SalesProcessView() {
                           )}
 
                         {e.stage === "abschluss" && (
-                          <Button size="sm" variant="outline">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              navigate(`/contracts?client=${e.client_id}`)
+                            }
+                          >
                             Vertrag anzeigen
                           </Button>
                         )}

@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { MetricChip } from "@/components/MetricChip";
+import { useSearchParams } from "react-router-dom";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   Table,
@@ -20,11 +23,7 @@ import {
   Calendar,
   Info,
 } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+
 import { CashflowEntriesTable } from "./CashflowEntries";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -82,6 +81,9 @@ function euro(n: number) {
 
 export default function Contracts() {
   const { enabled } = useAuthEnabled();
+  const [searchParams] = useSearchParams();
+  const clientFilter = searchParams.get("client");
+  const navigate = useNavigate();
 
   // Contracts for table + KPIs
   const {
@@ -110,6 +112,11 @@ export default function Contracts() {
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
   });
+
+  const filteredContracts = useMemo(() => {
+    if (!clientFilter) return contracts;
+    return contracts.filter((c) => String(c.client_id) === clientFilter);
+  }, [contracts, clientFilter]);
 
   if (loadingContracts && contracts.length === 0) {
     return <div className="p-6">Lade Verträge…</div>;
@@ -199,6 +206,16 @@ export default function Contracts() {
             Verträge verfolgen und Umsatzprognosen
           </p>
         </div>
+
+        {/* Optional: show back button when filtered */}
+        {clientFilter && (
+          <button
+            onClick={() => navigate("/contracts")}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Alle Verträge anzeigen
+          </button>
+        )}
       </div>
 
       {/* KPI chips inline (wrap to next line, no card row) */}
@@ -299,7 +316,7 @@ export default function Contracts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            Aktive Verträge
+            {clientFilter ? "Gefilterte Verträge" : "Aktive Verträge"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -312,10 +329,11 @@ export default function Contracts() {
                 <TableHead>Umsatz</TableHead>
                 <TableHead>Zahlungsfrequenz</TableHead>
                 <TableHead>Fortschritt</TableHead>
+                <TableHead>Aktion</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.map((contract) => {
+              {filteredContracts.map((contract) => {
                 const progressPercent =
                   (contract.paid_months / contract.duration_months) * 100;
                 return (
@@ -344,6 +362,16 @@ export default function Contracts() {
                             : ""}
                         </p>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        onClick={() =>
+                          navigate(`/contracts?client=${contract.client_id}`)
+                        }
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        Vertrag anzeigen
+                      </button>
                     </TableCell>
                   </TableRow>
                 );
