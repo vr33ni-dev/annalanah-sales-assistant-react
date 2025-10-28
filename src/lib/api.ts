@@ -263,6 +263,13 @@ export const updateStageStats = async (
   await api.patch(`/stages/${id}/stats`, payload);
 };
 
+export const updateStageInfo = async (
+  id: string | number,
+  payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>
+): Promise<void> => {
+  await api.patch(`/stages/${id}`, payload);
+};
+
 /* Stage participants & assignments */
 export interface AddStageParticipantExisting {
   client_id: number;

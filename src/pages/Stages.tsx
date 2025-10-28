@@ -30,7 +30,6 @@ import {
 import { Label } from "@/components/ui/label";
 import {
   Plus,
-  Calendar,
   DollarSign,
   Users,
   Target,
@@ -43,6 +42,7 @@ import {
   getStages,
   createStage,
   updateStageStats,
+  updateStageInfo,
   Stage,
   getNumericSetting,
 } from "@/lib/api";
@@ -62,6 +62,15 @@ const num = (v: number | null | undefined): number =>
 
 const formatDate = (iso?: string | null): string => {
   if (!iso) return "–";
+
+  // if it's a pure date string like "2025-10-26", return as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+
+  // if it's ISO with time and Z, remove time part to keep UTC date
+  const match = iso.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (match) return match[1];
+
+  // fallback
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 };
@@ -235,23 +244,69 @@ function CreateStageDialog() {
 function EditStageDialog({ stage }: { stage: Stage }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [registrations, setRegistrations] = useState<string>(
+
+  // Existing state
+  const [registrations, setRegistrations] = useState(
     stage.registrations != null ? String(stage.registrations) : ""
   );
-  const [participants, setParticipants] = useState<string>(
+  const [participants, setParticipants] = useState(
     stage.participants != null ? String(stage.participants) : ""
+  );
+
+  // ✅ new state for basic info
+  const [name, setName] = useState(stage.name ?? "");
+  const [date, setDate] = useState(stage.date ?? "");
+  const [adBudget, setAdBudget] = useState(
+    stage.ad_budget != null ? String(stage.ad_budget) : ""
   );
 
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
+      await updateStageInfo(stage.id, {
+        name,
+        date,
+        ad_budget: toNumberOrNull(adBudget),
+      });
       await updateStageStats(stage.id, {
         registrations: toNumberOrNull(registrations),
         participants: toNumberOrNull(participants),
       });
     },
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["stages"] });
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["stages"] });
+      const prev = qc.getQueryData<Stage[]>(["stages"]);
+
+      if (prev) {
+        qc.setQueryData<Stage[]>(
+          ["stages"],
+          (old) =>
+            old?.map((s) =>
+              s.id === stage.id
+                ? {
+                    ...s,
+                    name,
+                    date,
+                    ad_budget: toNumberOrNull(adBudget),
+                    registrations: toNumberOrNull(registrations),
+                    participants: toNumberOrNull(participants),
+                  }
+                : s
+            ) ?? []
+        );
+      }
+
+      return { prev };
+    },
+    onError: (err, _, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["stages"], ctx.prev);
+    },
+    onSuccess: () => {
+      // ✅ Close the dialog immediately after a successful update
       setOpen(false);
+    },
+    onSettled: () => {
+      // ✅ Refresh data in background
+      qc.invalidateQueries({ queryKey: ["stages"] });
     },
   });
 
@@ -264,32 +319,43 @@ function EditStageDialog({ stage }: { stage: Stage }) {
           <Pencil className="w-4 h-4" />
         </Button>
       </DialogTrigger>
+
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Bühne bearbeiten</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-md border p-3 text-sm text-muted-foreground flex items-start gap-2">
-          <Info className="w-4 h-4 mt-0.5" />
-          <p>
-            Aktuell unterstützt das Backend das Aktualisieren von{" "}
-            <strong>Anmeldungen</strong> und <strong>Teilnehmern</strong>. Name,
-            Datum und Budget werden in einem separaten Endpoint ergänzt.
-          </p>
-        </div>
-
         <div className="grid gap-4 py-2">
           <div className="grid gap-1">
-            <Label>Name</Label>
-            <Input value={stage.name} disabled />
+            <Label htmlFor={`edit-name-${stage.id}`}>Name</Label>
+            <Input
+              id={`edit-name-${stage.id}`}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
 
           <div className="grid gap-1">
-            <Label>Datum</Label>
-            <Input value={formatDate(stage.date)} disabled />
+            <Label htmlFor={`edit-date-${stage.id}`}>Datum</Label>
+            <Input
+              id={`edit-date-${stage.id}`}
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
 
-          <div className="grid gap-2">
+          <div className="grid gap-1">
+            <Label htmlFor={`edit-budget-${stage.id}`}>Werbebudget (€)</Label>
+            <Input
+              id={`edit-budget-${stage.id}`}
+              inputMode="decimal"
+              value={adBudget}
+              onChange={(e) => setAdBudget(e.target.value)}
+            />
+          </div>
+
+          <div className="grid gap-1">
             <Label htmlFor={`edit-registrations-${stage.id}`}>
               Anmeldungen
             </Label>
@@ -301,7 +367,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             />
           </div>
 
-          <div className="grid gap-2">
+          <div className="grid gap-1">
             <Label htmlFor={`edit-participants-${stage.id}`}>Teilnehmer</Label>
             <Input
               id={`edit-participants-${stage.id}`}
