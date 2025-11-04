@@ -373,21 +373,22 @@ export interface CashflowRow {
   month: string; // "2025-10"
   confirmed: number;
   potential: number;
+  contract_id?: number;
 }
-const isCashflowRow = (x: unknown): x is CashflowRow =>
-  typeof x === "object" &&
-  x !== null &&
-  typeof (x as { month?: unknown }).month === "string" &&
-  typeof (x as { confirmed?: unknown }).confirmed === "number" &&
-  typeof (x as { potential?: unknown }).potential === "number" &&
-  typeof (x as { expected?: unknown }).expected === "number";
 
-export const getCashflowForecast = async (): Promise<CashflowRow[]> => {
-  const { data } = await api.get<CashflowRow[]>("/cashflow/forecast");
-  return Array.isArray(data)
-    ? data.map((r) => ({
-        ...r,
-        expected: r.confirmed + r.potential,
-      }))
-    : [];
+export const getCashflowForecast = async (
+  contractId?: number
+): Promise<CashflowRow[]> => {
+  const url = contractId
+    ? `/cashflow/forecast?contract_id=${contractId}`
+    : `/cashflow/forecast`;
+
+  const { data } = await api.get<CashflowRow[]>(url);
+
+  if (!Array.isArray(data)) return [];
+
+  return data.map((r) => ({
+    ...r,
+    expected: (r.confirmed ?? 0) + (r.potential ?? 0),
+  }));
 };
