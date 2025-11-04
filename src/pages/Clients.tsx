@@ -125,7 +125,7 @@ export default function Clients() {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle>Client Database</CardTitle>
+            <CardTitle>Kundendatenbank</CardTitle>
             <div className="flex gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -145,11 +145,11 @@ export default function Clients() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Source</TableHead>
+                <TableHead>Telefon</TableHead>
+                <TableHead>Quelle</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Completed At</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>Abgeschlossen am</TableHead>
+                <TableHead>Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

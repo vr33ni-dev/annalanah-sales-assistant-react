@@ -3,9 +3,7 @@ import { SALES_STAGE } from "@/constants/stages";
 import { STAGE_LABELS } from "@/constants/labels";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
-import { de } from "date-fns/locale";
-import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate } from "react-router-dom";
 import {
@@ -23,8 +21,6 @@ import { asArray } from "@/lib/safe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -32,24 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
-import {
-  Phone,
-  Calendar as CalendarIcon,
-  DollarSign,
-  TrendingUp,
-  CheckCircle,
-  Clock,
-  XCircle,
-  CalendarPlus,
-  Users,
-} from "lucide-react";
+import { TrendingUp, CalendarPlus } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -58,6 +37,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Filter } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -75,7 +61,6 @@ const stageBadgeClass: Record<
 export default function SalesProcessView() {
   const qc = useQueryClient();
   const { enabled } = useAuthEnabled();
-  const navigate = useNavigate();
 
   // Queries
   const {
@@ -158,20 +143,34 @@ export default function SalesProcessView() {
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
   });
 
+  const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  const toggleStatusFilter = (value: string) => {
+    setActiveStatusFilters((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    );
+  };
+
   const filteredEntries = useMemo(() => {
-    if (statusFilter === "all") return sales;
-    return sales.filter((e) => {
-      const s =
-        e.stage === SALES_STAGE.FOLLOW_UP
-          ? (e.follow_up_result ?? null) == null
-            ? "zweitgespräch geplant"
-            : "zweitgespräch abgeschlossen"
-          : e.stage === SALES_STAGE.CLOSED
-          ? "abgeschlossen"
-          : "verloren";
-      return s === statusFilter;
-    });
-  }, [sales, statusFilter]);
+    let result = sales;
+
+    if (activeStatusFilters.length > 0) {
+      result = result.filter((e) => {
+        const label =
+          e.stage === SALES_STAGE.FOLLOW_UP
+            ? (e.follow_up_result ?? null) == null
+              ? "zweitgespräch geplant"
+              : "zweitgespräch abgeschlossen"
+            : e.stage === SALES_STAGE.CLOSED
+            ? "abgeschlossen"
+            : "verloren";
+        return activeStatusFilters.includes(label);
+      });
+    }
+
+    return result;
+  }, [sales, activeStatusFilters]);
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -206,66 +205,6 @@ export default function SalesProcessView() {
     });
   };
 
-  const handleSubmit = async () => {
-    if (formStep === 1) {
-      if (!formData.name || !formData.zweitgespraechDate || !formData.source)
-        return;
-
-      const payload = {
-        name: formData.name,
-        email: formData.email ?? "",
-        phone: formData.phone ?? "",
-        source: formData.source,
-        source_stage_id:
-          formData.source === "paid" ? formData.stageId ?? null : null,
-        zweitgespraech_date: formData.zweitgespraechDate
-          ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
-          : null,
-      };
-      await mStart.mutateAsync(payload);
-      return;
-    }
-
-    if (formStep === 2) {
-      if (!formData.salesProcessId || formData.zweitgespraechResult === null)
-        return;
-      await mPatch.mutateAsync({
-        id: formData.salesProcessId,
-        payload: { follow_up_result: formData.zweitgespraechResult },
-      });
-      resetAll();
-      return;
-    }
-
-    if (formStep === 3) {
-      if (!formData.salesProcessId) return;
-      const revenueNum =
-        formData.abschluss && formData.revenue
-          ? Number(formData.revenue)
-          : null;
-      const payload: SalesProcessUpdateRequest = {
-        follow_up_result: formData.zweitgespraechResult ?? true,
-        closed: formData.abschluss ?? null,
-        revenue: revenueNum,
-        completed_at: formData.completedAt
-          ? format(formData.completedAt, "yyyy-MM-dd")
-          : undefined,
-      };
-
-      if (formData.abschluss) {
-        payload.contract_duration_months = Number(formData.contractDuration);
-        payload.contract_start_date = formData.contractStart
-          ? format(formData.contractStart, "yyyy-MM-dd")
-          : undefined;
-        payload.contract_frequency = (formData.contractFrequency ||
-          undefined) as "monthly" | "bi-monthly" | "quarterly" | undefined;
-      }
-
-      await mPatch.mutateAsync({ id: formData.salesProcessId, payload });
-      resetAll();
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* header */}
@@ -295,25 +234,6 @@ export default function SalesProcessView() {
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5" /> Verkaufspipeline
             </CardTitle>
-            <Select
-              value={statusFilter}
-              onValueChange={(v: StatusFilter) => setStatusFilter(v)}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status filtern" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle Status</SelectItem>
-                <SelectItem value="zweitgespräch geplant">
-                  Zweitgespräch geplant
-                </SelectItem>
-                <SelectItem value="zweitgespräch abgeschlossen">
-                  Zweitgespräch abgeschlossen
-                </SelectItem>
-                <SelectItem value="abgeschlossen">Abgeschlossen</SelectItem>
-                <SelectItem value="verloren">Verloren</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -321,7 +241,65 @@ export default function SalesProcessView() {
             <TableHeader>
               <TableRow>
                 <TableHead>Kunde</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                        Status
+                        <Filter className="w-3 h-3 opacity-70" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52">
+                      <div className="space-y-2">
+                        {/* "Alle" (All) option */}
+                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                          <Checkbox
+                            id="filter-all"
+                            checked={activeStatusFilters.length === 0}
+                            onCheckedChange={() => setActiveStatusFilters([])}
+                          />
+                          <label
+                            htmlFor="filter-all"
+                            className="text-sm font-medium"
+                          >
+                            Alle
+                          </label>
+                        </div>
+
+                        {/* Individual statuses */}
+                        {[
+                          "zweitgespräch geplant",
+                          "zweitgespräch abgeschlossen",
+                          "abgeschlossen",
+                          "verloren",
+                        ].map((status) => {
+                          const capitalized =
+                            status.charAt(0).toUpperCase() + status.slice(1);
+                          return (
+                            <div
+                              key={status}
+                              className="flex items-center space-x-2"
+                            >
+                              <Checkbox
+                                id={`filter-${status}`}
+                                checked={activeStatusFilters.includes(status)}
+                                onCheckedChange={() =>
+                                  toggleStatusFilter(status)
+                                }
+                              />
+                              <label
+                                htmlFor={`filter-${status}`}
+                                className="text-sm"
+                              >
+                                {capitalized}
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
                 <TableHead>Zweitgespräch Datum</TableHead>
                 <TableHead>Ergebnis</TableHead>
                 <TableHead>Quelle</TableHead>
