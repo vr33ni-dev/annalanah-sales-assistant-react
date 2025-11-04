@@ -143,11 +143,18 @@ export default function SalesProcessView() {
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
   });
 
-  const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
+  const [activeSourceFilters, setActiveSourceFilters] = useState<string[]>([]);
 
   const toggleStatusFilter = (value: string) => {
     setActiveStatusFilters((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    );
+  };
+  const toggleSourceFilter = (value: string) => {
+    setActiveSourceFilters((prev) =>
       prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
     );
   };
@@ -168,9 +175,14 @@ export default function SalesProcessView() {
         return activeStatusFilters.includes(label);
       });
     }
+    if (activeSourceFilters.length > 0) {
+      result = result.filter((e) =>
+        e.client_source ? activeSourceFilters.includes(e.client_source) : false
+      );
+    }
 
     return result;
-  }, [sales, activeStatusFilters]);
+  }, [sales, activeStatusFilters, activeSourceFilters]);
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -230,11 +242,7 @@ export default function SalesProcessView() {
       {/* table */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" /> Verkaufspipeline
-            </CardTitle>
-          </div>
+          <div className="flex justify-between items-center"></div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -302,7 +310,56 @@ export default function SalesProcessView() {
                 </TableHead>
                 <TableHead>Zweitgespräch Datum</TableHead>
                 <TableHead>Ergebnis</TableHead>
-                <TableHead>Quelle</TableHead>
+                <TableHead>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                        Quelle
+                        <Filter className="w-3 h-3 opacity-70" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52">
+                      <div className="space-y-2">
+                        {/* "Alle" (All) option */}
+                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                          <Checkbox
+                            id="filter-all"
+                            checked={activeSourceFilters.length === 0}
+                            onCheckedChange={() => setActiveSourceFilters([])}
+                          />
+                          <label
+                            htmlFor="filter-all"
+                            className="text-sm font-medium"
+                          >
+                            Alle
+                          </label>
+                        </div>
+
+                        {[
+                          { value: "paid", label: "Bezahlt" },
+                          { value: "organic", label: "Organisch" },
+                        ].map(({ value, label }) => (
+                          <div
+                            key={value}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`filter-source-${value}`}
+                              checked={activeSourceFilters.includes(value)}
+                              onCheckedChange={() => toggleSourceFilter(value)}
+                            />
+                            <label
+                              htmlFor={`filter-source-${value}`}
+                              className="text-sm"
+                            >
+                              {label}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
                 <TableHead>Bühne</TableHead>
                 <TableHead>Umsatz</TableHead>
               </TableRow>
