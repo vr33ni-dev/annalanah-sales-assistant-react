@@ -341,7 +341,13 @@ export default function Contracts() {
                     <TableCell className="font-medium">
                       {contract.client_name}
                     </TableCell>
-                    <TableCell>{contract.start_date}</TableCell>
+                    <TableCell>
+                      {contract.start_date
+                        ? new Date(contract.start_date).toLocaleDateString(
+                            "de-DE"
+                          )
+                        : "–"}
+                    </TableCell>
                     <TableCell>{contract.duration_months} Monate</TableCell>
                     <TableCell>
                       €{contract.revenue_total.toLocaleString()}
