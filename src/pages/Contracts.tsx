@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { MetricChip } from "@/components/MetricChip";
 import { useSearchParams } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -24,7 +24,7 @@ import {
   Info,
 } from "lucide-react";
 
-import { CashflowEntriesTable } from "./CashflowEntries";
+import { CashflowDueTable } from "./CashflowDueTable";
 import { useQuery } from "@tanstack/react-query";
 import {
   Contract,
@@ -34,6 +34,13 @@ import {
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
 
 /* ---------------- helpers ---------------- */
 
@@ -83,6 +90,9 @@ export default function Contracts() {
   const { enabled } = useAuthEnabled();
   const [searchParams] = useSearchParams();
   const clientFilter = searchParams.get("client");
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(
+    null
+  );
   const navigate = useNavigate();
 
   // Contracts for table + KPIs
@@ -104,13 +114,16 @@ export default function Contracts() {
     data: forecast = [],
     isFetching: loadingForecast,
     isError: errorForecast,
-  } = useQuery<CashflowRow[]>({
+  } = useQuery<CashflowRow[], Error>({
     queryKey: ["cashflow-forecast"],
-    queryFn: getCashflowForecast,
+    queryFn: ({ queryKey }) => {
+      const [, id] = queryKey as [string, number?];
+      return getCashflowForecast(id);
+    },
     enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<CashflowRow>,
+    select: (d) => asArray<CashflowRow>(d),
   });
 
   const filteredContracts = useMemo(() => {
@@ -206,16 +219,6 @@ export default function Contracts() {
             Verträge verfolgen und Umsatzprognosen
           </p>
         </div>
-
-        {/* Optional: show back button when filtered */}
-        {clientFilter && (
-          <button
-            onClick={() => navigate("/contracts")}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Alle Verträge anzeigen
-          </button>
-        )}
       </div>
 
       {/* KPI chips inline (wrap to next line, no card row) */}
@@ -316,7 +319,7 @@ export default function Contracts() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            {clientFilter ? "Gefilterte Verträge" : "Aktive Verträge"}
+            Aktive Verträge
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -341,7 +344,13 @@ export default function Contracts() {
                     <TableCell className="font-medium">
                       {contract.client_name}
                     </TableCell>
-                    <TableCell>{contract.start_date}</TableCell>
+                    <TableCell>
+                      {contract.start_date
+                        ? new Date(contract.start_date).toLocaleDateString(
+                            "de-DE"
+                          )
+                        : "–"}
+                    </TableCell>
                     <TableCell>{contract.duration_months} Monate</TableCell>
                     <TableCell>
                       €{contract.revenue_total.toLocaleString()}
@@ -365,9 +374,7 @@ export default function Contracts() {
                     </TableCell>
                     <TableCell>
                       <button
-                        onClick={() =>
-                          navigate(`/contracts?client=${contract.client_id}`)
-                        }
+                        onClick={() => setSelectedContract(contract)}
                         className="text-sm text-blue-600 hover:underline"
                       >
                         Vertrag anzeigen
@@ -383,69 +390,71 @@ export default function Contracts() {
 
       {/* Cashflow Entries & Forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CashflowEntriesTable />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Cashflow Prognose (nächste 6 Monate)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingForecast && forecast.length === 0 ? (
-              <div>Forecast wird geladen…</div>
-            ) : errorForecast ? (
-              <div className="text-red-500">
-                Fehler beim Laden des Forecasts.
-              </div>
-            ) : forecast.length === 0 ? (
-              <div className="text-muted-foreground">Keine Prognosedaten.</div>
-            ) : (
-              <div className="space-y-4">
-                {forecast.map((row) => {
-                  const total = Math.round(
-                    (row.confirmed ?? 0) + (row.potential ?? 0)
-                  );
-                  return (
-                    <div key={row.month} className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">
-                          {labelFromYm(row.month)}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-success">
-                            Bestätigt (Aktive Verträge)
-                          </span>
-                          <span>€{row.confirmed.toLocaleString()}</span>
-                        </div>
-                        {row.potential > 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-warning">
-                              Potenziell (Ausstehende Deals)
-                            </span>
-                            <span>€{row.potential.toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between text-sm">
-                          <span className="font-medium">
-                            Gesamt (Bestätigt + Potenziell)
-                          </span>
-                          <span className="font-medium">
-                            €{total.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <CashflowDueTable />
+        <CashflowUpcomingTable />
       </div>
+      {/* ✅ Contract Detail Drawer */}
+      <Sheet
+        open={!!selectedContract}
+        onOpenChange={() => setSelectedContract(null)}
+      >
+        <SheetContent className="w-[600px] sm:max-w-full overflow-y-auto">
+          {selectedContract && (
+            <>
+              <SheetHeader>
+                <SheetTitle>
+                  Vertrag mit {selectedContract.client_name}
+                </SheetTitle>
+              </SheetHeader>
+
+              <div className="space-y-4 mt-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground">
+                    Laufzeit
+                  </h3>
+                  <p>{selectedContract.duration_months} Monate</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground">
+                    Startdatum
+                  </h3>
+                  <p>
+                    {selectedContract.start_date
+                      ? new Date(
+                          selectedContract.start_date
+                        ).toLocaleDateString("de-DE")
+                      : "–"}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground">
+                    Zahlungsfrequenz
+                  </h3>
+                  <Badge variant="outline">
+                    {selectedContract.payment_frequency}
+                  </Badge>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground">
+                    Umsatz
+                  </h3>
+                  <p>€{selectedContract.revenue_total.toLocaleString()}</p>
+                </div>
+
+                {/* Embed the CashflowEntriesTable here */}
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
+                  <CashflowDueTable contractId={selectedContract.id} />
+                </div>
+              </div>
+              <div className="mt-6 space-y-3">
+                <h3 className="font-semibold">Prognose</h3>
+                <CashflowUpcomingTable contractId={selectedContract.id} />{" "}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 // src/lib/api.ts
+import { SALES_STAGE } from "@/constants/stages";
+import { STAGE_LABELS } from "@/constants/labels";
 import axios from "axios";
 
 /**
@@ -110,18 +112,43 @@ export interface SalesProcess {
   client_email?: string | null;
   client_phone?: string | null;
   client_source?: "organic" | "paid" | null;
-  stage: "zweitgespraech" | "abschluss" | "lost";
-  zweitgespraech_date?: string | null;
-  zweitgespraech_result?: boolean | null;
-  abschluss?: boolean | null;
+  stage: (typeof SALES_STAGE)[keyof typeof SALES_STAGE];
+  follow_up_date?: string | null;
+  follow_up_result?: boolean | null;
+  closed?: boolean | null;
   revenue?: number | null;
   stage_id?: number | null;
 }
 
-export const getSalesProcesses = async (): Promise<SalesProcess[]> => {
-  const { data } = await api.get("/sales");
-  return asArray<SalesProcess>(data);
-};
+export async function getSalesProcesses(): Promise<
+  (SalesProcess & { stage_label: string })[]
+> {
+  const res = await fetch("/api/sales");
+  if (!res.ok)
+    throw new Error(`Failed to fetch sales processes: ${res.status}`);
+
+  const data: unknown = await res.json();
+  if (!Array.isArray(data)) throw new Error("Invalid data format");
+
+  return (data as Partial<SalesProcess>[]).map((sp) => {
+    const stage = (sp.stage ?? SALES_STAGE.LOST) as SalesProcess["stage"];
+    return {
+      id: sp.id ?? 0,
+      client_id: sp.client_id ?? 0,
+      client_name: sp.client_name ?? "",
+      client_email: sp.client_email ?? null,
+      client_phone: sp.client_phone ?? null,
+      client_source: sp.client_source ?? null,
+      stage,
+      stage_label: STAGE_LABELS[stage] || stage,
+      follow_up_date: sp.follow_up_date ?? null,
+      follow_up_result: sp.follow_up_result ?? null,
+      closed: sp.closed ?? null,
+      revenue: sp.revenue ?? null,
+      stage_id: sp.stage_id ?? null,
+    };
+  });
+}
 
 export const getSalesProcessById = async (
   id: string | number
@@ -139,13 +166,13 @@ export const createSalesProcess = async (
 
 // Narrow the update payload to only fields the backend accepts on PATCH
 export type SalesProcessUpdateRequest = {
-  zweitgespraech_result?: boolean | null;
-  abschluss?: boolean | null;
+  follow_up_result?: boolean | null;
+  closed?: boolean | null;
   revenue?: number | null;
   contract_duration_months?: number;
-  contract_start_date?: string; // YYYY-MM-DD
+  contract_start_date?: string;
   contract_frequency?: "monthly" | "bi-monthly" | "quarterly";
-  completed_at?: string; // abschluss date / reflecting field in client table as well
+  completed_at?: string;
 };
 
 export const updateSalesProcess = async (
@@ -346,21 +373,22 @@ export interface CashflowRow {
   month: string; // "2025-10"
   confirmed: number;
   potential: number;
+  contract_id?: number;
 }
-const isCashflowRow = (x: unknown): x is CashflowRow =>
-  typeof x === "object" &&
-  x !== null &&
-  typeof (x as { month?: unknown }).month === "string" &&
-  typeof (x as { confirmed?: unknown }).confirmed === "number" &&
-  typeof (x as { potential?: unknown }).potential === "number" &&
-  typeof (x as { expected?: unknown }).expected === "number";
 
-export const getCashflowForecast = async (): Promise<CashflowRow[]> => {
-  const { data } = await api.get<CashflowRow[]>("/cashflow/forecast");
-  return Array.isArray(data)
-    ? data.map((r) => ({
-        ...r,
-        expected: r.confirmed + r.potential,
-      }))
-    : [];
+export const getCashflowForecast = async (
+  contractId?: number
+): Promise<CashflowRow[]> => {
+  const url = contractId
+    ? `/cashflow/forecast?contract_id=${contractId}`
+    : `/cashflow/forecast`;
+
+  const { data } = await api.get<CashflowRow[]>(url);
+
+  if (!Array.isArray(data)) return [];
+
+  return data.map((r) => ({
+    ...r,
+    expected: (r.confirmed ?? 0) + (r.potential ?? 0),
+  }));
 };

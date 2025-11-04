@@ -26,7 +26,7 @@ function calcNextDueAmount(c: Contract): number {
   }
 }
 
-export function CashflowEntriesTable() {
+export function CashflowDueTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
 
   const {
@@ -52,6 +52,11 @@ export function CashflowEntriesTable() {
       amount: calcNextDueAmount(c),
     }))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  // ✅ Apply optional filtering if a contractId is provided
+  const filteredEntries = contractId
+    ? entries.filter((e) => e.id === contractId)
+    : entries;
 
   if (isFetching && data.length === 0) {
     return (
@@ -92,7 +97,7 @@ export function CashflowEntriesTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((e) => (
+              {filteredEntries.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="font-medium">
                     {e.contractLabel}
@@ -100,7 +105,9 @@ export function CashflowEntriesTable() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
-                      {e.dueDate}
+                      {e.dueDate
+                        ? new Date(e.dueDate).toLocaleDateString("de-DE")
+                        : "–"}
                     </div>
                   </TableCell>
                   <TableCell>

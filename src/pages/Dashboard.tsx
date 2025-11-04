@@ -103,15 +103,15 @@ export default function Dashboard() {
   }).format(totalRevenueNumber);
   const totalClients = clients.length;
 
-  const callsWithDate = salesProcesses.filter((sp) => !!sp.zweitgespraech_date);
+  const callsWithDate = salesProcesses.filter((sp) => !!sp.follow_up_date);
   const appeared = salesProcesses.filter(
-    (sp) => sp.zweitgespraech_result === true
+    (sp) => sp.follow_up_result === true
   ).length;
   const appearanceRate = callsWithDate.length
     ? `${Math.round((appeared / callsWithDate.length) * 100)}%`
     : "—";
 
-  const closed = salesProcesses.filter((sp) => sp.abschluss === true).length;
+  const closed = salesProcesses.filter((sp) => sp.closed === true).length;
   const closingRate = callsWithDate.length
     ? `${Math.round((closed / callsWithDate.length) * 100)}%`
     : "—";
@@ -121,8 +121,7 @@ export default function Dashboard() {
     (s) => s.date && new Date(s.date).getTime() > now
   ).length;
   const pendingCalls = salesProcesses.filter(
-    (sp) =>
-      sp.zweitgespraech_date && new Date(sp.zweitgespraech_date).getTime() > now
+    (sp) => sp.follow_up_date && new Date(sp.follow_up_date).getTime() > now
   ).length;
   const activeContracts = contracts.length;
 
@@ -229,7 +228,7 @@ export default function Dashboard() {
                     key={c.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>{`Contract #${c.id} - Client ${c.client_id}`}</span>
+                    <span>{`Vertrag #${c.id} - Client ${c.client_id}`}</span>
                     <Badge className="bg-success text-success-foreground">
                       {new Intl.NumberFormat("de-DE", {
                         style: "currency",
@@ -243,10 +242,8 @@ export default function Dashboard() {
                     key={s.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>{`SP #${s.id} - ${s.stage}`}</span>
-                    <Badge variant="outline">
-                      {s.zweitgespraech_date ?? "—"}
-                    </Badge>
+                    <span>{`Verkaufsprozess #${s.id} - ${s.stage}`}</span>
+                    <Badge variant="outline">{s.follow_up_date ?? "—"}</Badge>
                   </div>
                 ))}
               </div>
