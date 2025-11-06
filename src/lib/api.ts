@@ -189,7 +189,7 @@ export interface StartSalesProcessRequest {
   phone: string;
   source: string;
   source_stage_id?: number | null;
-  zweitgespraech_date?: string | null;
+  follow_up_date: string;
 }
 
 export interface StartSalesProcessResponse {

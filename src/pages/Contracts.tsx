@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { MetricChip } from "@/components/MetricChip";
 import { useSearchParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -90,10 +90,11 @@ export default function Contracts() {
   const { enabled } = useAuthEnabled();
   const [searchParams] = useSearchParams();
   const clientFilter = searchParams.get("client");
+  const navigate = useNavigate();
+
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null
   );
-  const navigate = useNavigate();
 
   // Contracts for table + KPIs
   const {
@@ -130,6 +131,14 @@ export default function Contracts() {
     if (!clientFilter) return contracts;
     return contracts.filter((c) => String(c.client_id) === clientFilter);
   }, [contracts, clientFilter]);
+
+  useEffect(() => {
+    const openParam = searchParams.get("open");
+    if (openParam && filteredContracts.length > 0) {
+      // automatically open the first contract for that client
+      setSelectedContract(filteredContracts[0]);
+    }
+  }, [searchParams, filteredContracts]);
 
   if (loadingContracts && contracts.length === 0) {
     return <div className="p-6">Lade Verträge…</div>;
@@ -396,7 +405,13 @@ export default function Contracts() {
       {/* ✅ Contract Detail Drawer */}
       <Sheet
         open={!!selectedContract}
-        onOpenChange={() => setSelectedContract(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedContract(null);
+            // clear client + open params so main list shows again
+            navigate("/contracts");
+          }
+        }}
       >
         <SheetContent className="w-[600px] sm:max-w-full overflow-y-auto">
           {selectedContract && (
