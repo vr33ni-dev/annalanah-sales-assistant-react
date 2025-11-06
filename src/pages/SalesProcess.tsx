@@ -146,7 +146,14 @@ export default function SalesProcessView() {
     { id: number; payload: SalesProcessUpdateRequest }
   >({
     mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sales"] }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      // 👇 new: also refetch contracts if a deal was closed
+      if (vars.payload.closed === true) {
+        qc.invalidateQueries({ queryKey: ["contracts"] });
+        qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
+      }
+    },
     onError: (err: unknown) =>
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
   });
