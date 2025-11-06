@@ -167,6 +167,22 @@ export default function SalesProcessView() {
     );
   };
 
+  function parseDateSafe(input?: string | null): Date | null {
+    if (!input) return null;
+    try {
+      // Always normalize UTC midnight → local date
+      const date = new Date(input);
+      // Shift to local midnight to neutralize UTC offset
+      return new Date(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate()
+      );
+    } catch {
+      return null;
+    }
+  }
+
   const filteredEntries = useMemo(() => {
     let result = sales;
 
@@ -261,8 +277,7 @@ export default function SalesProcessView() {
 
     if (formStep === 2) {
       // Step 2: record zweitgespräch result
-      if (!formData.salesProcessId || formData.zweitgespraechResult === null)
-        return;
+      if (!formData.salesProcessId) return;
 
       await mPatch.mutateAsync({
         id: formData.salesProcessId,
@@ -497,38 +512,46 @@ export default function SalesProcessView() {
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  <Label>Ist der Kunde erschienen?</Label>
-                  <div className="flex items-center space-x-3">
-                    <Switch
-                      checked={formData.zweitgespraechResult === true}
-                      onCheckedChange={(checked) =>
-                        setFormData({
-                          ...formData,
-                          zweitgespraechResult: checked,
-                        })
-                      }
-                    />
-                    <span className="text-sm">
-                      {formData.zweitgespraechResult === true
-                        ? "Ja, erschienen"
+                <div className="space-y-2">
+                  <Label>Ergebnis des Zweitgesprächs</Label>
+                  <Select
+                    value={
+                      formData.zweitgespraechResult === true
+                        ? "erschienen"
                         : formData.zweitgespraechResult === false
-                        ? "Nein, nicht erschienen"
-                        : "Bitte auswählen"}
-                    </span>
-                  </div>
+                        ? "nicht_erschienen"
+                        : "ausstehend"
+                    }
+                    onValueChange={(value) => {
+                      setFormData({
+                        ...formData,
+                        zweitgespraechResult:
+                          value === "erschienen"
+                            ? true
+                            : value === "nicht_erschienen"
+                            ? false
+                            : null,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="bg-muted/5 border-muted/30 focus:border-success">
+                      <SelectValue placeholder="Ergebnis auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ausstehend">Ausstehend</SelectItem>
+                      <SelectItem value="erschienen">Erschienen</SelectItem>
+                      <SelectItem value="nicht_erschienen">
+                        Nicht erschienen
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex gap-3">
                   <Button onClick={() => setFormStep(1)} variant="outline">
                     Zurück
                   </Button>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={formData.zweitgespraechResult === null}
-                  >
-                    Speichern
-                  </Button>
+                  <Button onClick={handleSubmit}>Speichern</Button>
                 </div>
               </div>
             )}
@@ -890,7 +913,11 @@ export default function SalesProcessView() {
                     </TableCell>
                     <TableCell>
                       {e.follow_up_date
-                        ? new Date(e.follow_up_date).toLocaleDateString("de-DE")
+                        ? format(
+                            parseDateSafe(e.follow_up_date)!,
+                            "dd.MM.yyyy",
+                            { locale: de }
+                          )
                         : "-"}
                     </TableCell>
                     <TableCell>
@@ -921,15 +948,27 @@ export default function SalesProcessView() {
                               onClick={() => {
                                 setShowForm(true);
                                 setFormStep(2);
+
+                                const followUpDate = parseDateSafe(
+                                  e.follow_up_date
+                                );
+                                const now = new Date();
+
+                                // Decide default result:
+                                // - If date in future → ausstehend (null)
+                                // - If date passed → use stored result or ausstehend if none
+                                const defaultResult =
+                                  followUpDate && followUpDate > now
+                                    ? null
+                                    : e.follow_up_result ?? null;
+
                                 setFormData((prev) => ({
                                   ...prev,
                                   name: e.client_name,
                                   salesProcessId: e.id,
                                   clientId: e.client_id,
-                                  zweitgespraechResult: null,
-                                  zweitgespraechDate: e.follow_up_date
-                                    ? new Date(e.follow_up_date)
-                                    : null,
+                                  zweitgespraechResult: defaultResult,
+                                  zweitgespraechDate: followUpDate,
                                 }));
                               }}
                             >
@@ -952,9 +991,9 @@ export default function SalesProcessView() {
                                   clientId: e.client_id,
                                   zweitgespraechResult: true,
                                   abschluss: null,
-                                  zweitgespraechDate: e.follow_up_date
-                                    ? new Date(e.follow_up_date)
-                                    : null,
+                                  zweitgespraechDate: parseDateSafe(
+                                    e.follow_up_date
+                                  ),
                                 }));
                               }}
                             >
