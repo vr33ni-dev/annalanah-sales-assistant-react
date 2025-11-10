@@ -75,6 +75,14 @@ const formatDate = (iso?: string | null): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 };
 
+function formatDateForInput(value?: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  // Format as YYYY-MM-DD
+  return d.toISOString().split("T")[0];
+}
+
 const deriveStatus = (iso?: string | null): StatusKey => {
   if (!iso) return "upcoming";
   const d = new Date(iso);
@@ -255,7 +263,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 
   // ✅ new state for basic info
   const [name, setName] = useState(stage.name ?? "");
-  const [date, setDate] = useState(stage.date ?? "");
+  const [date, setDate] = useState(formatDateForInput(stage.date));
   const [adBudget, setAdBudget] = useState(
     stage.ad_budget != null ? String(stage.ad_budget) : ""
   );

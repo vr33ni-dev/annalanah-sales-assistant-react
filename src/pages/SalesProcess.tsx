@@ -8,6 +8,7 @@ import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate } from "react-router-dom";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { Pencil, Save, X } from "lucide-react";
 
 import {
   SalesProcess,
@@ -70,6 +71,15 @@ export default function SalesProcessView() {
   const { enabled } = useAuthEnabled();
   const navigate = useNavigate();
 
+  function isFutureDate(date?: Date | null) {
+    if (!date) return false;
+    const today = new Date();
+    // Normalize both to start of day to avoid time drift
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return d > t;
+  }
+
   // Queries
   const {
     data: sales = [],
@@ -102,6 +112,9 @@ export default function SalesProcessView() {
   // Form state
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editedResult, setEditedResult] = useState<boolean | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
 
   type StatusFilter =
     | "all"
@@ -190,6 +203,9 @@ export default function SalesProcessView() {
     }
   }
 
+  type DateFilterType = "all" | "past" | "upcoming" | "today";
+  const [dateFilter, setDateFilter] = useState<DateFilterType>("all");
+
   const filteredEntries = useMemo(() => {
     let result = sales;
 
@@ -206,14 +222,29 @@ export default function SalesProcessView() {
         return activeStatusFilters.includes(label);
       });
     }
+
     if (activeSourceFilters.length > 0) {
       result = result.filter((e) =>
         e.client_source ? activeSourceFilters.includes(e.client_source) : false
       );
     }
 
+    if (dateFilter !== "all") {
+      const today = new Date();
+      result = result.filter((e) => {
+        const d = parseDateSafe(e.follow_up_date);
+        if (!d) return false;
+
+        if (dateFilter === "past") return d < today;
+        if (dateFilter === "upcoming") return d > today;
+        if (dateFilter === "today")
+          return d.toDateString() === today.toDateString();
+        return true;
+      });
+    }
+
     return result;
-  }, [sales, activeStatusFilters, activeSourceFilters]);
+  }, [sales, activeStatusFilters, activeSourceFilters, dateFilter]);
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -327,6 +358,7 @@ export default function SalesProcessView() {
       resetAll();
     }
   };
+  const isFollowUpFuture = isFutureDate(formData.zweitgespraechDate);
 
   return (
     <div className="space-y-6">
@@ -522,6 +554,7 @@ export default function SalesProcessView() {
                 <div className="space-y-2">
                   <Label>Ergebnis des Zweitgesprächs</Label>
                   <Select
+                    disabled={isFollowUpFuture}
                     value={
                       formData.zweitgespraechResult === true
                         ? "erschienen"
@@ -552,8 +585,14 @@ export default function SalesProcessView() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
 
+                  {isFollowUpFuture && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Das Zweitgespräch liegt in der Zukunft. Ergebnis kann erst
+                      nach dem Termin eingetragen werden.
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <Button onClick={() => setFormStep(1)} variant="outline">
                     Zurück
@@ -847,7 +886,37 @@ export default function SalesProcessView() {
                     </PopoverContent>
                   </Popover>
                 </TableHead>
-                <TableHead>Zweitgespräch Datum</TableHead>
+                <TableHead>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                        Zweitgespräch
+                        <Filter className="w-3 h-3 opacity-70" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 space-y-2">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Zeitraum</Label>
+                        <Select
+                          value={dateFilter}
+                          onValueChange={(val) =>
+                            setDateFilter(val as DateFilterType)
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Zeitraum wählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Alle</SelectItem>
+                            <SelectItem value="past">Vergangene</SelectItem>
+                            <SelectItem value="upcoming">Zukünftige</SelectItem>
+                            <SelectItem value="today">Heute</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
                 <TableHead>Ergebnis</TableHead>
                 <TableHead>
                   <Popover>
@@ -919,14 +988,84 @@ export default function SalesProcessView() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {e.follow_up_date
-                        ? format(
-                            parseDateSafe(e.follow_up_date)!,
-                            "dd.MM.yyyy",
-                            { locale: de }
-                          )
-                        : "-"}
+                      <div className="flex items-center gap-2 relative">
+                        <span className="text-sm">
+                          {e.follow_up_date
+                            ? format(
+                                parseDateSafe(e.follow_up_date)!,
+                                "dd.MM.yyyy",
+                                { locale: de }
+                              )
+                            : "–"}
+                        </span>
+
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={savingId === e.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setEditingId(e.id);
+                          }}
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+
+                        {editingId === e.id && (
+                          <Popover open onOpenChange={() => setEditingId(null)}>
+                            <PopoverTrigger asChild>
+                              <button
+                                className="absolute inset-0"
+                                style={{ pointerEvents: "none" }}
+                                aria-hidden="true"
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="absolute left-0 mt-2 w-auto p-2 z-50 bg-background border rounded-md shadow-md"
+                              align="start"
+                              side="bottom"
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <Calendar
+                                mode="single"
+                                selected={
+                                  parseDateSafe(e.follow_up_date ?? null) ??
+                                  undefined
+                                }
+                                onSelect={async (newDate) => {
+                                  if (!newDate) return;
+                                  try {
+                                    setSavingId(e.id);
+                                    await mPatch.mutateAsync({
+                                      id: e.id,
+                                      payload: {
+                                        follow_up_date: format(
+                                          newDate,
+                                          "yyyy-MM-dd"
+                                        ),
+                                      } as SalesProcessUpdateRequest,
+                                    });
+                                    await qc.invalidateQueries({
+                                      queryKey: ["sales"],
+                                    });
+                                  } catch (err) {
+                                    alert(
+                                      "Fehler beim Speichern: " +
+                                        extractErrorMessage(err)
+                                    );
+                                  } finally {
+                                    setSavingId(null);
+                                    setEditingId(null);
+                                  }
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
                     </TableCell>
+
                     <TableCell>
                       {e.follow_up_result === true && "Erschienen"}
                       {e.follow_up_result === false && "Nicht erschienen"}

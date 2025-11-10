@@ -337,6 +337,12 @@ export default function Clients() {
                             queryClient.invalidateQueries({
                               queryKey: ["clients"],
                             });
+                            queryClient.invalidateQueries({
+                              queryKey: ["sales"],
+                            });
+                            queryClient.invalidateQueries({
+                              queryKey: ["contracts"],
+                            });
                           }}
                         >
                           <Trash className="w-4 h-4" />
