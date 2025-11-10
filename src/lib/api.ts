@@ -189,7 +189,7 @@ export interface StartSalesProcessRequest {
   phone: string;
   source: string;
   source_stage_id?: number | null;
-  zweitgespraech_date?: string | null;
+  follow_up_date: string;
 }
 
 export interface StartSalesProcessResponse {
@@ -391,4 +391,18 @@ export const getCashflowForecast = async (
     ...r,
     expected: (r.confirmed ?? 0) + (r.potential ?? 0),
   }));
+};
+
+/* Natural Language Querying */
+export interface NLQResponse {
+  sql: string;
+  rows: Record<string, unknown>[];
+  columns?: string[];
+  error?: string;
+  answer?: string;
+}
+
+export const runNLQ = async (question: string): Promise<NLQResponse> => {
+  const { data } = await api.post<NLQResponse>("/nlq", { question });
+  return data;
 };

@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { 
-  LayoutDashboard, 
-  Users, 
-  TrendingUp, 
-  FileText, 
+import {
+  LayoutDashboard,
+  Users,
+  TrendingUp,
+  FileText,
   Calendar,
   DollarSign,
-  BarChart3
+  BarChart3,
+  BrainIcon,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
@@ -29,8 +30,8 @@ const navigationItems = [
   { title: "Verkaufsprozess", url: "/sales", icon: TrendingUp },
   { title: "Verträge & Cashflow", url: "/contracts", icon: FileText },
   { title: "Bühnen & Events", url: "/stages", icon: Calendar },
+  { title: "NLQ", url: "/nlq", icon: BrainIcon },
 ];
-
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -44,8 +45,8 @@ export function AppSidebar() {
   };
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    isActive 
-      ? "bg-primary text-primary-foreground font-medium hover:bg-primary-hover" 
+    isActive
+      ? "bg-primary text-primary-foreground font-medium hover:bg-primary-hover"
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground";
 
   return (
@@ -59,8 +60,12 @@ export function AppSidebar() {
             </div>
             {!isCollapsed && (
               <div>
-                <h2 className="font-semibold text-foreground">Anna's Sales Manager</h2>
-                <p className="text-xs text-muted-foreground">Business Dashboard</p>
+                <h2 className="font-semibold text-foreground">
+                  Anna's Sales Manager
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Business Dashboard
+                </p>
               </div>
             )}
           </div>
@@ -71,21 +76,25 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-4 py-2">
             Hauptmenü
           </SidebarGroupLabel>
-          
+
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      end={item.url === "/"} 
-                      className={({ isActive }) => 
-                        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all ${getNavCls({ isActive })}`
+                    <NavLink
+                      to={item.url}
+                      end={item.url === "/"}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all ${getNavCls(
+                          { isActive }
+                        )}`
                       }
                     >
                       <item.icon className="w-5 h-5 flex-shrink-0" />
-                      {!isCollapsed && <span className="font-medium">{item.title}</span>}
+                      {!isCollapsed && (
+                        <span className="font-medium">{item.title}</span>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -93,7 +102,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
       </SidebarContent>
     </Sidebar>
   );
