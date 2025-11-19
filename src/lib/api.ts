@@ -176,19 +176,28 @@ export const updateSalesProcess = async (
   return data as SalesProcess;
 };
 
-export interface StartSalesProcessRequest {
+export type StartSalesProcessRequest = {
   name: string;
   email: string;
   phone: string;
   source: string;
   source_stage_id?: number | null;
   follow_up_date: string;
-}
+};
 
 export interface StartSalesProcessResponse {
   sales_process_id: number;
   client: Client;
   sales_process: SalesProcess;
+}
+
+export interface CreateOrUpdateUpsellProcessRequest {
+  name: string;
+  email: string;
+  phone: string;
+  source: string;
+  source_stage_id?: number | null;
+  follow_up_date: string;
 }
 
 /**
