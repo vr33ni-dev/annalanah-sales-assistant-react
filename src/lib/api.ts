@@ -157,13 +157,6 @@ export const getSalesProcessById = async (
   return data as SalesProcess;
 };
 
-export const createSalesProcess = async (
-  payload: Partial<SalesProcess>
-): Promise<SalesProcess> => {
-  const { data } = await api.post("/sales", payload);
-  return data as SalesProcess;
-};
-
 // Narrow the update payload to only fields the backend accepts on PATCH
 export type SalesProcessUpdateRequest = {
   follow_up_result?: boolean | null;
@@ -214,7 +207,7 @@ export interface Contract {
   client_name: string;
   sales_process_id: number;
   start_date: string;
-  end_date?: string | null;
+  end_date_computed?: string | null;
   duration_months: number;
   revenue_total: number;
   payment_frequency: string;
