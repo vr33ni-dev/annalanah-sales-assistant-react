@@ -191,13 +191,30 @@ export interface StartSalesProcessResponse {
   sales_process: SalesProcess;
 }
 
-export interface CreateOrUpdateUpsellProcessRequest {
-  name: string;
-  email: string;
-  phone: string;
-  source: string;
-  source_stage_id?: number | null;
-  follow_up_date: string;
+/* Upsells */
+export type UpsellResult = "verlaengerung" | "keine_verlaengerung" | null;
+
+export interface ContractUpsell {
+  id: number;
+  sales_process_id: number;
+  client_id: number;
+  upsell_date: string | null;
+  upsell_result: UpsellResult;
+  upsell_revenue: number | null;
+  previous_contract_id: number | null;
+  new_contract_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateOrUpdateUpsellRequest {
+  upsell_date?: string | null;
+  upsell_result?: UpsellResult;
+  upsell_revenue?: number | null;
+
+  contract_start_date?: string | null;
+  contract_duration_months?: number | null;
+  contract_frequency?: "monthly" | "bi-monthly" | "quarterly" | null;
 }
 
 /**
@@ -340,6 +357,44 @@ export const assignClientToStage = async (
   payload: { client_id: number }
 ): Promise<void> => {
   await api.post(`/stages/${stageId}/assign-client`, payload);
+};
+
+// Upsells
+/** GET /sales/{id}/upsell */
+export const getUpsellForSalesProcess = async (
+  salesProcessId: number
+): Promise<ContractUpsell[]> => {
+  const { data } = await api.get(`/sales/${salesProcessId}/upsell`);
+  return data as ContractUpsell[];
+};
+
+/** PATCH /sales/{id}/upsell */
+export const createOrUpdateUpsell = async (
+  salesProcessId: number,
+  payload: CreateOrUpdateUpsellRequest
+): Promise<{
+  upsell_id: number;
+  updated: boolean;
+  new_contract_id?: number | null;
+}> => {
+  const { data } = await api.patch(`/sales/${salesProcessId}/upsell`, payload);
+  return data;
+};
+
+/** GET /sales/upsells/list */
+export const listUpsellCategories = async () => {
+  const { data } = await api.get(`/sales/upsells/list`);
+  return data as {
+    scheduled: ContractUpsell[];
+    successful: ContractUpsell[];
+    unsuccessful: ContractUpsell[];
+  };
+};
+
+/** GET /sales/upsells/analytics */
+export const getUpsellAnalytics = async () => {
+  const { data } = await api.get(`/sales/upsells/analytics`);
+  return data;
 };
 
 // Settings

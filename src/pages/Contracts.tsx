@@ -456,7 +456,7 @@ export default function Contracts() {
                   <p>€{selectedContract.revenue_total.toLocaleString()}</p>
                 </div>
 
-                {/* Embed the CashflowEntriesTable here */}
+                {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
                   <CashflowDueTable contractId={selectedContract.id} />
@@ -465,6 +465,25 @@ export default function Contracts() {
               <div className="mt-6 space-y-3">
                 <h3 className="font-semibold">Prognose</h3>
                 <CashflowUpcomingTable contractId={selectedContract.id} />{" "}
+              </div>
+              {/* ---------------- Upsell Section ---------------- */}
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Upsell / Vertragsverlängerung
+                </h3>
+
+                <button
+                  onClick={() => {
+                    console.log(
+                      "Upsell starten für Vertrag",
+                      selectedContract.id
+                    );
+                  }}
+                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                >
+                  Upsell planen
+                </button>
               </div>
             </>
           )}
