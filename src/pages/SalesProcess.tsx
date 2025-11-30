@@ -161,7 +161,7 @@ export default function SalesProcessView() {
     mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
-      // 👇 new: also refetch contracts if a deal was closed
+      // refetch contracts if a deal was closed
       if (vars.payload.closed === true) {
         qc.invalidateQueries({ queryKey: ["contracts"] });
         qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
@@ -170,8 +170,6 @@ export default function SalesProcessView() {
     onError: (err: unknown) =>
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
   });
-
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
   const [activeSourceFilters, setActiveSourceFilters] = useState<string[]>([]);

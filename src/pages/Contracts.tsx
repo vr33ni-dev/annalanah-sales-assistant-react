@@ -24,7 +24,7 @@ import {
   Info,
 } from "lucide-react";
 
-import { CashflowDueTable } from "./CashflowDueTable";
+import { CashflowHistoryTable } from "./CashflowHistoryTable";
 import { useQuery } from "@tanstack/react-query";
 import {
   Contract,
@@ -41,6 +41,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
+import { formatDateOnly } from "@/helpers/date";
 
 /* ---------------- helpers ---------------- */
 
@@ -95,6 +96,7 @@ export default function Contracts() {
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null
   );
+  console.log("Selected contract:", selectedContract);
 
   // Contracts for table + KPIs
   const {
@@ -355,9 +357,7 @@ export default function Contracts() {
                     </TableCell>
                     <TableCell>
                       {contract.start_date
-                        ? new Date(contract.start_date).toLocaleDateString(
-                            "de-DE"
-                          )
+                        ? formatDateOnly(contract.start_date)
                         : "–"}
                     </TableCell>
                     <TableCell>{contract.duration_months} Monate</TableCell>
@@ -399,7 +399,7 @@ export default function Contracts() {
 
       {/* Cashflow Entries & Forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CashflowDueTable />
+        <CashflowHistoryTable />
         <CashflowUpcomingTable />
       </div>
       {/* ✅ Contract Detail Drawer */}
@@ -435,9 +435,7 @@ export default function Contracts() {
                   </h3>
                   <p>
                     {selectedContract.start_date
-                      ? new Date(
-                          selectedContract.start_date
-                        ).toLocaleDateString("de-DE")
+                      ? formatDateOnly(selectedContract.start_date)
                       : "–"}
                   </p>
                 </div>
@@ -456,15 +454,34 @@ export default function Contracts() {
                   <p>€{selectedContract.revenue_total.toLocaleString()}</p>
                 </div>
 
-                {/* Embed the CashflowEntriesTable here */}
+                {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
-                  <CashflowDueTable contractId={selectedContract.id} />
+                  <CashflowHistoryTable contractId={selectedContract.id} />
                 </div>
               </div>
               <div className="mt-6 space-y-3">
                 <h3 className="font-semibold">Prognose</h3>
                 <CashflowUpcomingTable contractId={selectedContract.id} />{" "}
+              </div>
+              {/* ---------------- Upsell Section ---------------- */}
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Upsell / Vertragsverlängerung
+                </h3>
+
+                <button
+                  onClick={() => {
+                    console.log(
+                      "Upsell starten für Vertrag",
+                      selectedContract.id
+                    );
+                  }}
+                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                >
+                  Upsell planen
+                </button>
               </div>
             </>
           )}
