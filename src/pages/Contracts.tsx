@@ -494,7 +494,7 @@ export default function Contracts() {
                   <div
                     className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
                     onClick={() => {
-                      setEditingUpsell(upsell); // IMPORTANT: upsell is ContractUpsell
+                      setEditingUpsell(upsell); // upsell (of type ContractUpsell)
                       setShowUpsellModal(true);
                     }}
                   >
