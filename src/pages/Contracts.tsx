@@ -24,6 +24,7 @@ import {
   Info,
 } from "lucide-react";
 
+import { UpsellModal } from "@/components/upsell/UpsellModal";
 import { CashflowHistoryTable } from "./CashflowHistoryTable";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -31,6 +32,9 @@ import {
   getContracts,
   getCashflowForecast,
   type CashflowRow,
+  CreateOrUpdateUpsellRequest,
+  ContractUpsell,
+  getUpsellForSalesProcess,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
@@ -96,7 +100,20 @@ export default function Contracts() {
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null
   );
-  console.log("Selected contract:", selectedContract);
+  const [showUpsellModal, setShowUpsellModal] = useState(false);
+  const [editingUpsell, setEditingUpsell] =
+    useState<CreateOrUpdateUpsellRequest | null>(null);
+
+  // Upsell for selected contract
+  const { data: upsell, refetch: refetchUpsell } = useQuery({
+    queryKey: ["upsell", selectedContract?.sales_process_id],
+    queryFn: () =>
+      selectedContract
+        ? getUpsellForSalesProcess(selectedContract.sales_process_id)
+        : null,
+    enabled: !!selectedContract,
+    select: (list) => (list && list.length > 0 ? list[0] : null),
+  });
 
   // Contracts for table + KPIs
   const {
@@ -471,22 +488,102 @@ export default function Contracts() {
                   Upsell / Vertragsverlängerung
                 </h3>
 
-                <button
-                  onClick={() => {
-                    console.log(
-                      "Upsell starten für Vertrag",
-                      selectedContract.id
-                    );
-                  }}
-                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-                >
-                  Upsell planen
-                </button>
+                {/* If upsell exists → show card */}
+                {upsell && (
+                  <div
+                    className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setEditingUpsell(upsell);
+                      setShowUpsellModal(true);
+                    }}
+                  >
+                    {/* If result is verlängerung → show contract details */}
+                    {upsell.upsell_result === "verlaengerung" ? (
+                      <div className="space-y-1">
+                        <div className="font-medium text-green-600">
+                          Ergebnis: Vertragsverlängerung
+                        </div>
+
+                        {upsell.contract_start_date && (
+                          <div className="text-sm">
+                            Neuer Vertrag ab:{" "}
+                            {formatDateOnly(upsell.contract_start_date)}
+                          </div>
+                        )}
+
+                        {upsell.contract_duration_months && (
+                          <div className="text-sm">
+                            Dauer: {upsell.contract_duration_months} Monate
+                          </div>
+                        )}
+
+                        {upsell.contract_frequency && (
+                          <div className="text-sm">
+                            Zahlungsfrequenz: {upsell.contract_frequency}
+                          </div>
+                        )}
+
+                        {upsell.upsell_revenue && (
+                          <div className="text-sm">
+                            Umsatz: €{upsell.upsell_revenue.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Default: show talk date + status */
+                      <div>
+                        <div className="font-medium">
+                          Upsellgespräch:{" "}
+                          {upsell.upsell_date
+                            ? formatDateOnly(upsell.upsell_date)
+                            : "–"}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Status: {upsell.upsell_result ?? "offen"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* If no upsell exists → show button */}
+                {!upsell && (
+                  <button
+                    onClick={() => {
+                      const isFinal = upsell.upsell_result !== null;
+
+                      if (!isFinal) {
+                        // editable
+                        setEditingUpsell(upsell);
+                        setShowUpsellModal(true);
+                      }
+                    }}
+                    className={
+                      upsell.upsell_result
+                        ? "cursor-not-allowed opacity-60"
+                        : "cursor-pointer hover:bg-muted/50"
+                    }
+                  >
+                    Upsell planen
+                  </button>
+                )}
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {showUpsellModal && (
+        <UpsellModal
+          contract={selectedContract}
+          upsell={editingUpsell}
+          onClose={() => setShowUpsellModal(false)}
+          onSaved={() => {
+            setShowUpsellModal(false);
+            refetchUpsell(); // or invalidateQueries()
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -192,8 +192,9 @@ export interface StartSalesProcessResponse {
 }
 
 /* Upsells */
-export type UpsellResult = "verlaengerung" | "keine_verlaengerung" | null;
+export type UpsellResult = "verlaengerung" | "keine_verlaengerung" | "offen";
 
+// Data RECEIVED from backend
 export interface ContractUpsell {
   id: number;
   sales_process_id: number;
@@ -205,9 +206,13 @@ export interface ContractUpsell {
   new_contract_id: number | null;
   created_at: string;
   updated_at: string;
+  contract_start_date: string | null;
+  contract_duration_months: number | null;
+  contract_frequency: "monthly" | "bi-monthly" | "quarterly" | null;
 }
 
-export interface CreateOrUpdateUpsellRequest {
+// Data SENT to backend (request body)
+export type CreateOrUpdateUpsellRequest = {
   upsell_date?: string | null;
   upsell_result?: UpsellResult;
   upsell_revenue?: number | null;
@@ -215,7 +220,7 @@ export interface CreateOrUpdateUpsellRequest {
   contract_start_date?: string | null;
   contract_duration_months?: number | null;
   contract_frequency?: "monthly" | "bi-monthly" | "quarterly" | null;
-}
+};
 
 /**
  * POST /sales/start

@@ -113,7 +113,6 @@ export default function SalesProcessView() {
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editedResult, setEditedResult] = useState<boolean | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
 
   type StatusFilter =
