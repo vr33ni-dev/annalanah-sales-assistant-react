@@ -101,8 +101,9 @@ export default function Contracts() {
     null
   );
   const [showUpsellModal, setShowUpsellModal] = useState(false);
-  const [editingUpsell, setEditingUpsell] =
-    useState<CreateOrUpdateUpsellRequest | null>(null);
+  const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
+    null
+  );
 
   // Upsell for selected contract
   const { data: upsell, refetch: refetchUpsell } = useQuery({
@@ -493,7 +494,7 @@ export default function Contracts() {
                   <div
                     className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
                     onClick={() => {
-                      setEditingUpsell(upsell);
+                      setEditingUpsell(upsell); // IMPORTANT: upsell is ContractUpsell
                       setShowUpsellModal(true);
                     }}
                   >
@@ -550,19 +551,10 @@ export default function Contracts() {
                 {!upsell && (
                   <button
                     onClick={() => {
-                      const isFinal = upsell.upsell_result !== null;
-
-                      if (!isFinal) {
-                        // editable
-                        setEditingUpsell(upsell);
-                        setShowUpsellModal(true);
-                      }
+                      setEditingUpsell(null);
+                      setShowUpsellModal(true);
                     }}
-                    className={
-                      upsell.upsell_result
-                        ? "cursor-not-allowed opacity-60"
-                        : "cursor-pointer hover:bg-muted/50"
-                    }
+                    className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
                   >
                     Upsell planen
                   </button>

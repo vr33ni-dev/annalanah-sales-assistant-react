@@ -80,7 +80,7 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
           </div>
 
           {/* Revenue when result = verlängerung */}
-          {result === "verlängerung" && (
+          {result === "verlaengerung" && (
             <div className="space-y-1">
               <Label>Geschätzter Umsatz</Label>
               <Input
