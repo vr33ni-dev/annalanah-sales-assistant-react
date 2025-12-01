@@ -12,15 +12,16 @@ import { createOrUpdateUpsell } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 export function UpsellModal({ contract, upsell, onClose, onSaved }) {
-  const [date, setDate] = useState(upsell?.upsell_date ?? "");
+  const [date, setDate] = useState(toDateOnly(upsell?.upsell_date));
   const isFinalTalk = !!upsell?.upsell_result; // only for date + result lock
   const [result, setResult] = useState(upsell?.upsell_result ?? "");
   const [revenue, setRevenue] = useState(upsell?.upsell_revenue ?? "");
   const isEditing = !!upsell;
   const isExtension = result === "verlaengerung";
   const [contractStart, setContractStart] = useState(
-    upsell?.contract_start_date ?? ""
+    toDateOnly(upsell?.contract_start_date)
   );
+
   const [contractDuration, setContractDuration] = useState(
     upsell?.contract_duration_months ?? ""
   );
@@ -28,11 +29,15 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
     upsell?.contract_frequency ?? "monthly"
   );
 
+  function toDateOnly(iso) {
+    return iso ? iso.split("T")[0] : "";
+  }
+
   useEffect(() => {
-    setDate(upsell?.upsell_date ?? "");
+    setDate(toDateOnly(upsell?.upsell_date));
     setResult(upsell?.upsell_result ?? "");
     setRevenue(upsell?.upsell_revenue ?? "");
-    setContractStart(upsell?.contract_start_date ?? "");
+    setContractStart(toDateOnly(upsell?.contract_start_date));
     setContractDuration(upsell?.contract_duration_months ?? "");
     setContractFrequency(upsell?.contract_frequency ?? "monthly");
   }, [upsell]);
