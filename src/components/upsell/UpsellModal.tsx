@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createOrUpdateUpsell } from "@/lib/api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const [date, setDate] = useState(upsell?.upsell_date ?? "");
@@ -27,6 +27,15 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const [contractFrequency, setContractFrequency] = useState(
     upsell?.contract_frequency ?? "monthly"
   );
+
+  useEffect(() => {
+    setDate(upsell?.upsell_date ?? "");
+    setResult(upsell?.upsell_result ?? "");
+    setRevenue(upsell?.upsell_revenue ?? "");
+    setContractStart(upsell?.contract_start_date ?? "");
+    setContractDuration(upsell?.contract_duration_months ?? "");
+    setContractFrequency(upsell?.contract_frequency ?? "monthly");
+  }, [upsell]);
 
   const handleSubmit = async () => {
     if (!contract) return;
