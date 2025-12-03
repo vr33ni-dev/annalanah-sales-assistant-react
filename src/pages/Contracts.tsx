@@ -394,7 +394,9 @@ export default function Contracts() {
                           {contract.paid_months}/{contract.duration_months}{" "}
                           Monate
                           {contract.next_due_date
-                            ? ` • Nächste: ${contract.next_due_date}`
+                            ? ` • Nächste: ${formatDateOnly(
+                                contract.next_due_date
+                              )}`
                             : ""}
                         </p>
                       </div>
