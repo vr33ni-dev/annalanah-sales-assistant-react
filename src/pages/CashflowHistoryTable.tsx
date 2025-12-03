@@ -64,16 +64,20 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
   const filteredEntries = entries
     .filter((e) => !contractId || e.id === contractId)
     .filter((e) => {
-      if (range === "all") return true;
+      const due = new Date(e.dueDate);
 
+      // "all" = only past & today
+      if (range === "all") return due <= now;
+
+      // last X days
       const days = parseInt(range, 10);
       const cutoff = new Date(now);
       cutoff.setDate(cutoff.getDate() - days);
 
-      const due = new Date(e.dueDate);
-
       return due >= cutoff && due <= now;
     });
+
+  // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
 
   if (isFetching && data.length === 0) {
     return (
