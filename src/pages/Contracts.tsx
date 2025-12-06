@@ -147,30 +147,11 @@ export default function Contracts() {
     select: (d) => asArray<CashflowRow>(d),
   });
 
-  const filteredContracts = useMemo(() => {
-    if (!clientFilter) return contracts;
-    return contracts.filter((c) => String(c.client_id) === clientFilter);
-  }, [contracts, clientFilter]);
-
-  useEffect(() => {
-    const openParam = searchParams.get("open");
-    if (openParam && filteredContracts.length > 0) {
-      // automatically open the first contract for that client
-      setSelectedContract(filteredContracts[0]);
-    }
-  }, [searchParams, filteredContracts]);
-
-  if (loadingContracts && contracts.length === 0) {
-    return <div className="p-6">Lade Verträge…</div>;
-  }
-  if (errorContracts) {
-    return (
-      <div className="p-6 text-red-500">Fehler beim Laden der Verträge.</div>
-    );
-  }
+  /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
 
   /* ---------------- KPIs from contracts ---------------- */
-
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
@@ -180,8 +161,6 @@ export default function Contracts() {
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt), REALIZED by paid_months ---- */
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
 
   let ytdCashIn = 0;
@@ -200,6 +179,65 @@ export default function Contracts() {
 
   const avgMonthlyYtd =
     monthsElapsedYtd > 0 ? Math.round(ytdCashIn / monthsElapsedYtd) : 0;
+
+  /* ---- Filtered Contracts for Active Contracts table ---- */
+  const [dateStart, setDateStart] = useState<string>(
+    startOfYear.toISOString().split("T")[0]
+  );
+  const [dateEnd, setDateEnd] = useState<string>(
+    now.toISOString().split("T")[0]
+  );
+
+  const filteredContracts = useMemo(() => {
+    let list = contracts;
+
+    // client filter
+    if (clientFilter) {
+      list = list.filter((c) => String(c.client_id) === clientFilter);
+    }
+    // date range filter
+    if (dateStart) {
+      list = list.filter((c) => c.start_date >= dateStart);
+    }
+    if (dateEnd) {
+      list = list.filter((c) => c.start_date <= dateEnd);
+    }
+    return list;
+  }, [contracts, clientFilter, dateStart, dateEnd]);
+
+  /* ----------------- Pagination ---------------- */
+  const [page, setPage] = useState(1);
+  const pageSize = 10; // contracts per page
+  const totalPages = Math.ceil(filteredContracts.length / pageSize);
+
+  const paginatedContracts = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredContracts.slice(start, start + pageSize);
+  }, [filteredContracts, page]);
+
+  /* ---------------- Effects ---------------- */
+  // Auto-open contract based on URL
+  useEffect(() => {
+    const openParam = searchParams.get("open");
+    if (openParam && filteredContracts.length > 0) {
+      // automatically open the first contract for that client
+      setSelectedContract(filteredContracts[0]);
+    }
+  }, [searchParams, filteredContracts]);
+
+  // Reset to page 1 on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [dateStart, dateEnd, clientFilter]);
+
+  if (loadingContracts && contracts.length === 0) {
+    return <div className="p-6">Lade Verträge…</div>;
+  }
+  if (errorContracts) {
+    return (
+      <div className="p-6 text-red-500">Fehler beim Laden der Verträge.</div>
+    );
+  }
 
   /* ---- Next 3 months (CONFIRMED ONLY) ---- */
   const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -346,11 +384,32 @@ export default function Contracts() {
       {/* Contracts Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Aktive Verträge
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Aktive Verträge
+            </CardTitle>
+
+            {/* DATE RANGE FILTER */}
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Start"
+              />
+              <input
+                type="date"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Ende"
+              />
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
@@ -365,7 +424,7 @@ export default function Contracts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredContracts.map((contract) => {
+              {paginatedContracts.map((contract) => {
                 const progressPercent =
                   (contract.paid_months / contract.duration_months) * 100;
                 return (
@@ -414,6 +473,29 @@ export default function Contracts() {
               })}
             </TableBody>
           </Table>
+          <div className="flex justify-between items-center mt-4">
+            <p className="text-sm text-muted-foreground">
+              Seite {page} von {totalPages}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                Zurück
+              </button>
+
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Weiter
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
