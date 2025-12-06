@@ -6,6 +6,9 @@ import { MetricChip } from "@/components/MetricChip";
 import { useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { toast, useToast } from "@/components/ui/use-toast";
 
 import {
   Table,
@@ -46,6 +49,7 @@ import {
 } from "@/components/ui/sheet";
 import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
 import { formatDateOnly } from "@/helpers/date";
+import { ContractEditModal } from "@/components/contract/ContractEditModal";
 
 /* ---------------- helpers ---------------- */
 
@@ -96,10 +100,13 @@ export default function Contracts() {
   const [searchParams] = useSearchParams();
   const clientFilter = searchParams.get("client");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null
   );
+  const [showContractEdit, setShowContractEdit] = useState(false);
+
   const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
     null
@@ -121,6 +128,7 @@ export default function Contracts() {
     data: contracts = [],
     isFetching: loadingContracts,
     isError: errorContracts,
+    refetch: refetchContracts,
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
@@ -555,6 +563,13 @@ export default function Contracts() {
                   </h3>
                   <p>€{selectedContract.revenue_total.toLocaleString()}</p>
                 </div>
+                {/* ---------------- Edit Contract Button ---------------- */}
+                <button
+                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                  onClick={() => setShowContractEdit(true)}
+                >
+                  Vertragsdetails bearbeiten
+                </button>
 
                 {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
@@ -657,6 +672,33 @@ export default function Contracts() {
           onSaved={() => {
             setShowUpsellModal(false);
             refetchUpsell(); // or invalidateQueries()
+          }}
+        />
+      )}
+      {showContractEdit && (
+        <ContractEditModal
+          contract={selectedContract}
+          onClose={() => setShowContractEdit(false)}
+          onSaved={() => {
+            setShowContractEdit(false);
+
+            toast({
+              title: "Vertrag gespeichert",
+              description: "Die Änderungen wurden erfolgreich gespeichert.",
+            });
+
+            refetchContracts().then((result) => {
+              // Get fresh contract from server
+              const updated = result.data?.find(
+                (c) => c.id === selectedContract?.id
+              );
+              if (updated) {
+                setSelectedContract(updated); //  refreshes the drawer details
+              }
+            });
+
+            queryClient.invalidateQueries({ queryKey: ["cashflow-history"] });
+            queryClient.invalidateQueries({ queryKey: ["cashflow-forecast"] });
           }}
         />
       )}

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createOrUpdateUpsell } from "@/lib/api";
 import { useEffect, useState } from "react";
+import { toDateOnly } from "@/helpers/date";
 
 export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const [date, setDate] = useState(toDateOnly(upsell?.upsell_date));
@@ -28,10 +29,6 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const [contractFrequency, setContractFrequency] = useState(
     upsell?.contract_frequency ?? "monthly"
   );
-
-  function toDateOnly(iso) {
-    return iso ? iso.split("T")[0] : "";
-  }
 
   useEffect(() => {
     setDate(toDateOnly(upsell?.upsell_date));
