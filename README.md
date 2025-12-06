@@ -1,73 +1,51 @@
-# Welcome to your Small Business Sales Assistant
+# Small Business Sales Assistant
 
-## Project info
+Minimal frontend for the Go backend used in this repo. Lovable was only used to generate the initial skeleton — this repo is maintained locally.
 
-**URL**: <https://lovable.dev/projects/d7957aff-f928-4b53-949a-0f1b1e33497c>
+## Quick start (dev)
 
-## How can I edit this code?
+1. Install dependencies
 
-There are several ways of editing your application.
+   ```bash
+   npm install
+   ```
 
-**Use Lovable**
+2. Start backend (in this case: the Go server)
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/d7957aff-f928-4b53-949a-0f1b1e33497c) and start prompting.
+3. Start frontend
 
-Changes made via Lovable will be committed automatically to this repo.
+   ```bash
+   npm run dev
+   ```
 
-**Use your preferred IDE**
+   Frontend default: <http://localhost:5002>
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Environment
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Dev: keep `.env` empty so Vite's dev proxy forwards `/api` → `http://localhost:8080`.
+- Prod: set `VITE_API_URL` to your API origin (no trailing `/api`), e.g.:
 
-Follow these steps:
+  ```bash
+  VITE_API_URL=http://api.example.com
+  ```
+  
+  Restart Vite after editing env files.
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone https://github.com/vr33ni-dev/sales-assistant-react.git
+## Vite proxy & CORS
 
-# Step 2: Navigate to the project directory.
-cd sales-assistant-react
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `vite.config.ts` proxies `/api` (dev) to your backend (default target: `http://localhost:8080`). This avoids CORS during development.
+- Production: the backend must provide proper CORS headers if frontend and backend are on different origins.
 
 ## What technologies are used for this project?
 
 This project is built with:
 
+- Lovable
 - Vite
 - TypeScript
 - React
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/d7957aff-f928-4b53-949a-0f1b1e33497c) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+---
+> **Note:** The canonical repository is [**on GitHub**](https://github.com/vr33ni-dev/annalanah-sales-assistant-react) · [Mirror on GitLab →](https://gitlab.com/vr33ni-work/annalanah-sales-assistant-react) [![Mirror Status](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/actions/workflows/gitlab-mirror.yml/badge.svg)](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/actions/workflows/gitlab-mirror.yml)

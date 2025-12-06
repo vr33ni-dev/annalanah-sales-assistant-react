@@ -113,7 +113,6 @@ export default function SalesProcessView() {
   const [showForm, setShowForm] = useState(false);
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editedResult, setEditedResult] = useState<boolean | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
 
   type StatusFilter =
@@ -161,7 +160,7 @@ export default function SalesProcessView() {
     mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
-      // 👇 new: also refetch contracts if a deal was closed
+      // refetch contracts if a deal was closed
       if (vars.payload.closed === true) {
         qc.invalidateQueries({ queryKey: ["contracts"] });
         qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
@@ -170,8 +169,6 @@ export default function SalesProcessView() {
     onError: (err: unknown) =>
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
   });
-
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
   const [activeSourceFilters, setActiveSourceFilters] = useState<string[]>([]);

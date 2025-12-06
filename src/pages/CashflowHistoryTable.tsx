@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Contract, getContracts } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
+import { useState } from "react";
 
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {
@@ -26,7 +27,7 @@ function calcNextDueAmount(c: Contract): number {
   }
 }
 
-export function CashflowDueTable({ contractId }: { contractId?: number }) {
+export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
 
   const {
@@ -42,6 +43,12 @@ export function CashflowDueTable({ contractId }: { contractId?: number }) {
     select: asArray<Contract>,
   });
 
+  type RangeFilter = "all" | "30" | "90" | "365";
+
+  const [range, setRange] = useState<RangeFilter>("all");
+
+  const now = new Date();
+
   // Derive "entries" from contracts that have a next due date
   const entries = data
     .filter((c) => !!c.next_due_date)
@@ -53,20 +60,35 @@ export function CashflowDueTable({ contractId }: { contractId?: number }) {
     }))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
-  // ✅ Apply optional filtering if a contractId is provided
-  const filteredEntries = contractId
-    ? entries.filter((e) => e.id === contractId)
-    : entries;
+  // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
+  const filteredEntries = entries
+    .filter((e) => !contractId || e.id === contractId)
+    .filter((e) => {
+      const due = new Date(e.dueDate);
+
+      // "all" = only past & today
+      if (range === "all") return due <= now;
+
+      // last X days
+      const days = parseInt(range, 10);
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() - days);
+
+      return due >= cutoff && due <= now;
+    });
+
+  // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
 
   if (isFetching && data.length === 0) {
     return (
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            Cashflow Einträge (nächste Fälligkeiten)
+            Cashflow Einträge (Zahlungsverlauf)
           </CardTitle>
         </CardHeader>
+
         <CardContent>Loading…</CardContent>
       </Card>
     );
@@ -77,8 +99,18 @@ export function CashflowDueTable({ contractId }: { contractId?: number }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="w-5 h-5" />
-          Cashflow Einträge (nächste Fälligkeiten)
+          Cashflow Einträge (Zahlungsverlauf)
         </CardTitle>
+        <select
+          value={range}
+          onChange={(e) => setRange(e.target.value as RangeFilter)}
+          className="text-sm border rounded px-2 py-1"
+        >
+          <option value="all">Alle</option>
+          <option value="30">Letzte 30 Tage</option>
+          <option value="90">Letzte 90 Tage</option>
+          <option value="365">Letztes Jahr</option>
+        </select>
       </CardHeader>
       <CardContent>
         {isError ? (

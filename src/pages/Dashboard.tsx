@@ -59,7 +59,7 @@ export default function Dashboard() {
     isFetching: loadingSales,
     isError: errorSales,
   } = useQuery<SalesProcess[]>({
-    queryKey: ["salesProcesses"],
+    queryKey: ["sales"],
     queryFn: getSalesProcesses,
     enabled,
     retry: false,
