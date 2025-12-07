@@ -10,7 +10,6 @@ import {
   FileText,
   Target,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import {
   getClients,
   getContracts,
@@ -21,63 +20,62 @@ import {
   type SalesProcess,
   type Stage,
 } from "@/lib/api";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 import StageCard from "./StageCard";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockClients, mockContracts, mockSalesProcesses, mockStages } from "@/lib/mockData";
 
 export default function Dashboard() {
-  const { enabled } = useAuthEnabled();
-
   const {
     data: clients = [],
     isFetching: loadingClients,
     isError: errorClients,
-  } = useQuery<Client[]>({
+  } = useMockableQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: getClients,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Client>,
+    mockData: mockClients,
   });
 
   const {
     data: contracts = [],
     isFetching: loadingContracts,
     isError: errorContracts,
-  } = useQuery<Contract[]>({
+  } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
+    mockData: mockContracts,
   });
 
   const {
     data: salesProcesses = [],
     isFetching: loadingSales,
     isError: errorSales,
-  } = useQuery<SalesProcess[]>({
+  } = useMockableQuery<SalesProcess[]>({
     queryKey: ["sales"],
     queryFn: getSalesProcesses,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<SalesProcess>,
+    mockData: mockSalesProcesses,
   });
 
   const {
     data: stages = [],
     isFetching: loadingStages,
     isError: errorStages,
-  } = useQuery<Stage[]>({
+  } = useMockableQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Stage>,
+    mockData: mockStages,
   });
 
   const initialLoading =
