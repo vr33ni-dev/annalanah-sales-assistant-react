@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
   // process.env.NODE_ENV === "production" ? "/annalanah-sales-assistant-react/" : "/" /* npm run dev → base / → works fine on localhost:5002; npm run build in CI → base /<repo>/ → assets resolve correctly on GitHub Pages*/,
   server: {
     host: "::",
-    port: 5002,
+    port: 8080,
     // proxy /api to backend (no CORS in dev)
     proxy: {
       "/api": { target: "http://localhost:8080", changeOrigin: true },
