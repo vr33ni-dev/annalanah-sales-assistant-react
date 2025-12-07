@@ -6,6 +6,9 @@ import { MetricChip } from "@/components/MetricChip";
 import { useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { toast, useToast } from "@/components/ui/use-toast";
 
 import {
   Table,
@@ -24,13 +27,17 @@ import {
   Info,
 } from "lucide-react";
 
-import { CashflowDueTable } from "./CashflowDueTable";
+import { UpsellModal } from "@/components/upsell/UpsellModal";
+import { CashflowHistoryTable } from "./CashflowHistoryTable";
 import { useQuery } from "@tanstack/react-query";
 import {
   Contract,
   getContracts,
   getCashflowForecast,
   type CashflowRow,
+  CreateOrUpdateUpsellRequest,
+  ContractUpsell,
+  getUpsellForSalesProcess,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
@@ -41,6 +48,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
+import { formatDateOnly } from "@/helpers/date";
+import { ContractEditModal } from "@/components/contract/ContractEditModal";
 
 /* ---------------- helpers ---------------- */
 
@@ -91,16 +100,35 @@ export default function Contracts() {
   const [searchParams] = useSearchParams();
   const clientFilter = searchParams.get("client");
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null
   );
+  const [showContractEdit, setShowContractEdit] = useState(false);
+
+  const [showUpsellModal, setShowUpsellModal] = useState(false);
+  const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
+    null
+  );
+
+  // Upsell for selected contract
+  const { data: upsell, refetch: refetchUpsell } = useQuery({
+    queryKey: ["upsell", selectedContract?.sales_process_id],
+    queryFn: () =>
+      selectedContract
+        ? getUpsellForSalesProcess(selectedContract.sales_process_id)
+        : null,
+    enabled: !!selectedContract,
+    select: (list) => (list && list.length > 0 ? list[0] : null),
+  });
 
   // Contracts for table + KPIs
   const {
     data: contracts = [],
     isFetching: loadingContracts,
     isError: errorContracts,
+    refetch: refetchContracts,
   } = useQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
@@ -127,30 +155,11 @@ export default function Contracts() {
     select: (d) => asArray<CashflowRow>(d),
   });
 
-  const filteredContracts = useMemo(() => {
-    if (!clientFilter) return contracts;
-    return contracts.filter((c) => String(c.client_id) === clientFilter);
-  }, [contracts, clientFilter]);
-
-  useEffect(() => {
-    const openParam = searchParams.get("open");
-    if (openParam && filteredContracts.length > 0) {
-      // automatically open the first contract for that client
-      setSelectedContract(filteredContracts[0]);
-    }
-  }, [searchParams, filteredContracts]);
-
-  if (loadingContracts && contracts.length === 0) {
-    return <div className="p-6">Lade Verträge…</div>;
-  }
-  if (errorContracts) {
-    return (
-      <div className="p-6 text-red-500">Fehler beim Laden der Verträge.</div>
-    );
-  }
+  /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
 
   /* ---------------- KPIs from contracts ---------------- */
-
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
@@ -160,8 +169,6 @@ export default function Contracts() {
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt), REALIZED by paid_months ---- */
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
 
   let ytdCashIn = 0;
@@ -180,6 +187,65 @@ export default function Contracts() {
 
   const avgMonthlyYtd =
     monthsElapsedYtd > 0 ? Math.round(ytdCashIn / monthsElapsedYtd) : 0;
+
+  /* ---- Filtered Contracts for Active Contracts table ---- */
+  const [dateStart, setDateStart] = useState<string>(
+    startOfYear.toISOString().split("T")[0]
+  );
+  const [dateEnd, setDateEnd] = useState<string>(
+    now.toISOString().split("T")[0]
+  );
+
+  const filteredContracts = useMemo(() => {
+    let list = contracts;
+
+    // client filter
+    if (clientFilter) {
+      list = list.filter((c) => String(c.client_id) === clientFilter);
+    }
+    // date range filter
+    if (dateStart) {
+      list = list.filter((c) => c.start_date >= dateStart);
+    }
+    if (dateEnd) {
+      list = list.filter((c) => c.start_date <= dateEnd);
+    }
+    return list;
+  }, [contracts, clientFilter, dateStart, dateEnd]);
+
+  /* ----------------- Pagination ---------------- */
+  const [page, setPage] = useState(1);
+  const pageSize = 10; // contracts per page
+  const totalPages = Math.ceil(filteredContracts.length / pageSize);
+
+  const paginatedContracts = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredContracts.slice(start, start + pageSize);
+  }, [filteredContracts, page]);
+
+  /* ---------------- Effects ---------------- */
+  // Auto-open contract based on URL
+  useEffect(() => {
+    const openParam = searchParams.get("open");
+    if (openParam && filteredContracts.length > 0) {
+      // automatically open the first contract for that client
+      setSelectedContract(filteredContracts[0]);
+    }
+  }, [searchParams, filteredContracts]);
+
+  // Reset to page 1 on filter change
+  useEffect(() => {
+    setPage(1);
+  }, [dateStart, dateEnd, clientFilter]);
+
+  if (loadingContracts && contracts.length === 0) {
+    return <div className="p-6">Lade Verträge…</div>;
+  }
+  if (errorContracts) {
+    return (
+      <div className="p-6 text-red-500">Fehler beim Laden der Verträge.</div>
+    );
+  }
 
   /* ---- Next 3 months (CONFIRMED ONLY) ---- */
   const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -326,11 +392,32 @@ export default function Contracts() {
       {/* Contracts Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Aktive Verträge
-          </CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Aktive Verträge
+            </CardTitle>
+
+            {/* DATE RANGE FILTER */}
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Start"
+              />
+              <input
+                type="date"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+                placeholder="Ende"
+              />
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
@@ -345,7 +432,7 @@ export default function Contracts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredContracts.map((contract) => {
+              {paginatedContracts.map((contract) => {
                 const progressPercent =
                   (contract.paid_months / contract.duration_months) * 100;
                 return (
@@ -355,9 +442,7 @@ export default function Contracts() {
                     </TableCell>
                     <TableCell>
                       {contract.start_date
-                        ? new Date(contract.start_date).toLocaleDateString(
-                            "de-DE"
-                          )
+                        ? formatDateOnly(contract.start_date)
                         : "–"}
                     </TableCell>
                     <TableCell>{contract.duration_months} Monate</TableCell>
@@ -376,7 +461,9 @@ export default function Contracts() {
                           {contract.paid_months}/{contract.duration_months}{" "}
                           Monate
                           {contract.next_due_date
-                            ? ` • Nächste: ${contract.next_due_date}`
+                            ? ` • Nächste: ${formatDateOnly(
+                                contract.next_due_date
+                              )}`
                             : ""}
                         </p>
                       </div>
@@ -394,12 +481,35 @@ export default function Contracts() {
               })}
             </TableBody>
           </Table>
+          <div className="flex justify-between items-center mt-4">
+            <p className="text-sm text-muted-foreground">
+              Seite {page} von {totalPages}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                Zurück
+              </button>
+
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Weiter
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       {/* Cashflow Entries & Forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CashflowDueTable />
+        <CashflowHistoryTable />
         <CashflowUpcomingTable />
       </div>
       {/* ✅ Contract Detail Drawer */}
@@ -435,9 +545,7 @@ export default function Contracts() {
                   </h3>
                   <p>
                     {selectedContract.start_date
-                      ? new Date(
-                          selectedContract.start_date
-                        ).toLocaleDateString("de-DE")
+                      ? formatDateOnly(selectedContract.start_date)
                       : "–"}
                   </p>
                 </div>
@@ -455,21 +563,145 @@ export default function Contracts() {
                   </h3>
                   <p>€{selectedContract.revenue_total.toLocaleString()}</p>
                 </div>
+                {/* ---------------- Edit Contract Button ---------------- */}
+                <button
+                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                  onClick={() => setShowContractEdit(true)}
+                >
+                  Vertragsdetails bearbeiten
+                </button>
 
-                {/* Embed the CashflowEntriesTable here */}
+                {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
-                  <CashflowDueTable contractId={selectedContract.id} />
+                  <CashflowHistoryTable contractId={selectedContract.id} />
                 </div>
               </div>
               <div className="mt-6 space-y-3">
                 <h3 className="font-semibold">Prognose</h3>
                 <CashflowUpcomingTable contractId={selectedContract.id} />{" "}
               </div>
+              {/* ---------------- Upsell Section ---------------- */}
+              <div className="mt-8 border-t pt-6">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Upsell / Vertragsverlängerung
+                </h3>
+
+                {/* If upsell exists → show card */}
+                {upsell && (
+                  <div
+                    className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setEditingUpsell(upsell); // upsell (of type ContractUpsell)
+                      setShowUpsellModal(true);
+                    }}
+                  >
+                    {/* If result is verlängerung → show contract details */}
+                    {upsell.upsell_result === "verlaengerung" ? (
+                      <div className="space-y-1">
+                        <div className="font-medium text-green-600">
+                          Ergebnis: Vertragsverlängerung
+                        </div>
+
+                        {upsell.contract_start_date && (
+                          <div className="text-sm">
+                            Neuer Vertrag ab:{" "}
+                            {formatDateOnly(upsell.contract_start_date)}
+                          </div>
+                        )}
+
+                        {upsell.contract_duration_months && (
+                          <div className="text-sm">
+                            Dauer: {upsell.contract_duration_months} Monate
+                          </div>
+                        )}
+
+                        {upsell.contract_frequency && (
+                          <div className="text-sm">
+                            Zahlungsfrequenz: {upsell.contract_frequency}
+                          </div>
+                        )}
+
+                        {upsell.upsell_revenue && (
+                          <div className="text-sm">
+                            Umsatz: €{upsell.upsell_revenue.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Default: show talk date + status */
+                      <div>
+                        <div className="font-medium">
+                          Upsellgespräch:{" "}
+                          {upsell.upsell_date
+                            ? formatDateOnly(upsell.upsell_date)
+                            : "–"}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Status: {upsell.upsell_result ?? "offen"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* If no upsell exists → show button */}
+                {!upsell && (
+                  <button
+                    onClick={() => {
+                      setEditingUpsell(null);
+                      setShowUpsellModal(true);
+                    }}
+                    className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                  >
+                    Upsell planen
+                  </button>
+                )}
+              </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {showUpsellModal && (
+        <UpsellModal
+          contract={selectedContract}
+          upsell={editingUpsell}
+          onClose={() => setShowUpsellModal(false)}
+          onSaved={() => {
+            setShowUpsellModal(false);
+            refetchUpsell(); // or invalidateQueries()
+          }}
+        />
+      )}
+      {showContractEdit && (
+        <ContractEditModal
+          contract={selectedContract}
+          onClose={() => setShowContractEdit(false)}
+          onSaved={() => {
+            setShowContractEdit(false);
+
+            toast({
+              title: "Vertrag gespeichert",
+              description: "Die Änderungen wurden erfolgreich gespeichert.",
+            });
+
+            refetchContracts().then((result) => {
+              // Get fresh contract from server
+              const updated = result.data?.find(
+                (c) => c.id === selectedContract?.id
+              );
+              if (updated) {
+                setSelectedContract(updated); //  refreshes the drawer details
+              }
+            });
+
+            queryClient.invalidateQueries({ queryKey: ["cashflow-history"] });
+            queryClient.invalidateQueries({ queryKey: ["cashflow-forecast"] });
+          }}
+        />
+      )}
     </div>
   );
 }
