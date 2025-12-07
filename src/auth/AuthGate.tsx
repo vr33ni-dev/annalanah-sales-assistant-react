@@ -10,36 +10,16 @@ type Props = {
 // Detect if running in Lovable's preview environment
 const isLovablePreview = () => {
   if (typeof window === "undefined") return false;
-  return window.location.hostname.includes("lovableproject.com");
+  const host = window.location.hostname;
+  return host.includes("lovableproject.com") || host.includes("lovable.app") || host.includes("webcontainer");
 };
 
 export default function AuthGate({ children, fallback = null }: Props) {
-  const { data: me, isLoading, isError, error } = useMe();
-  const [bypassAuth, setBypassAuth] = useState(false);
-
-  useEffect(() => {
-    // In Lovable preview, bypass auth if API is unavailable (network error, not 401)
-    if (isLovablePreview() && isError) {
-      const isNetworkError = error && !("response" in error && (error as any).response?.status === 401);
-      if (isNetworkError) {
-        console.info("[AuthGate] Bypassing auth in Lovable preview (API unavailable)");
-        setBypassAuth(true);
-      }
-    }
-  }, [isError, error]);
-
-  useEffect(() => {
-    // Timeout fallback: if loading takes too long in Lovable preview, bypass
-    if (isLovablePreview() && isLoading) {
-      const timeout = setTimeout(() => {
-        console.info("[AuthGate] Bypassing auth in Lovable preview (timeout)");
-        setBypassAuth(true);
-      }, 2000);
-      return () => clearTimeout(timeout);
-    }
-  }, [isLoading]);
-
-  if (bypassAuth) {
+  const { data: me, isLoading } = useMe();
+  
+  // In Lovable preview, bypass auth immediately
+  if (isLovablePreview()) {
+    console.info("[AuthGate] Bypassing auth in Lovable preview");
     return <>{children}</>;
   }
 

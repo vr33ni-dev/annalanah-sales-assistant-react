@@ -2,6 +2,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { getStages, Stage, getNumericSetting } from "@/lib/api";
 import { CardContent } from "@/components/ui/card";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { mockStages } from "@/lib/mockData";
 
 type Row = {
   id: number;
@@ -24,10 +26,13 @@ function toStatus(s: Stage): Row["status"] {
 }
 
 export default function StageCard() {
+  const { useMockData } = useAuthEnabled();
+  
   const { data: stages, isLoading: stagesLoading } = useQuery({
     queryKey: ["stages"],
     queryFn: getStages,
     staleTime: 60_000,
+    enabled: !useMockData,
   });
 
   // Assumption: average revenue per participant (EUR/USD). Configure in /api/settings/avg_revenue_per_participant
@@ -35,20 +40,25 @@ export default function StageCard() {
     queryKey: ["avg_revenue_per_participant"],
     queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
     staleTime: 5 * 60_000,
+    enabled: !useMockData,
   });
 
-  if (stagesLoading || settingLoading)
-    return <CardContent>Loading…</CardContent>;
-  if (!stages?.length) return <CardContent>Keine Bühnen geplant.</CardContent>;
+  const effectiveStages = useMockData ? mockStages : stages;
+  const effectiveAvgRev = useMockData ? 250 : avgRev;
+  const isLoading = useMockData ? false : (stagesLoading || settingLoading);
 
-  const rows: Row[] = stages.map((s) => {
+  if (isLoading)
+    return <CardContent>Loading…</CardContent>;
+  if (!effectiveStages?.length) return <CardContent>Keine Bühnen geplant.</CardContent>;
+
+  const rows: Row[] = effectiveStages.map((s) => {
     const adBudget = Number(s.ad_budget ?? 0);
     const participants = Number(s.participants ?? 0);
     const status = toStatus(s);
 
     let roiPct: number | undefined;
-    if (adBudget > 0 && avgRev != null) {
-      const revenue = participants * avgRev;
+    if (adBudget > 0 && effectiveAvgRev != null) {
+      const revenue = participants * effectiveAvgRev;
       const roi = (revenue - adBudget) / adBudget; // e.g. 0.48 = +48%
       roiPct = Math.round(roi * 100);
     }
