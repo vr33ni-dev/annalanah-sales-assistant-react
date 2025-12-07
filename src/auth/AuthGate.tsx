@@ -18,7 +18,7 @@ export default function AuthGate({ children, fallback = null }: Props) {
   const [bypassAuth, setBypassAuth] = useState(false);
 
   useEffect(() => {
-    // If we're in Lovable preview and got a network error (not 401), bypass auth
+    // In Lovable preview, bypass auth if API is unavailable (network error, not 401)
     if (isLovablePreview() && isError) {
       const isNetworkError = error && !("response" in error && (error as any).response?.status === 401);
       if (isNetworkError) {
@@ -27,6 +27,17 @@ export default function AuthGate({ children, fallback = null }: Props) {
       }
     }
   }, [isError, error]);
+
+  useEffect(() => {
+    // Timeout fallback: if loading takes too long in Lovable preview, bypass
+    if (isLovablePreview() && isLoading) {
+      const timeout = setTimeout(() => {
+        console.info("[AuthGate] Bypassing auth in Lovable preview (timeout)");
+        setBypassAuth(true);
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading]);
 
   if (bypassAuth) {
     return <>{children}</>;
