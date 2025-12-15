@@ -104,6 +104,22 @@ export const deleteClient = async (id: string | number): Promise<void> => {
   await api.delete(`/clients/${id}`);
 };
 
+/* Leads */
+export type Lead = {
+  id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  source?: string | null;
+  source_stage_id?: number | null;
+  created_at?: string | null;
+};
+
+export const createLead = async (payload: Partial<Lead>): Promise<Lead> => {
+  const { data } = await api.post("/leads", payload);
+  return data as Lead;
+};
+
 /* Sales processes */
 export interface SalesProcess {
   id: number;
@@ -183,12 +199,40 @@ export type StartSalesProcessRequest = {
   source: string;
   source_stage_id?: number | null;
   follow_up_date: string;
+  lead_id?: number | null;
+  merge_strategy?: "keep_existing" | "overwrite";
 };
 
 export interface StartSalesProcessResponse {
   sales_process_id: number;
   client: Client;
   sales_process: SalesProcess;
+}
+
+/**
+ * POST /sales/start
+ */
+export async function startSalesProcess(
+  payload: StartSalesProcessRequest
+): Promise<StartSalesProcessResponse> {
+  const res = await fetch("/api/sales/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw {
+      response: {
+        status: res.status,
+        data,
+      },
+    };
+  }
+
+  return data;
 }
 
 /* Upsells */
@@ -222,13 +266,12 @@ export type CreateOrUpdateUpsellRequest = {
   contract_frequency?: "monthly" | "bi-monthly" | "quarterly" | null;
 };
 
-/**
- * POST /sales/start
- */
-export const startSalesProcess = async (
-  payload: StartSalesProcessRequest
-): Promise<void> => {
-  await api.post("/sales/start", payload);
+export type UpsellAnalytics = {
+  verlangerung_count: number;
+  keine_verlaengerung_count: number;
+  scheduled_count: number;
+  verlangerungsquote: number | null;
+  umsatz_sum: number;
 };
 
 /* Contracts */
@@ -394,6 +437,17 @@ export const listUpsellCategories = async () => {
     successful: ContractUpsell[];
     unsuccessful: ContractUpsell[];
   };
+};
+
+// Flattened list of all upsells
+export const getUpsells = async () => {
+  const data = await listUpsellCategories();
+
+  return [
+    ...(data.scheduled ?? []),
+    ...(data.successful ?? []),
+    ...(data.unsuccessful ?? []),
+  ];
 };
 
 /** GET /sales/upsells/analytics */

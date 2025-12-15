@@ -18,6 +18,9 @@ import {
   startSalesProcess,
   updateSalesProcess,
   SalesProcessUpdateRequest,
+  createLead,
+  StartSalesProcessResponse,
+  StartSalesProcessRequest,
 } from "@/lib/api";
 
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
@@ -52,6 +55,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
+import {
+  ClientExistsErrorResponse,
+  MergeConflicts,
+  StartSalesProcessWithMerge,
+} from "@/types/merge";
+import { isFetchError, StartSalesProcessError } from "@/types/apiError";
+import { MergeConflictDialog } from "@/components/MergeConflictDialog";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -114,6 +124,15 @@ export default function SalesProcessView() {
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [existingClientId, setExistingClientId] = useState<number | null>(null);
+  const [hasActiveContract, setHasActiveContract] = useState(false);
+
+  // Form Merge conflict state
+  const [mergeConflicts, setMergeConflicts] = useState<MergeConflicts | null>(
+    null
+  );
+  const [pendingPayload, setPendingPayload] =
+    useState<StartSalesProcessRequest | null>(null);
 
   type StatusFilter =
     | "all"
@@ -139,17 +158,57 @@ export default function SalesProcessView() {
     contractStart: null as Date | null,
     contractFrequency: "" as "" | "monthly" | "bi-monthly" | "quarterly",
     clientId: undefined as number | undefined,
+    leadId: undefined as number | undefined,
     completedAt: null as string | null,
   });
 
   const mStart = useMutation({
     mutationFn: startSalesProcess,
-    onSuccess: () => {
+
+    onSuccess: (data: StartSalesProcessResponse) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
+      setMergeConflicts(null);
+      setPendingPayload(null);
+      setExistingClientId(null);
       resetAll();
     },
-    onError: (err: unknown) =>
-      alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`),
+
+    onError: (err: unknown) => {
+      // ✅ HARD REQUIREMENT
+      if (!isFetchError(err)) {
+        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+        return;
+      }
+
+      const { status, data } = err.response;
+
+      // Defensive guard
+      if (status !== 409 || typeof data !== "object" || data === null) {
+        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+        return;
+      }
+
+      const apiError = data as StartSalesProcessError;
+
+      // 🚫 Client has active contract → redirect, no merge allowed
+      if (apiError.error === "client_has_active_contract") {
+        navigate(`/contracts?client=${apiError.client_id}&open=1`);
+        return;
+      }
+
+      // 🔁 Merge required
+      if (apiError.error === "client_exists") {
+        setExistingClientId(apiError.client_id);
+        setHasActiveContract(apiError.has_active_contract ?? false);
+
+        setMergeConflicts(apiError.conflicts ?? {});
+        setPendingPayload(apiError.original_payload);
+
+        return;
+      }
+
+      alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+    },
   });
 
   const mPatch = useMutation<
@@ -198,6 +257,18 @@ export default function SalesProcessView() {
     } catch {
       return null;
     }
+  }
+
+  function normalizeStartPayload(
+    p: StartSalesProcessRequest
+  ): StartSalesProcessRequest {
+    return {
+      ...p,
+      follow_up_date:
+        typeof p.follow_up_date === "string"
+          ? p.follow_up_date.slice(0, 10) // 🔥 force YYYY-MM-DD
+          : format(p.follow_up_date!, "yyyy-MM-dd"),
+    };
   }
 
   type DateFilterType = "all" | "past" | "upcoming" | "today";
@@ -284,6 +355,7 @@ export default function SalesProcessView() {
       contractStart: null,
       contractFrequency: "",
       clientId: undefined,
+      leadId: undefined,
       completedAt: null,
     });
   };
@@ -294,6 +366,27 @@ export default function SalesProcessView() {
       if (!formData.name || !formData.zweitgespraechDate || !formData.source)
         return;
 
+      let resolvedLeadId: number | undefined = formData.leadId;
+
+      // Create or reuse lead if we don’t already have one
+      if (!formData.clientId && !resolvedLeadId) {
+        try {
+          const lead = await createLead({
+            name: formData.name,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined,
+            source: formData.source,
+            source_stage_id:
+              formData.source === "paid" ? formData.stageId ?? null : null,
+          });
+
+          resolvedLeadId = lead.id; // IMPORTANT: local, synchronous
+        } catch (err: unknown) {
+          alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
+          return;
+        }
+      }
+
       const payload = {
         name: formData.name,
         email: formData.email ?? "",
@@ -301,17 +394,19 @@ export default function SalesProcessView() {
         source: formData.source,
         source_stage_id:
           formData.source === "paid" ? formData.stageId ?? null : null,
-        follow_up_date: formData.zweitgespraechDate
-          ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
-          : null,
+        lead_id: resolvedLeadId, // ← always correct
+        follow_up_date: format(formData.zweitgespraechDate!, "yyyy-MM-dd"),
       };
 
-      await mStart.mutateAsync(payload);
+      await mStart.mutateAsync({
+        ...payload,
+      });
+
       return;
     }
 
+    // Step 2 unchanged
     if (formStep === 2) {
-      // Step 2: record zweitgespräch result
       if (!formData.salesProcessId) return;
 
       await mPatch.mutateAsync({
@@ -323,8 +418,8 @@ export default function SalesProcessView() {
       return;
     }
 
+    // Step 3 unchanged
     if (formStep === 3) {
-      // Step 3: record closing
       if (!formData.salesProcessId) return;
 
       const revenueNum =
@@ -341,24 +436,61 @@ export default function SalesProcessView() {
           : undefined,
       };
 
-      // Contract details if closed (required by backend)
       if (formData.abschluss) {
         payload.contract_duration_months = Number(formData.contractDuration);
         payload.contract_start_date = formData.contractStart
           ? format(formData.contractStart, "yyyy-MM-dd")
           : undefined;
-        payload.contract_frequency = (formData.contractFrequency ||
-          undefined) as "monthly" | "bi-monthly" | "quarterly" | undefined;
+        payload.contract_frequency = formData.contractFrequency as
+          | "monthly"
+          | "bi-monthly"
+          | "quarterly";
       }
 
       await mPatch.mutateAsync({ id: formData.salesProcessId, payload });
       resetAll();
     }
   };
+
   const isFollowUpFuture = isFutureDate(formData.zweitgespraechDate);
+  const handleMergeKeepExisting = async () => {
+    if (!pendingPayload || !existingClientId) return;
+
+    await mStart.mutateAsync(
+      normalizeStartPayload({
+        ...pendingPayload,
+        merge_strategy: "keep_existing",
+      })
+    );
+  };
+
+  const handleMergeOverwrite = async () => {
+    if (!pendingPayload || !existingClientId) return;
+
+    await mStart.mutateAsync(
+      normalizeStartPayload({
+        ...pendingPayload,
+        merge_strategy: "overwrite",
+      })
+    );
+  };
 
   return (
     <div className="space-y-6">
+      <MergeConflictDialog
+        open={mergeConflicts !== null}
+        conflicts={mergeConflicts ?? {}}
+        hasActiveContract={hasActiveContract}
+        disableOverwrite={hasActiveContract}
+        onCancel={() => {
+          setMergeConflicts(null);
+          setPendingPayload(null);
+          setExistingClientId(null);
+        }}
+        onKeepExisting={handleMergeKeepExisting}
+        onOverwrite={handleMergeOverwrite}
+      />
+
       {/* header */}
       <div className="flex justify-between items-center">
         <div>

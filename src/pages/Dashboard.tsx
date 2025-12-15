@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KPICard } from "@/components/KPICard";
 import { Badge } from "@/components/ui/badge";
+
 import {
   DollarSign,
   Users,
@@ -10,198 +11,256 @@ import {
   FileText,
   Target,
 } from "lucide-react";
+
 import {
   getClients,
   getContracts,
   getSalesProcesses,
   getStages,
+  getUpsells,
+  getUpsellAnalytics,
   type Client,
   type Contract,
   type SalesProcess,
   type Stage,
+  type ContractUpsell,
+  UpsellAnalytics,
 } from "@/lib/api";
+
+import {
+  mockClients,
+  mockContracts,
+  mockSalesProcesses,
+  mockStages,
+  mockUpsells,
+  mockUpsellAnalytics,
+} from "@/lib/mockData";
+
 import { asArray } from "@/lib/safe";
-import StageCard from "./StageCard";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockClients, mockContracts, mockSalesProcesses, mockStages } from "@/lib/mockData";
+
+import StageCard from "./StageCard";
+import { useState } from "react";
+import type { DateRange } from "react-day-picker";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import { startOfMonth } from "date-fns";
+
+// small utility
+const euro = (n: number) =>
+  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
+    n
+  );
 
 export default function Dashboard() {
-  const {
-    data: clients = [],
-    isFetching: loadingClients,
-    isError: errorClients,
-  } = useMockableQuery<Client[]>({
+  // -----------------------------
+  // LOAD DATA
+  // -----------------------------
+  const { data: clients = [] } = useMockableQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: getClients,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
     select: asArray<Client>,
     mockData: mockClients,
   });
 
-  const {
-    data: contracts = [],
-    isFetching: loadingContracts,
-    isError: errorContracts,
-  } = useMockableQuery<Contract[]>({
+  const { data: contracts = [] } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
     mockData: mockContracts,
   });
 
-  const {
-    data: salesProcesses = [],
-    isFetching: loadingSales,
-    isError: errorSales,
-  } = useMockableQuery<SalesProcess[]>({
+  const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
     queryKey: ["sales"],
     queryFn: getSalesProcesses,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
     select: asArray<SalesProcess>,
     mockData: mockSalesProcesses,
   });
 
-  const {
-    data: stages = [],
-    isFetching: loadingStages,
-    isError: errorStages,
-  } = useMockableQuery<Stage[]>({
+  const { data: stages = [] } = useMockableQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
     select: asArray<Stage>,
     mockData: mockStages,
   });
 
-  const initialLoading =
-    (loadingClients && clients.length === 0) ||
-    (loadingContracts && contracts.length === 0) ||
-    (loadingSales && salesProcesses.length === 0) ||
-    (loadingStages && stages.length === 0);
+  const { data: upsells = [] } = useMockableQuery<ContractUpsell[]>({
+    queryKey: ["upsells"],
+    queryFn: getUpsells,
+    select: asArray<ContractUpsell>,
+    mockData: mockUpsells,
+  });
 
-  const anyError = errorClients || errorContracts || errorSales || errorStages;
+  const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
+    queryKey: ["upsellAnalytics"],
+    queryFn: getUpsellAnalytics,
+    mockData: mockUpsellAnalytics,
+  });
 
-  if (initialLoading) return <div className="p-6">Loading…</div>;
-  if (anyError)
-    return <div className="p-6 text-red-500">Error loading dashboard data</div>;
+  // -----------------------------
+  // DATE RANGE
+  // -----------------------------
+  const [range, setRange] = useState<DateRange>({
+    from: startOfMonth(new Date()),
+    to: new Date(),
+  });
 
-  // KPIs (arrays guaranteed)
-  const totalRevenueNumber = contracts.reduce(
-    (sum, c) => sum + (c.revenue_total ?? 0),
+  const inRange = (dateStr?: string | null) => {
+    if (!dateStr || !range.from || !range.to) return false;
+    const d = new Date(dateStr);
+    return d >= range.from && d <= range.to;
+  };
+
+  // -----------------------------
+  // HELPER
+  // -----------------------------
+  function groupBy<T, K extends string | number>(
+    list: readonly T[],
+    keyFn: (item: T) => K
+  ): Record<K, T[]> {
+    return list.reduce((acc, item) => {
+      const key = keyFn(item);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {} as Record<K, T[]>);
+  }
+
+  // -----------------------------
+  // KPI: REVENUE
+  // -----------------------------
+  const contractsInRange = contracts.filter((c) => inRange(c.start_date));
+
+  const totalRevenue = contractsInRange.reduce(
+    (s, c) => s + (c.revenue_total ?? 0),
     0
   );
-  const totalRevenue = new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(totalRevenueNumber);
-  const totalClients = clients.length;
 
-  const callsWithDate = salesProcesses.filter((sp) => !!sp.follow_up_date);
-  const appeared = salesProcesses.filter(
+  // Group upsells per client
+  const upsellByClient = groupBy(upsells, (u) => u.client_id);
+
+  // Correct classification logic:
+  // A sales process is a RENEWAL process only if an upsell
+  // happened BEFORE the follow-up call.
+  function isRenewalProcess(sp: SalesProcess) {
+    const clientUpsells = upsellByClient[sp.client_id] ?? [];
+    if (!sp.follow_up_date) return false;
+
+    const f = new Date(sp.follow_up_date);
+
+    return clientUpsells.some((u) => {
+      if (!u.upsell_date) return false; // ignore nulls
+      return new Date(u.upsell_date) < f; // upsell happened BEFORE call
+    });
+  }
+
+  // Revenue split
+  const newCustomerRevenue = contractsInRange
+    .filter((c) => {
+      const sp = salesProcesses.find((s) => s.id === c.sales_process_id);
+      if (!sp) return false;
+      return !isRenewalProcess(sp); // classify by process
+    })
+    .reduce((s, c) => s + (c.revenue_total ?? 0), 0);
+
+  const renewalRevenue = upsellAnalytics?.umsatz_sum ?? 0;
+
+  // -----------------------------
+  // KPI: ACTIVE CONTRACTS
+  // -----------------------------
+  const today = new Date();
+  const activeContracts = contracts.filter((c) => {
+    const start = new Date(c.start_date);
+    const end = new Date(c.end_date_computed ?? c.start_date);
+    return start <= today && end >= today;
+  }).length;
+
+  // -----------------------------
+  // KPI: ABSCHLUSSQUOTE (NEUKUNDEN)
+  // -----------------------------
+  // IMPORTANT:
+  // Do NOT filter by stage === "follow_up"
+  // because closed/lost calls no longer have stage "follow_up".
+  // A new-customer sales call is any call with a follow_up_date.
+
+  const newCustomerCalls = salesProcesses.filter(
+    (sp) =>
+      sp.follow_up_date && inRange(sp.follow_up_date) && !isRenewalProcess(sp)
+  );
+
+  // Appeared = customer showed up
+  const appearedNew = newCustomerCalls.filter(
     (sp) => sp.follow_up_result === true
   ).length;
-  const appearanceRate = callsWithDate.length
-    ? `${Math.round((appeared / callsWithDate.length) * 100)}%`
-    : "—";
 
-  const closed = salesProcesses.filter((sp) => sp.closed === true).length;
-  const closingRate = callsWithDate.length
-    ? `${Math.round((closed / callsWithDate.length) * 100)}%`
-    : "—";
+  // Closed = deal won
+  const closedNew = newCustomerCalls.filter((sp) => sp.closed === true).length;
 
-  const now = Date.now();
-  const upcomingStages = stages.filter(
-    (s) => s.date && new Date(s.date).getTime() > now
-  ).length;
-  const pendingCalls = salesProcesses.filter(
-    (sp) => sp.follow_up_date && new Date(sp.follow_up_date).getTime() > now
-  ).length;
-  const activeContracts = contracts.length;
+  const closingRateNew =
+    appearedNew > 0 ? Math.round((closedNew / appearedNew) * 100) + "%" : "—";
 
+  // -----------------------------
+  // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
+  // -----------------------------
+  const renewalRate =
+    upsellAnalytics?.verlangerungsquote != null
+      ? upsellAnalytics.verlangerungsquote + "%"
+      : "—";
+
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Geschäftsübersicht und wichtige Kennzahlen
-          </p>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Geschäftsübersicht & KPIs</p>
         </div>
       </div>
 
-      {/* KPI Grid */}
+      <div className="flex justify-between items-center mb-4">
+        <DateRangePicker value={range} onChange={setRange} />
+      </div>
+
+      {/* KPI GRID 1 — Revenue */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Gesamtumsatz"
-          value={totalRevenue}
-          change="+12% vom letzten Monat"
-          changeType="positive"
+          value={euro(totalRevenue)}
           icon={DollarSign}
-          description="Gesamtumsatz aller Zeiten"
         />
-        <KPICard
-          title="Kunden Gesamt"
-          value={totalClients}
-          change="+1 neue diesen Monat"
-          changeType="positive"
-          icon={Users}
-          description="Gesamte Einträge"
-        />
-        <KPICard
-          title="Erscheinungsquote"
-          value={appearanceRate}
-          change="+2% vs letztem Monat"
-          changeType="positive"
-          icon={Target}
-          description="Show-up Rate für Gespräche"
-        />
-        <KPICard
-          title="Abschlussquote"
-          value={closingRate}
-          change="+8% vs letztem Monat"
-          changeType="positive"
-          icon={TrendingUp}
-          description="Deal Abschlussrate"
-        />
-      </div>
 
-      {/* Secondary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
-          title="Abgeschlossene Zweitgespräche"
-          value={closed}
-          change="+1 diese Woche"
-          changeType="positive"
-          icon={Phone}
-          description="Zweitgespräche durchgeführt"
-        />
-        <KPICard
-          title="Kommende Bühnen"
-          value={upcomingStages}
-          description="Events diesen Monat"
-          icon={Calendar}
-        />
-        <KPICard
-          title="Ausstehende Zweitgespräche"
-          value={pendingCalls}
-          description="Zweitgespräch geplant"
-          icon={Phone}
-        />
         <KPICard
           title="Aktive Verträge"
           value={activeContracts}
-          description="Umsatz generierend"
           icon={FileText}
+        />
+
+        <KPICard
+          title="Umsatz durch Neukunden"
+          value={euro(newCustomerRevenue)}
+          icon={TrendingUp}
+        />
+
+        <KPICard
+          title="Umsatz durch Verlängerungen"
+          value={euro(renewalRevenue)}
+          icon={TrendingUp}
         />
       </div>
 
-      {/* Dashboard Header with ROI per Stage */}
+      {/* KPI GRID 2 — Performance */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <KPICard
+          title="Abschlussquote Neukunden"
+          value={closingRateNew}
+          icon={Target}
+        />
+
+        <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />
+      </div>
+
+      {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>Workshops</CardHeader>
@@ -215,32 +274,36 @@ export default function Dashboard() {
               Kürzliche Aktivitäten
             </CardTitle>
           </CardHeader>
+
           <CardContent>
             <div className="space-y-3">
               <div className="text-sm text-muted-foreground">
-                Neueste Kundeninteraktionen
+                Neueste Interaktionen
               </div>
+
               <div className="space-y-2">
-                {contracts.slice(0, 2).map((c) => (
+                {contracts.slice(0, 3).map((c) => (
                   <div
                     key={c.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>{`Vertrag #${c.id} - Client ${c.client_id}`}</span>
+                    <span>
+                      Vertrag #{c.id} — Client {c.client_id}
+                    </span>
                     <Badge className="bg-success text-success-foreground">
-                      {new Intl.NumberFormat("de-DE", {
-                        style: "currency",
-                        currency: "EUR",
-                      }).format(c.revenue_total ?? 0)}
+                      {euro(c.revenue_total ?? 0)}
                     </Badge>
                   </div>
                 ))}
-                {salesProcesses.slice(0, 1).map((s) => (
+
+                {salesProcesses.slice(0, 2).map((s) => (
                   <div
                     key={s.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>{`Verkaufsprozess #${s.id} - ${s.stage}`}</span>
+                    <span>
+                      Salesprozess #{s.id} — {s.stage}
+                    </span>
                     <Badge variant="outline">{s.follow_up_date ?? "—"}</Badge>
                   </div>
                 ))}
