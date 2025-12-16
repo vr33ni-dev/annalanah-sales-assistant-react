@@ -11,9 +11,11 @@ type Props = {
   open: boolean;
   conflicts: MergeConflicts;
   hasActiveContract: boolean;
+  matchReason?: "email" | "lead";
   disableOverwrite: boolean;
-  onKeepExisting: () => void;
-  onOverwrite: () => void;
+  overwriteDisabledReason?: string;
+  onKeepExisting: () => void | Promise<void>;
+  onOverwrite: () => void | Promise<void>;
   onCancel: () => void;
 };
 
@@ -22,6 +24,7 @@ export function MergeConflictDialog({
   conflicts,
   hasActiveContract,
   disableOverwrite,
+  overwriteDisabledReason,
   onKeepExisting,
   onOverwrite,
   onCancel,
@@ -51,15 +54,14 @@ export function MergeConflictDialog({
         {/* 🔁 No active contract */}
         {!hasActiveContract && (
           <>
-            {/* ℹ️ Explanation when overwrite disabled */}
-            {disableOverwrite && (
-              <p className="text-xs text-muted-foreground">
-                Bei bestehenden Kunden können nur vorhandene Daten übernommen
-                werden. Neue Daten dürfen nicht überschrieben werden.
-              </p>
+            {/* ❌ Overwrite not allowed → explanation */}
+            {disableOverwrite && overwriteDisabledReason && (
+              <div className="rounded-md border border-muted bg-muted/30 p-3 text-xs text-muted-foreground">
+                {overwriteDisabledReason}
+              </div>
             )}
 
-            {/* 🟡 No field conflicts, but open sales exists */}
+            {/* 🟡 No field conflicts */}
             {!hasConflicts && (
               <p className="text-sm text-muted-foreground">
                 Für diesen Kunden existiert bereits ein laufender
@@ -103,10 +105,12 @@ export function MergeConflictDialog({
 
             <Button
               onClick={onOverwrite}
-              disabled={disableOverwrite}
+              disabled={disableOverwrite || hasActiveContract}
               title={
-                disableOverwrite
-                  ? "Überschreiben ist bei bestehenden Kunden nicht erlaubt"
+                hasActiveContract
+                  ? "Überschreiben ist bei aktivem Vertrag nicht erlaubt"
+                  : disableOverwrite
+                  ? overwriteDisabledReason
                   : undefined
               }
             >

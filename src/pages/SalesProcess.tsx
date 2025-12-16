@@ -55,11 +55,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
-import {
-  ClientExistsErrorResponse,
-  MergeConflicts,
-  StartSalesProcessWithMerge,
-} from "@/types/merge";
+import { MergeConflicts } from "@/types/merge";
 import { isFetchError, StartSalesProcessError } from "@/types/apiError";
 import { MergeConflictDialog } from "@/components/MergeConflictDialog";
 
@@ -170,11 +166,12 @@ export default function SalesProcessView() {
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
+      setHasActiveContract(false); // ✅ reset
       resetAll();
     },
 
+    // ⬇️ REPLACE your current onError with this
     onError: (err: unknown) => {
-      // ✅ HARD REQUIREMENT
       if (!isFetchError(err)) {
         alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
         return;
@@ -182,7 +179,6 @@ export default function SalesProcessView() {
 
       const { status, data } = err.response;
 
-      // Defensive guard
       if (status !== 409 || typeof data !== "object" || data === null) {
         alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
         return;
@@ -190,20 +186,21 @@ export default function SalesProcessView() {
 
       const apiError = data as StartSalesProcessError;
 
-      // 🚫 Client has active contract → redirect, no merge allowed
+      // 🚫 ACTIVE CONTRACT → overwrite BLOCKED
       if (apiError.error === "client_has_active_contract") {
-        navigate(`/contracts?client=${apiError.client_id}&open=1`);
+        setHasActiveContract(true); // 🔒 important
+        setMergeConflicts({}); // open dialog
+        setPendingPayload(null); // nothing to retry
+        setExistingClientId(apiError.client_id);
         return;
       }
 
-      // 🔁 Merge required
+      // 🔁 Merge possible (NO active contract)
       if (apiError.error === "client_exists") {
         setExistingClientId(apiError.client_id);
         setHasActiveContract(apiError.has_active_contract ?? false);
-
         setMergeConflicts(apiError.conflicts ?? {});
         setPendingPayload(apiError.original_payload);
-
         return;
       }
 
@@ -454,18 +451,16 @@ export default function SalesProcessView() {
 
   const isFollowUpFuture = isFutureDate(formData.zweitgespraechDate);
   const handleMergeKeepExisting = async () => {
-    if (!pendingPayload || !existingClientId) return;
-
-    await mStart.mutateAsync(
-      normalizeStartPayload({
-        ...pendingPayload,
-        merge_strategy: "keep_existing",
-      })
-    );
+    if (!pendingPayload) return;
+    await mStart.mutateAsync({
+      ...pendingPayload,
+      merge_strategy: "keep_existing",
+    });
   };
 
   const handleMergeOverwrite = async () => {
-    if (!pendingPayload || !existingClientId) return;
+    if (hasActiveContract) return; // 🔒 safety
+    if (!pendingPayload) return;
 
     await mStart.mutateAsync(
       normalizeStartPayload({

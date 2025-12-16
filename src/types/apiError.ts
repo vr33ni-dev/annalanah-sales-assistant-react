@@ -1,7 +1,7 @@
-import { StartSalesProcessRequest } from "@/lib/api";
-import { MergeConflicts } from "./merge";
+import type { MergeConflicts } from "@/types/merge";
+import type { StartSalesProcessRequest } from "@/lib/api";
 
-// src/types/apiError.ts
+// Generic fetch error wrapper
 export type FetchError<T = unknown> = {
   response: {
     status: number;
@@ -18,12 +18,16 @@ export function isFetchError<T = unknown>(err: unknown): err is FetchError<T> {
   );
 }
 
-export type ClientExistsErrorResponse = {
+// --- Specific API error payloads ---
+
+export type ClientExistsError = {
   error: "client_exists";
   client_id: number;
   has_active_contract: boolean;
   conflicts: MergeConflicts;
   original_payload: StartSalesProcessRequest;
+  overwrite_allowed: boolean;
+  match_reason: "email" | "lead";
 };
 
 export type ClientHasActiveContractError = {
@@ -31,11 +35,6 @@ export type ClientHasActiveContractError = {
   client_id: number;
 };
 
-export type StartSalesProcessError = {
-  error: "client_exists" | "client_has_active_contract";
-  client_id: number;
-  has_active_contract?: boolean;
-  has_open_sales?: boolean;
-  conflicts?: MergeConflicts;
-  original_payload?: StartSalesProcessRequest;
-};
+export type StartSalesProcessError =
+  | ClientExistsError
+  | ClientHasActiveContractError;
