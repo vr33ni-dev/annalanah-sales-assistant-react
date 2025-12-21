@@ -12,6 +12,7 @@ import {
 } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import Dashboard from "./pages/Dashboard";
+import Leads from "./pages/Leads";
 import Clients from "./pages/Clients";
 import SalesProcess from "./pages/SalesProcess";
 import Contracts from "./pages/Contracts";
@@ -96,6 +97,7 @@ const App = () => {
             {/* Everything below here is protected */}
             <Route element={<ProtectedShell />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/leads" element={<Leads />} />
               <Route path="/clients" element={<Clients />} />
               <Route path="/sales" element={<SalesProcess />} />
               <Route path="/contracts" element={<Contracts />} />
