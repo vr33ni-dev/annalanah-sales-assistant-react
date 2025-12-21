@@ -47,7 +47,6 @@ export default function Clients() {
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editedClient, setEditedClient] = useState<Partial<Client>>({});
 
-  const { useMockData } = useAuthEnabled();
   const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Client[]>({

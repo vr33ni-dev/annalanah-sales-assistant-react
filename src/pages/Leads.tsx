@@ -59,7 +59,9 @@ export default function Leads() {
   if (isFetching && leads.length === 0)
     return <div className="p-6">Loading…</div>;
   if (error)
-    return <div className="p-6 text-destructive">Fehler beim Laden der Leads.</div>;
+    return (
+      <div className="p-6 text-destructive">Fehler beim Laden der Leads.</div>
+    );
 
   return (
     <div className="space-y-6">
@@ -162,7 +164,10 @@ export default function Leads() {
                         Konvertiert
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        className="text-muted-foreground"
+                      >
                         Offen
                       </Badge>
                     )}
