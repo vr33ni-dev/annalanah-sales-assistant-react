@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,6 +17,8 @@ import { Search, Pencil, Save, X, Trash } from "lucide-react";
 import { Client, getClients } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockClients } from "@/lib/mockData";
 
 const sourceLabels = {
   organic: "Organic",
@@ -45,16 +47,16 @@ export default function Clients() {
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editedClient, setEditedClient] = useState<Partial<Client>>({});
 
-  const { enabled } = useAuthEnabled();
+  const { useMockData } = useAuthEnabled();
   const queryClient = useQueryClient();
 
-  const { data, isFetching, error } = useQuery({
+  const { data, isFetching, error } = useMockableQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: getClients,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: (d) => asArray<Client>(d),
+    mockData: mockClients,
   });
 
   const clients = data ?? [];

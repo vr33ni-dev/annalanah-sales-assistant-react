@@ -2,7 +2,9 @@
 import { SALES_STAGE } from "@/constants/stages";
 import { STAGE_LABELS } from "@/constants/labels";
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockSalesProcesses, mockStages } from "@/lib/mockData";
 import { format } from "date-fns";
 import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate } from "react-router-dom";
@@ -74,7 +76,7 @@ const stageBadgeClass: Record<
 
 export default function SalesProcessView() {
   const qc = useQueryClient();
-  const { enabled } = useAuthEnabled();
+  const { useMockData } = useAuthEnabled();
   const navigate = useNavigate();
 
   function isFutureDate(date?: Date | null) {
@@ -91,28 +93,28 @@ export default function SalesProcessView() {
     data: sales = [],
     isFetching: loadingSales,
     isError: errorSales,
-  } = useQuery<SalesProcessWithStageId[]>({
+  } = useMockableQuery<SalesProcessWithStageId[]>({
     queryKey: ["sales"],
     queryFn: getSalesProcesses as unknown as () => Promise<
       SalesProcessWithStageId[]
     >,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<SalesProcessWithStageId>,
+    mockData: mockSalesProcesses as SalesProcessWithStageId[],
   });
 
   const {
     data: stages = [],
     isFetching: loadingStages,
     isError: errorStages,
-  } = useQuery<Stage[]>({
+  } = useMockableQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Stage>,
+    mockData: mockStages,
   });
 
   // Form state
