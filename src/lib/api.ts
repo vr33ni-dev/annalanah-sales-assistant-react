@@ -112,7 +112,16 @@ export type Lead = {
   phone?: string | null;
   source?: string | null;
   source_stage_id?: number | null;
+  source_stage_name?: string | null;
+  converted?: boolean;
+  converted_at?: string | null;
+  converted_client_id?: number | null;
   created_at?: string | null;
+};
+
+export const getLeads = async (): Promise<Lead[]> => {
+  const { data } = await api.get("/leads");
+  return asArray<Lead>(data);
 };
 
 export const createLead = async (payload: Partial<Lead>): Promise<Lead> => {

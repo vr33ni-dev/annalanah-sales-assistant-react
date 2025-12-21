@@ -1,12 +1,10 @@
-import { useState } from "react";
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   TrendingUp,
   FileText,
   Calendar,
-  DollarSign,
-  BarChart3,
   BrainIcon,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
@@ -20,12 +18,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 
 const navigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Leads", url: "/leads", icon: UserPlus },
   { title: "Kunden", url: "/clients", icon: Users },
   { title: "Verkaufsprozess", url: "/sales", icon: TrendingUp },
   { title: "Verträge & Cashflow", url: "/contracts", icon: FileText },
