@@ -60,6 +60,8 @@ import { Switch } from "@/components/ui/switch";
 import { MergeConflicts } from "@/types/merge";
 import { isFetchError, StartSalesProcessError } from "@/types/apiError";
 import { MergeConflictDialog } from "@/components/MergeConflictDialog";
+import { LeadSearch } from "@/components/LeadSearch";
+import { Lead } from "@/lib/api";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -523,6 +525,37 @@ export default function SalesProcessView() {
             {/* Step 1 */}
             {formStep === 1 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Lead Search */}
+                <div className="col-span-full space-y-2">
+                  <Label>Bestehenden Lead auswählen (optional)</Label>
+                  <LeadSearch
+                    selectedLeadId={formData.leadId}
+                    onSelectLead={(lead: Lead | null) => {
+                      if (lead) {
+                        setFormData({
+                          ...formData,
+                          leadId: lead.id,
+                          name: lead.name,
+                          email: lead.email ?? "",
+                          phone: lead.phone ?? "",
+                          source: (lead.source as "organic" | "paid") ?? "",
+                          stageId: lead.source_stage_id ?? null,
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          leadId: undefined,
+                          name: "",
+                          email: "",
+                          phone: "",
+                          source: "",
+                          stageId: null,
+                        });
+                      }
+                    }}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="name">Name (Vor- und Nachname)</Label>
                   <Input
