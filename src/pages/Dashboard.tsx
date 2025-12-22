@@ -269,7 +269,9 @@ export default function Dashboard() {
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader>Workshops</CardHeader>
+          <CardHeader>
+            <CardTitle>Workshops</CardTitle>
+          </CardHeader>
           <StageCard />
         </Card>
 
