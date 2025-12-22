@@ -1,13 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KPICard } from "@/components/KPICard";
 import { Badge } from "@/components/ui/badge";
+import { MonthlyKPITable } from "@/components/MonthlyKPITable";
 
 import {
   DollarSign,
-  Users,
   TrendingUp,
   Calendar,
-  Phone,
   FileText,
   Target,
 } from "lucide-react";
@@ -259,6 +258,13 @@ export default function Dashboard() {
 
         <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />
       </div>
+
+      {/* MONTHLY COMPARISON TABLE */}
+      <MonthlyKPITable 
+        contracts={contracts} 
+        salesProcesses={salesProcesses} 
+        upsells={upsells} 
+      />
 
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

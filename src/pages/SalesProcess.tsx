@@ -167,6 +167,8 @@ export default function SalesProcessView() {
 
     onSuccess: (data: StartSalesProcessResponse) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
