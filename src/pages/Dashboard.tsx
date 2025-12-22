@@ -270,10 +270,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Workshops
-            </CardTitle>
+            <CardTitle>Workshops</CardTitle>
           </CardHeader>
           <StageCard />
         </Card>
