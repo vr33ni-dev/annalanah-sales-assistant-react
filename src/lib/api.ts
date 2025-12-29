@@ -406,6 +406,26 @@ export const updateStageParticipant = async (
   await api.patch(`/stages/${stageId}/participants/${participantId}`, payload);
 };
 
+/* Stage participants list */
+export interface StageParticipant {
+  id: number;
+  stage_id: number;
+  lead_id?: number | null;
+  client_id?: number | null;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  attended: boolean;
+  created_at?: string;
+}
+
+export const getStageParticipants = async (
+  stageId: string | number
+): Promise<StageParticipant[]> => {
+  const { data } = await api.get(`/stages/${stageId}/participants`);
+  return asArray<StageParticipant>(data);
+};
+
 /**
  * POST /api/stages/{id}/assign-client — 201 Created
  */
