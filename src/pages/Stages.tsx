@@ -43,10 +43,15 @@ import {
   createStage,
   updateStageStats,
   updateStageInfo,
+  addStageParticipant,
   Stage,
   getNumericSetting,
 } from "@/lib/api";
 import { MetricChip } from "@/components/MetricChip";
+import {
+  ParticipantForm,
+  Participant,
+} from "@/components/stage/ParticipantForm";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -141,6 +146,7 @@ function CreateStageDialog() {
   const [adBudget, setAdBudget] = useState<string>("");
   const [registrations, setRegistrations] = useState<string>("");
   const [participants, setParticipants] = useState<string>("");
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
 
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
@@ -151,16 +157,32 @@ function CreateStageDialog() {
         registrations: toNumberOrNull(registrations),
         participants: toNumberOrNull(participants),
       };
-      await createStage(payload);
+      const newStage = await createStage(payload);
+
+      // Add participants as leads (source = stage id)
+      const validParticipants = participantsList.filter(
+        (p) => p.name.trim().length > 0
+      );
+
+      for (const p of validParticipants) {
+        await addStageParticipant(newStage.id, {
+          lead_name: p.name.trim(),
+          lead_email: p.email.trim() || undefined,
+          lead_phone: p.phone.trim() || undefined,
+          attended: true,
+        });
+      }
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["stages"] });
+      await qc.invalidateQueries({ queryKey: ["leads"] });
       setOpen(false);
       setName("");
       setDate("");
       setAdBudget("");
       setRegistrations("");
       setParticipants("");
+      setParticipantsList([]);
     },
   });
 
@@ -174,7 +196,7 @@ function CreateStageDialog() {
           Bühne erstellen
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Neue Bühne</DialogTitle>
         </DialogHeader>
@@ -211,25 +233,35 @@ function CreateStageDialog() {
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="stage-registrations">Anmeldungen</Label>
-            <Input
-              id="stage-registrations"
-              inputMode="numeric"
-              value={registrations}
-              onChange={(e) => setRegistrations(e.target.value)}
-              placeholder="z. B. 80"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="stage-registrations">Anmeldungen</Label>
+              <Input
+                id="stage-registrations"
+                inputMode="numeric"
+                value={registrations}
+                onChange={(e) => setRegistrations(e.target.value)}
+                placeholder="z. B. 80"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="stage-participants">Teilnehmer (Anzahl)</Label>
+              <Input
+                id="stage-participants"
+                inputMode="numeric"
+                value={participants}
+                onChange={(e) => setParticipants(e.target.value)}
+                placeholder="z. B. 50"
+              />
+            </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="stage-participants">Teilnehmer</Label>
-            <Input
-              id="stage-participants"
-              inputMode="numeric"
-              value={participants}
-              onChange={(e) => setParticipants(e.target.value)}
-              placeholder="z. B. 50"
+          <div className="border-t pt-4">
+            <ParticipantForm
+              participants={participantsList}
+              onChange={setParticipantsList}
+              disabled={isPending}
             />
           </div>
         </div>
@@ -268,6 +300,9 @@ function EditStageDialog({ stage }: { stage: Stage }) {
     stage.ad_budget != null ? String(stage.ad_budget) : ""
   );
 
+  // Participants list for adding new participants
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
+
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
       await updateStageInfo(stage.id, {
@@ -279,6 +314,20 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         registrations: toNumberOrNull(registrations),
         participants: toNumberOrNull(participants),
       });
+
+      // Add new participants as leads
+      const validParticipants = participantsList.filter(
+        (p) => p.name.trim().length > 0
+      );
+
+      for (const p of validParticipants) {
+        await addStageParticipant(stage.id, {
+          lead_name: p.name.trim(),
+          lead_email: p.email.trim() || undefined,
+          lead_phone: p.phone.trim() || undefined,
+          attended: true,
+        });
+      }
     },
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: ["stages"] });
@@ -311,10 +360,13 @@ function EditStageDialog({ stage }: { stage: Stage }) {
     onSuccess: () => {
       // ✅ Close the dialog immediately after a successful update
       setOpen(false);
+      // Clear participants list after successful save
+      setParticipantsList([]);
     },
     onSettled: () => {
       // ✅ Refresh data in background
       qc.invalidateQueries({ queryKey: ["stages"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
     },
   });
 
@@ -328,7 +380,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         </Button>
       </DialogTrigger>
 
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bühne bearbeiten</DialogTitle>
         </DialogHeader>
@@ -363,25 +415,37 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             />
           </div>
 
-          <div className="grid gap-1">
-            <Label htmlFor={`edit-registrations-${stage.id}`}>
-              Anmeldungen
-            </Label>
-            <Input
-              id={`edit-registrations-${stage.id}`}
-              inputMode="numeric"
-              value={registrations}
-              onChange={(e) => setRegistrations(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1">
+              <Label htmlFor={`edit-registrations-${stage.id}`}>
+                Anmeldungen
+              </Label>
+              <Input
+                id={`edit-registrations-${stage.id}`}
+                inputMode="numeric"
+                value={registrations}
+                onChange={(e) => setRegistrations(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1">
+              <Label htmlFor={`edit-participants-${stage.id}`}>
+                Teilnehmer (Anzahl)
+              </Label>
+              <Input
+                id={`edit-participants-${stage.id}`}
+                inputMode="numeric"
+                value={participants}
+                onChange={(e) => setParticipants(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="grid gap-1">
-            <Label htmlFor={`edit-participants-${stage.id}`}>Teilnehmer</Label>
-            <Input
-              id={`edit-participants-${stage.id}`}
-              inputMode="numeric"
-              value={participants}
-              onChange={(e) => setParticipants(e.target.value)}
+          <div className="border-t pt-4">
+            <ParticipantForm
+              participants={participantsList}
+              onChange={setParticipantsList}
+              disabled={isPending}
             />
           </div>
         </div>
