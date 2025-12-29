@@ -44,7 +44,9 @@ import {
   updateStageStats,
   updateStageInfo,
   addStageParticipant,
+  getStageParticipants,
   Stage,
+  StageParticipant,
   getNumericSetting,
 } from "@/lib/api";
 import { MetricChip } from "@/components/MetricChip";
@@ -52,6 +54,7 @@ import {
   ParticipantForm,
   Participant,
 } from "@/components/stage/ParticipantForm";
+import { StageParticipantsDialog } from "@/components/stage/StageParticipantsDialog";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -303,6 +306,13 @@ function EditStageDialog({ stage }: { stage: Stage }) {
   // Participants list for adding new participants
   const [participantsList, setParticipantsList] = useState<Participant[]>([]);
 
+  // Fetch existing participants when dialog opens
+  const { data: existingParticipants = [], isLoading: loadingParticipants } = useQuery<StageParticipant[]>({
+    queryKey: ["stage-participants", stage.id],
+    queryFn: () => getStageParticipants(stage.id),
+    enabled: open,
+  });
+
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
       await updateStageInfo(stage.id, {
@@ -367,6 +377,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
       // ✅ Refresh data in background
       qc.invalidateQueries({ queryKey: ["stages"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["stage-participants", stage.id] });
     },
   });
 
@@ -441,6 +452,31 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             </div>
           </div>
 
+          {/* Existing participants */}
+          {loadingParticipants ? (
+            <p className="text-sm text-muted-foreground">Lädt Teilnehmer...</p>
+          ) : existingParticipants.length > 0 && (
+            <div className="border-t pt-4">
+              <p className="text-sm font-medium mb-2">
+                Registrierte Teilnehmer ({existingParticipants.length})
+              </p>
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {existingParticipants.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm"
+                  >
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {p.email || p.phone || "Keine Kontaktdaten"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add new participants */}
           <div className="border-t pt-4">
             <ParticipantForm
               participants={participantsList}
@@ -728,15 +764,7 @@ export default function Stages() {
 
                     <TableCell className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Teilnehmer (demnächst)"
-                          className="h-8 w-8 p-0"
-                          onClick={() => alert("Teilnehmer-Ansicht kommt bald")}
-                        >
-                          <Users className="w-4 h-4" />
-                        </Button>
+                        <StageParticipantsDialog stage={stage} />
                         <Button
                           variant="ghost"
                           size="sm"
