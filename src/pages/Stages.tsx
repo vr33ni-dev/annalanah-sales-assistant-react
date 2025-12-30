@@ -454,13 +454,13 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             </div>
           </div>
 
-          {/* Existing participants */}
+          {/* Existing contacts */}
           {loadingParticipants ? (
-            <p className="text-sm text-muted-foreground">Lädt Teilnehmer...</p>
+            <p className="text-sm text-muted-foreground">Lädt Kontakte...</p>
           ) : existingParticipants.length > 0 && (
             <div className="border-t pt-4">
               <p className="text-sm font-medium mb-2">
-                Registrierte Teilnehmer ({existingParticipants.length})
+                Erfasste Kontakte ({existingParticipants.length})
               </p>
               <div className="max-h-40 overflow-y-auto space-y-1">
                 {existingParticipants.map((p) => (
@@ -478,7 +478,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             </div>
           )}
 
-          {/* Add new participants */}
+          {/* Add new contacts */}
           <div className="border-t pt-4">
             <ParticipantForm
               participants={participantsList}
