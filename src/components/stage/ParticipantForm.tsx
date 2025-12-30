@@ -54,7 +54,7 @@ export function ParticipantForm({
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium flex items-center gap-2">
           <User className="w-4 h-4" />
-          Teilnehmer ({participants.length})
+          Erfasste Kontakte ({participants.length})
         </Label>
         <Button
           type="button"
@@ -70,7 +70,7 @@ export function ParticipantForm({
 
       {participants.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-md">
-          Noch keine Teilnehmer hinzugefügt.
+          Noch keine Kontakte erfasst.
         </p>
       )}
 
@@ -82,7 +82,7 @@ export function ParticipantForm({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">
-                Teilnehmer {index + 1}
+                Kontakt {index + 1}
               </span>
               <Button
                 type="button"
