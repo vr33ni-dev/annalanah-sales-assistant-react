@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, User } from "lucide-react";
 
 export interface Participant {
@@ -9,6 +9,7 @@ export interface Participant {
   name: string;
   email: string;
   phone: string;
+  createAsLead: boolean;
 }
 
 interface ParticipantFormProps {
@@ -22,6 +23,7 @@ const createEmptyParticipant = (): Participant => ({
   name: "",
   email: "",
   phone: "",
+  createAsLead: false,
 });
 
 export function ParticipantForm({
@@ -40,7 +42,7 @@ export function ParticipantForm({
   const updateParticipant = (
     id: string,
     field: keyof Omit<Participant, "id">,
-    value: string
+    value: string | boolean
   ) => {
     onChange(
       participants.map((p) => (p.id === id ? { ...p, [field]: value } : p))
@@ -69,8 +71,6 @@ export function ParticipantForm({
       {participants.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-md">
           Noch keine Teilnehmer hinzugefügt.
-          <br />
-          Teilnehmer werden automatisch als Leads angelegt.
         </p>
       )}
 
@@ -127,6 +127,22 @@ export function ParticipantForm({
                   disabled={disabled}
                   className="h-8 text-sm"
                 />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id={`lead-${participant.id}`}
+                  checked={participant.createAsLead}
+                  onCheckedChange={(checked) =>
+                    updateParticipant(participant.id, "createAsLead", !!checked)
+                  }
+                  disabled={disabled}
+                />
+                <Label
+                  htmlFor={`lead-${participant.id}`}
+                  className="text-xs text-muted-foreground cursor-pointer"
+                >
+                  Als Lead anlegen
+                </Label>
               </div>
             </div>
           </div>

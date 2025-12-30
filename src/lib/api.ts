@@ -383,6 +383,7 @@ export interface AddStageParticipantLead {
   lead_email?: string;
   lead_phone?: string;
   attended: boolean;
+  create_as_lead?: boolean;
 }
 export type AddStageParticipantRequest =
   | AddStageParticipantExisting
