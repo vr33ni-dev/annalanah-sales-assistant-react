@@ -335,6 +335,7 @@ export interface Stage {
   ad_budget?: number | null;
   registrations?: number | null;
   participants?: number | null;
+  recorded_contacts?: number; // read-only, derived
 }
 
 export const getStages = async (): Promise<Stage[]> => {
@@ -374,19 +375,35 @@ export const updateStageInfo = async (
 };
 
 /* Stage participants & assignments */
-export interface AddStageParticipantExisting {
-  client_id: number;
+/* ------------------------------------------------------------------ */
+/* Stage participants (API response shape) */
+
+export interface StageParticipantResponse {
+  id: number;
+  stage_id: number;
+
+  participant_name: string;
+  participant_email?: string | null;
+  participant_phone?: string | null;
+
+  linked_client_id?: number | null;
+  linked_lead_id?: number | null;
+
   attended: boolean;
+  created_at?: string;
 }
-export interface AddStageParticipantLead {
-  lead_name: string;
-  lead_email?: string;
-  lead_phone?: string;
+
+export interface AddStageParticipantRequest {
+  participant_name: string;
+  participant_email?: string;
+  participant_phone?: string;
+
+  linked_client_id?: number;
+  linked_lead_id?: number;
+
   attended: boolean;
+  create_as_lead?: boolean;
 }
-export type AddStageParticipantRequest =
-  | AddStageParticipantExisting
-  | AddStageParticipantLead;
 
 export const addStageParticipant = async (
   stageId: string | number,
@@ -404,6 +421,62 @@ export const updateStageParticipant = async (
   payload: UpdateStageParticipantRequest
 ): Promise<void> => {
   await api.patch(`/stages/${stageId}/participants/${participantId}`, payload);
+};
+
+export const deleteStageParticipant = async (
+  stageId: string | number,
+  participantId: string | number
+): Promise<void> => {
+  await api.delete(`/stages/${stageId}/participants/${participantId}`);
+};
+
+/* Stage participants (frontend shape) */
+export interface StageParticipant {
+  id: number;
+  stage_id: number;
+
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+
+  client_id?: number | null;
+  lead_id?: number | null;
+
+  attended: boolean;
+  created_at?: string;
+}
+
+export interface StageParticipantUI {
+  id: number;
+  stage_id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  client_id?: number | null;
+  lead_id?: number | null;
+  attended: boolean;
+}
+
+export const getStageParticipants = async (
+  stageId: string | number
+): Promise<StageParticipant[]> => {
+  const { data } = await api.get(`/stages/${stageId}/participants`);
+
+  return asArray<StageParticipant>(data).map((p) => ({
+    id: p.id,
+    stage_id: p.stage_id,
+
+    name: p.name,
+
+    email: p.email ?? null,
+    phone: p.phone ?? null,
+
+    client_id: p.client_id ?? null,
+    lead_id: p.lead_id ?? null,
+
+    attended: p.attended,
+    created_at: p.created_at,
+  }));
 };
 
 /**
