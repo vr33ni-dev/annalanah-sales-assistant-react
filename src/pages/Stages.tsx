@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Trash2 } from "lucide-react";
+import { deleteStageParticipant } from "@/lib/api";
+
 import {
   Popover,
   PopoverContent,
@@ -31,12 +34,10 @@ import { Label } from "@/components/ui/label";
 import {
   Plus,
   DollarSign,
-  Users,
   Target,
   TrendingUp,
   MapPin,
   Pencil,
-  Info,
 } from "lucide-react";
 import {
   getStages,
@@ -48,6 +49,7 @@ import {
   Stage,
   StageParticipant,
   getNumericSetting,
+  StageParticipantUI,
 } from "@/lib/api";
 import { MetricChip } from "@/components/MetricChip";
 import {
@@ -169,9 +171,9 @@ function CreateStageDialog() {
 
       for (const p of validParticipants) {
         await addStageParticipant(newStage.id, {
-          lead_name: p.name.trim(),
-          lead_email: p.email.trim() || undefined,
-          lead_phone: p.phone.trim() || undefined,
+          participant_name: p.name.trim(),
+          participant_email: p.email.trim() || undefined,
+          participant_phone: p.phone.trim() || undefined,
           attended: true,
           create_as_lead: p.createAsLead,
         });
@@ -308,10 +310,20 @@ function EditStageDialog({ stage }: { stage: Stage }) {
   const [participantsList, setParticipantsList] = useState<Participant[]>([]);
 
   // Fetch existing participants when dialog opens
-  const { data: existingParticipants = [], isLoading: loadingParticipants } = useQuery<StageParticipant[]>({
-    queryKey: ["stage-participants", stage.id],
-    queryFn: () => getStageParticipants(stage.id),
-    enabled: open,
+  const { data: existingParticipants = [], isLoading: loadingParticipants } =
+    useQuery<StageParticipantUI[]>({
+      queryKey: ["stage-participants", stage.id],
+      queryFn: () => getStageParticipants(stage.id),
+      enabled: open,
+    });
+
+  const deleteParticipantMutation = useMutation({
+    mutationFn: (participantId: number) =>
+      deleteStageParticipant(stage.id, participantId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["stage-participants", stage.id] });
+      qc.invalidateQueries({ queryKey: ["stages"] }); // recorded_contacts
+    },
   });
 
   const { mutate, isPending } = useMutation({
@@ -333,9 +345,9 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 
       for (const p of validParticipants) {
         await addStageParticipant(stage.id, {
-          lead_name: p.name.trim(),
-          lead_email: p.email.trim() || undefined,
-          lead_phone: p.phone.trim() || undefined,
+          participant_name: p.name.trim(),
+          participant_email: p.email.trim() || undefined,
+          participant_phone: p.phone.trim() || undefined,
           attended: true,
           create_as_lead: p.createAsLead,
         });
@@ -457,25 +469,41 @@ function EditStageDialog({ stage }: { stage: Stage }) {
           {/* Existing contacts */}
           {loadingParticipants ? (
             <p className="text-sm text-muted-foreground">Lädt Kontakte...</p>
-          ) : existingParticipants.length > 0 && (
-            <div className="border-t pt-4">
-              <p className="text-sm font-medium mb-2">
-                Erfasste Kontakte ({existingParticipants.length})
-              </p>
-              <div className="max-h-40 overflow-y-auto space-y-1">
-                {existingParticipants.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm"
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {p.email || p.phone || "Keine Kontaktdaten"}
-                    </span>
-                  </div>
-                ))}
+          ) : (
+            existingParticipants.length > 0 && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-2">
+                  Erfasste Kontakte ({existingParticipants.length})
+                </p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {existingParticipants.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {p.email || p.phone || "Keine Kontaktdaten"}
+                        </span>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        title="Kontakt entfernen"
+                        onClick={() => deleteParticipantMutation.mutate(p.id)}
+                        disabled={deleteParticipantMutation.isPending}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Add new contacts */}

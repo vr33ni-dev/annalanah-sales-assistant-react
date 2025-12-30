@@ -1,3 +1,4 @@
+// src/components/stage/ParticipantForm.tsx
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,7 @@ interface ParticipantFormProps {
   disabled?: boolean;
 }
 
-const createEmptyParticipant = (): Participant => ({
+export const createEmptyParticipant = (): Participant => ({
   id: crypto.randomUUID(),
   name: "",
   email: "",
@@ -54,7 +55,7 @@ export function ParticipantForm({
       <div className="flex items-center justify-between">
         <Label className="text-sm font-medium flex items-center gap-2">
           <User className="w-4 h-4" />
-          Erfasste Kontakte ({participants.length})
+          Neue Kontakte ({participants.length})
         </Label>
         <Button
           type="button"
@@ -70,7 +71,7 @@ export function ParticipantForm({
 
       {participants.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-md">
-          Noch keine Kontakte erfasst.
+          Noch keine neuen Kontakte hinzugefügt.
         </p>
       )}
 
@@ -88,62 +89,67 @@ export function ParticipantForm({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                className="h-6 w-6 p-0 text-destructive"
                 onClick={() => removeParticipant(participant.id)}
                 disabled={disabled}
+                title="Kontakt entfernen"
               >
                 <Trash2 className="w-3 h-3" />
               </Button>
             </div>
 
-            <div className="grid gap-2">
+            <Input
+              placeholder="Name *"
+              value={participant.name}
+              onChange={(e) =>
+                updateParticipant(participant.id, "name", e.target.value)
+              }
+              disabled={disabled}
+              className="h-8 text-sm"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
               <Input
-                placeholder="Name *"
-                value={participant.name}
+                placeholder="Email"
+                type="email"
+                value={participant.email}
                 onChange={(e) =>
-                  updateParticipant(participant.id, "name", e.target.value)
+                  updateParticipant(participant.id, "email", e.target.value)
                 }
                 disabled={disabled}
                 className="h-8 text-sm"
               />
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  placeholder="Email"
-                  type="email"
-                  value={participant.email}
-                  onChange={(e) =>
-                    updateParticipant(participant.id, "email", e.target.value)
-                  }
-                  disabled={disabled}
-                  className="h-8 text-sm"
-                />
-                <Input
-                  placeholder="Telefon"
-                  type="tel"
-                  value={participant.phone}
-                  onChange={(e) =>
-                    updateParticipant(participant.id, "phone", e.target.value)
-                  }
-                  disabled={disabled}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Checkbox
-                  id={`lead-${participant.id}`}
-                  checked={participant.createAsLead}
-                  onCheckedChange={(checked) =>
-                    updateParticipant(participant.id, "createAsLead", !!checked)
-                  }
-                  disabled={disabled}
-                />
-                <Label
-                  htmlFor={`lead-${participant.id}`}
-                  className="text-xs text-muted-foreground cursor-pointer"
-                >
-                  Als Lead anlegen
-                </Label>
-              </div>
+              <Input
+                placeholder="Telefon"
+                type="tel"
+                value={participant.phone}
+                onChange={(e) =>
+                  updateParticipant(participant.id, "phone", e.target.value)
+                }
+                disabled={disabled}
+                className="h-8 text-sm"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id={`lead-${participant.id}`}
+                checked={participant.createAsLead}
+                onCheckedChange={(checked) =>
+                  updateParticipant(
+                    participant.id,
+                    "createAsLead",
+                    Boolean(checked)
+                  )
+                }
+                disabled={disabled}
+              />
+              <Label
+                htmlFor={`lead-${participant.id}`}
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Als Lead anlegen
+              </Label>
             </div>
           </div>
         ))}
@@ -151,5 +157,3 @@ export function ParticipantForm({
     </div>
   );
 }
-
-export { createEmptyParticipant };

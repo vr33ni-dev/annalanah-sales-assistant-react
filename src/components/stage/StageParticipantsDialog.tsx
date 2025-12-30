@@ -1,5 +1,6 @@
+// src/components/stage/StageParticipantsDialog.tsx
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -17,20 +18,65 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, Mail, Phone, Check, X } from "lucide-react";
-import { getStageParticipants, Stage, StageParticipant } from "@/lib/api";
+import { Users, Mail, Phone, Check, X, Trash2 } from "lucide-react";
+import {
+  getStageParticipants,
+  deleteStageParticipant,
+  Stage,
+  StageParticipant,
+} from "@/lib/api";
 
-interface StageParticipantsDialogProps {
+interface Props {
   stage: Stage;
 }
 
-export function StageParticipantsDialog({ stage }: StageParticipantsDialogProps) {
+export function StageParticipantsDialog({ stage }: Props) {
   const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
 
-  const { data: participants = [], isLoading } = useQuery<StageParticipant[]>({
+  const { data: participants = [], isLoading } = useQuery({
     queryKey: ["stage-participants", stage.id],
     queryFn: () => getStageParticipants(stage.id),
     enabled: open,
+    refetchOnWindowFocus: false,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (participantId: number) =>
+      deleteStageParticipant(stage.id, participantId),
+
+    onMutate: async (participantId) => {
+      await qc.cancelQueries({ queryKey: ["stage-participants", stage.id] });
+
+      const prev = qc.getQueryData<StageParticipant[]>([
+        "stage-participants",
+        stage.id,
+      ]);
+
+      qc.setQueryData<StageParticipant[]>(
+        ["stage-participants", stage.id],
+        (old) => old?.filter((p) => p.id !== participantId) ?? []
+      );
+
+      return { prev };
+    },
+
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) {
+        qc.setQueryData(["stage-participants", stage.id], ctx.prev);
+      }
+    },
+
+    onSuccess: async () => {
+      // 🔥 THIS was missing
+      await qc.invalidateQueries({
+        queryKey: ["stage-participants", stage.id],
+      });
+
+      await qc.invalidateQueries({
+        queryKey: ["stages"], // updates recorded_contacts
+      });
+    },
   });
 
   return (
@@ -55,7 +101,7 @@ export function StageParticipantsDialog({ stage }: StageParticipantsDialogProps)
         </DialogHeader>
 
         {isLoading ? (
-          <p className="text-sm text-muted-foreground py-4">Lädt Teilnehmer...</p>
+          <p className="text-sm text-muted-foreground py-4">Lädt Teilnehmer…</p>
         ) : participants.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">
             Noch keine Teilnehmer für diese Bühne registriert.
@@ -67,12 +113,14 @@ export function StageParticipantsDialog({ stage }: StageParticipantsDialogProps)
                 <TableHead>Name</TableHead>
                 <TableHead>Kontakt</TableHead>
                 <TableHead>Teilgenommen</TableHead>
+                <TableHead className="w-[40px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {participants.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.name}</TableCell>
+
                   <TableCell>
                     <div className="flex flex-col gap-0.5 text-sm text-muted-foreground">
                       {p.email && (
@@ -90,6 +138,7 @@ export function StageParticipantsDialog({ stage }: StageParticipantsDialogProps)
                       {!p.email && !p.phone && "–"}
                     </div>
                   </TableCell>
+
                   <TableCell>
                     {p.attended ? (
                       <Badge className="bg-success text-success-foreground">
@@ -102,6 +151,20 @@ export function StageParticipantsDialog({ stage }: StageParticipantsDialogProps)
                         Nein
                       </Badge>
                     )}
+                  </TableCell>
+
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      title="Kontakt entfernen"
+                      onClick={() => deleteMutation.mutate(p.id)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
