@@ -162,7 +162,7 @@ function CreateStageDialog() {
       };
       const newStage = await createStage(payload);
 
-      // Add participants as leads (source = stage id)
+      // Add participants (only create as lead if checkbox is checked)
       const validParticipants = participantsList.filter(
         (p) => p.name.trim().length > 0
       );
@@ -173,6 +173,7 @@ function CreateStageDialog() {
           lead_email: p.email.trim() || undefined,
           lead_phone: p.phone.trim() || undefined,
           attended: true,
+          create_as_lead: p.createAsLead,
         });
       }
     },
@@ -325,7 +326,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         participants: toNumberOrNull(participants),
       });
 
-      // Add new participants as leads
+      // Add new participants (only create as lead if checkbox is checked)
       const validParticipants = participantsList.filter(
         (p) => p.name.trim().length > 0
       );
@@ -336,6 +337,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
           lead_email: p.email.trim() || undefined,
           lead_phone: p.phone.trim() || undefined,
           attended: true,
+          create_as_lead: p.createAsLead,
         });
       }
     },
