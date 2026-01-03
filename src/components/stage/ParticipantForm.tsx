@@ -76,83 +76,101 @@ export function ParticipantForm({
       )}
 
       <div className="space-y-3 max-h-60 overflow-y-auto">
-        {participants.map((participant, index) => (
-          <div
-            key={participant.id}
-            className="grid gap-2 p-3 border rounded-md bg-muted/30"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">
-                Kontakt {index + 1}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 text-destructive"
-                onClick={() => removeParticipant(participant.id)}
-                disabled={disabled}
-                title="Kontakt entfernen"
-              >
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
+        {participants.map((participant, index) => {
+          const emailMissing = !participant.email.trim();
+          const leadCheckboxDisabled = disabled || emailMissing;
 
-            <Input
-              placeholder="Name *"
-              value={participant.name}
-              onChange={(e) =>
-                updateParticipant(participant.id, "name", e.target.value)
-              }
-              disabled={disabled}
-              className="h-8 text-sm"
-            />
+          return (
+            <div
+              key={participant.id}
+              className="grid gap-2 p-3 border rounded-md bg-muted/30"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Kontakt {index + 1}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-destructive"
+                  onClick={() => removeParticipant(participant.id)}
+                  disabled={disabled}
+                  title="Kontakt entfernen"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
 
-            <div className="grid grid-cols-2 gap-2">
               <Input
-                placeholder="Email"
-                type="email"
-                value={participant.email}
+                placeholder="Name *"
+                value={participant.name}
                 onChange={(e) =>
-                  updateParticipant(participant.id, "email", e.target.value)
+                  updateParticipant(participant.id, "name", e.target.value)
                 }
                 disabled={disabled}
                 className="h-8 text-sm"
               />
-              <Input
-                placeholder="Telefon"
-                type="tel"
-                value={participant.phone}
-                onChange={(e) =>
-                  updateParticipant(participant.id, "phone", e.target.value)
-                }
-                disabled={disabled}
-                className="h-8 text-sm"
-              />
-            </div>
 
-            <div className="flex items-center gap-2 pt-1">
-              <Checkbox
-                id={`lead-${participant.id}`}
-                checked={participant.createAsLead}
-                onCheckedChange={(checked) =>
-                  updateParticipant(
-                    participant.id,
-                    "createAsLead",
-                    Boolean(checked)
-                  )
-                }
-                disabled={disabled}
-              />
-              <Label
-                htmlFor={`lead-${participant.id}`}
-                className="text-xs text-muted-foreground cursor-pointer"
-              >
-                Als Lead anlegen
-              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder="Email"
+                  type="email"
+                  value={participant.email}
+                  onChange={(e) =>
+                    updateParticipant(participant.id, "email", e.target.value)
+                  }
+                  disabled={disabled}
+                  className={`h-8 text-sm ${
+                    emailMissing
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : ""
+                  }`}
+                />
+                {emailMissing && (
+                  <p className="text-xs text-destructive">
+                    Email ist erforderlich, wenn ein Lead erstellt wird
+                  </p>
+                )}
+
+                <Input
+                  placeholder="Telefon"
+                  type="tel"
+                  value={participant.phone}
+                  onChange={(e) =>
+                    updateParticipant(participant.id, "phone", e.target.value)
+                  }
+                  disabled={disabled}
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <Checkbox
+                  id={`lead-${participant.id}`}
+                  checked={participant.createAsLead}
+                  disabled={leadCheckboxDisabled}
+                  onCheckedChange={(checked) => {
+                    if (checked && emailMissing) return;
+
+                    updateParticipant(
+                      participant.id,
+                      "createAsLead",
+                      Boolean(checked)
+                    );
+                  }}
+                />
+
+                <Label
+                  htmlFor={`lead-${participant.id}`}
+                  className="text-xs text-muted-foreground cursor-pointer"
+                >
+                  Als Lead anlegen
+                </Label>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

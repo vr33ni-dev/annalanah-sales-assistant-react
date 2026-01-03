@@ -82,12 +82,7 @@ export function StageParticipantsDialog({ stage }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          title="Teilnehmer anzeigen"
-          className="h-8 w-8 p-0"
-        >
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
           <Users className="w-4 h-4" />
         </Button>
       </DialogTrigger>

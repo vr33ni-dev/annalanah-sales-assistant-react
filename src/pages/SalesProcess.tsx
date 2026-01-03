@@ -172,11 +172,10 @@ export default function SalesProcessView() {
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
-      setHasActiveContract(false); // ✅ reset
+      setHasActiveContract(false);
       resetAll();
     },
 
-    // ⬇️ REPLACE your current onError with this
     onError: (err: unknown) => {
       if (!isFetchError(err)) {
         alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
@@ -192,16 +191,16 @@ export default function SalesProcessView() {
 
       const apiError = data as StartSalesProcessError;
 
-      // 🚫 ACTIVE CONTRACT → overwrite BLOCKED
+      // ACTIVE CONTRACT → overwrite BLOCKED
       if (apiError.error === "client_has_active_contract") {
-        setHasActiveContract(true); // 🔒 important
+        setHasActiveContract(true);
         setMergeConflicts({}); // open dialog
         setPendingPayload(null); // nothing to retry
         setExistingClientId(apiError.client_id);
         return;
       }
 
-      // 🔁 Merge possible (NO active contract)
+      // Merge possible (NO active contract)
       if (apiError.error === "client_exists") {
         setExistingClientId(apiError.client_id);
         setHasActiveContract(apiError.has_active_contract ?? false);
@@ -269,7 +268,7 @@ export default function SalesProcessView() {
       ...p,
       follow_up_date:
         typeof p.follow_up_date === "string"
-          ? p.follow_up_date.slice(0, 10) // 🔥 force YYYY-MM-DD
+          ? p.follow_up_date.slice(0, 10) // force YYYY-MM-DD
           : format(p.follow_up_date!, "yyyy-MM-dd"),
     };
   }
@@ -465,7 +464,7 @@ export default function SalesProcessView() {
   };
 
   const handleMergeOverwrite = async () => {
-    if (hasActiveContract) return; // 🔒 safety
+    if (hasActiveContract) return;
     if (!pendingPayload) return;
 
     await mStart.mutateAsync(

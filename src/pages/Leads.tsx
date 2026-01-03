@@ -31,6 +31,10 @@ export default function Leads() {
     queryFn: getLeads,
     retry: false,
     staleTime: 5 * 60 * 1000,
+
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+
     select: (d) => asArray<Lead>(d),
     mockData: mockLeads,
   });

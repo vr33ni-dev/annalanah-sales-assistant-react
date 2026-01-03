@@ -353,6 +353,13 @@ export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
   return data as Stage;
 };
 
+export const updateStageInfo = async (
+  id: string | number,
+  payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>
+): Promise<void> => {
+  await api.patch(`/stages/${id}`, payload);
+};
+
 /**
  * PATCH /stages/{id}/stats — 204 No Content
  */
@@ -365,13 +372,6 @@ export const updateStageStats = async (
   payload: UpdateStageStatsRequest
 ): Promise<void> => {
   await api.patch(`/stages/${id}/stats`, payload);
-};
-
-export const updateStageInfo = async (
-  id: string | number,
-  payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>
-): Promise<void> => {
-  await api.patch(`/stages/${id}`, payload);
 };
 
 /* Stage participants & assignments */

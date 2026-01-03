@@ -57,6 +57,7 @@ import {
   Participant,
 } from "@/components/stage/ParticipantForm";
 import { StageParticipantsDialog } from "@/components/stage/StageParticipantsDialog";
+import { StagePerformanceDialog } from "@/components/stage/StagePerformanceDialog";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -795,17 +796,13 @@ export default function Stages() {
                     <TableCell className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
                         <StageParticipantsDialog stage={stage} />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Performance (demnächst)"
-                          className="h-8 w-8 p-0"
-                          onClick={() =>
-                            alert("Performance-Ansicht kommt bald")
-                          }
-                        >
-                          <TrendingUp className="w-4 h-4" />
-                        </Button>
+                        <StagePerformanceDialog
+                          stage={stage}
+                          estimatedRevenue={revenue}
+                          roiPct={roiPct}
+                          closingRate={closingRate}
+                        />
+
                         <EditStageDialog stage={stage} />
                       </div>
                     </TableCell>
