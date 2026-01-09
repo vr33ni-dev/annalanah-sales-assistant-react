@@ -483,7 +483,7 @@ export default function Contracts() {
           </Table>
           <div className="flex justify-between items-center mt-4">
             <p className="text-sm text-muted-foreground">
-              Seite {page} von {totalPages}
+              Seite {totalPages === 0 ? 0 : page} von {totalPages}
             </p>
 
             <div className="flex gap-2">
