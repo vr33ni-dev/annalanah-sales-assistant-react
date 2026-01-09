@@ -40,6 +40,8 @@ import {
   getUpsellForSalesProcess,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockContracts, mockCashflowForecast } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
   Sheet,
@@ -129,13 +131,13 @@ export default function Contracts() {
     isFetching: loadingContracts,
     isError: errorContracts,
     refetch: refetchContracts,
-  } = useQuery<Contract[]>({
+  } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
+    mockData: mockContracts,
   });
 
   // Cashflow forecast (server-side aggregation)
@@ -143,16 +145,13 @@ export default function Contracts() {
     data: forecast = [],
     isFetching: loadingForecast,
     isError: errorForecast,
-  } = useQuery<CashflowRow[], Error>({
+  } = useMockableQuery<CashflowRow[]>({
     queryKey: ["cashflow-forecast"],
-    queryFn: ({ queryKey }) => {
-      const [, id] = queryKey as [string, number?];
-      return getCashflowForecast(id);
-    },
-    enabled,
+    queryFn: () => getCashflowForecast(),
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: (d) => asArray<CashflowRow>(d),
+    mockData: mockCashflowForecast as CashflowRow[],
   });
 
   /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */

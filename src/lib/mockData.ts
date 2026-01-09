@@ -615,3 +615,19 @@ export const mockUpsellAnalytics = {
   verlangerungsquote: 50,
   umsatz_sum: 6000,
 };
+
+// Mock cashflow forecast data
+export const mockCashflowForecast = [
+  { month: "2025-01", confirmed: 8500, potential: 0 },
+  { month: "2025-02", confirmed: 9200, potential: 500 },
+  { month: "2025-03", confirmed: 10500, potential: 800 },
+  { month: "2025-04", confirmed: 11000, potential: 1200 },
+  { month: "2025-05", confirmed: 10200, potential: 1000 },
+  { month: "2025-06", confirmed: 9800, potential: 1500 },
+  { month: "2025-07", confirmed: 8900, potential: 2000 },
+  { month: "2025-08", confirmed: 9500, potential: 1800 },
+  { month: "2025-09", confirmed: 10100, potential: 2200 },
+  { month: "2025-10", confirmed: 8700, potential: 2500 },
+  { month: "2025-11", confirmed: 7200, potential: 3000 },
+  { month: "2025-12", confirmed: 6500, potential: 3200 },
+];
