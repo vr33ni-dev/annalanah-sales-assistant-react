@@ -71,6 +71,32 @@ function parseIso(iso: string) {
   return new Date(y, m - 1, d);
 }
 
+// Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
+// Date normalized to local start-of-day (time components zeroed).
+function toDateStartOfDay(input?: string | null) {
+  if (!input) return null;
+  // Prefer native Date parsing which handles full ISO strings.
+  const d = new Date(input);
+  if (!isNaN(d.getTime())) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  // Fallback: try YYYY-MM-DD prefix
+  const m = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return null;
+}
+
+function addMonthsDate(d: Date, months: number) {
+  const dt = new Date(d.getTime());
+  dt.setMonth(dt.getMonth() + months);
+  return dt;
+}
+
+// Inclusive overlap check between two closed date ranges [aStart, aEnd] and [bStart, bEnd]
+function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
 // count calendar months overlap between [a1, a2) and [b1, b2) (end exclusive)
 function monthsOverlap(a1: Date, a2: Date, b1: Date, b2: Date): number {
   const s = a1 > b1 ? a1 : b1;
@@ -202,13 +228,49 @@ export default function Contracts() {
     if (clientFilter) {
       list = list.filter((c) => String(c.client_id) === clientFilter);
     }
-    // date range filter
-    if (dateStart) {
-      list = list.filter((c) => c.start_date >= dateStart);
+
+    // date range filter: include contracts that are active at any point
+    // within the selected window (inclusive). We parse contract start and
+    // end (computed by backend when available) robustly and test for
+    // range overlap.
+    if (dateStart || dateEnd) {
+      const viewStart = toDateStartOfDay(dateStart ?? null);
+      const viewEnd = toDateStartOfDay(dateEnd ?? null);
+
+      list = list.filter((c) => {
+        const cStart = toDateStartOfDay(c.start_date as string | null);
+        // prefer server-provided computed end date if present
+        const endFromServer = (c as unknown as { end_date_computed?: string })
+          .end_date_computed;
+        let cEnd = endFromServer ? toDateStartOfDay(endFromServer) : null;
+
+        if (!cStart) return false; // contract without start - skip
+
+        if (!cEnd) {
+          // derive end from duration_months if server didn't provide an end
+          if (typeof c.duration_months === "number") {
+            cEnd = addMonthsDate(cStart, c.duration_months);
+            // normalize derived end to start-of-day as well
+            cEnd = new Date(
+              cEnd.getFullYear(),
+              cEnd.getMonth(),
+              cEnd.getDate()
+            );
+          } else {
+            // no end information -> treat as open-ended (far future)
+            cEnd = new Date(8640000000000000);
+          }
+        }
+
+        // If either view boundary is missing, treat the missing one as
+        // - start missing -> very old; end missing -> very far future.
+        const vs = viewStart ?? new Date(-8640000000000000);
+        const ve = viewEnd ?? new Date(8640000000000000);
+
+        return rangesOverlap(cStart, cEnd, vs, ve);
+      });
     }
-    if (dateEnd) {
-      list = list.filter((c) => c.start_date <= dateEnd);
-    }
+
     return list;
   }, [contracts, clientFilter, dateStart, dateEnd]);
 
