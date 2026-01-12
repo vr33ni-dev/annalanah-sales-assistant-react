@@ -11,6 +11,7 @@ export interface Participant {
   email: string;
   phone: string;
   createAsLead: boolean;
+  attended?: boolean;
 }
 
 interface ParticipantFormProps {
@@ -19,12 +20,13 @@ interface ParticipantFormProps {
   disabled?: boolean;
 }
 
-export const createEmptyParticipant = (): Participant => ({
+const createEmptyParticipant = (): Participant => ({
   id: crypto.randomUUID(),
   name: "",
   email: "",
   phone: "",
   createAsLead: false,
+  attended: false,
 });
 
 export function ParticipantForm({
@@ -62,7 +64,12 @@ export function ParticipantForm({
           variant="outline"
           size="sm"
           onClick={addParticipant}
-          disabled={disabled}
+          disabled={
+            disabled ||
+            participants.some(
+              (p) => !p.name.trim() && !p.email.trim() && !p.phone.trim()
+            )
+          }
         >
           <Plus className="w-3 h-3 mr-1" />
           Hinzufügen
@@ -78,7 +85,7 @@ export function ParticipantForm({
       <div className="space-y-3 max-h-60 overflow-y-auto">
         {participants.map((participant, index) => {
           const emailMissing = !participant.email.trim();
-          const leadCheckboxDisabled = disabled || emailMissing;
+          const leadCheckboxDisabled = disabled;
 
           return (
             <div
@@ -102,36 +109,46 @@ export function ParticipantForm({
                 </Button>
               </div>
 
-              <Input
-                placeholder="Name *"
-                value={participant.name}
-                onChange={(e) =>
-                  updateParticipant(participant.id, "name", e.target.value)
-                }
-                disabled={disabled}
-                className="h-8 text-sm"
-              />
-
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1">
+                <Label className="text-xs">
+                  Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  placeholder="Email"
-                  type="email"
-                  value={participant.email}
+                  placeholder="Name"
+                  value={participant.name}
                   onChange={(e) =>
-                    updateParticipant(participant.id, "email", e.target.value)
+                    updateParticipant(participant.id, "name", e.target.value)
                   }
                   disabled={disabled}
-                  className={`h-8 text-sm ${
-                    emailMissing
-                      ? "border-destructive focus-visible:ring-destructive"
-                      : ""
-                  }`}
+                  aria-required={true}
+                  className="h-8 text-sm"
                 />
-                {emailMissing && (
-                  <p className="text-xs text-destructive">
-                    Email ist erforderlich, wenn ein Lead erstellt wird
-                  </p>
-                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-1">
+                  <Label className="text-xs">Email</Label>
+                  <Input
+                    placeholder="Email"
+                    type="email"
+                    value={participant.email}
+                    onChange={(e) =>
+                      updateParticipant(participant.id, "email", e.target.value)
+                    }
+                    disabled={disabled}
+                    className={`h-8 text-sm ${
+                      participant.createAsLead && emailMissing
+                        ? "border-destructive focus-visible:ring-destructive"
+                        : ""
+                    }`}
+                  />
+
+                  {participant.createAsLead && emailMissing && (
+                    <p className="text-xs text-destructive">
+                      Email ist erforderlich, wenn ein Lead erstellt wird
+                    </p>
+                  )}
+                </div>
 
                 <Input
                   placeholder="Telefon"
@@ -151,8 +168,6 @@ export function ParticipantForm({
                   checked={participant.createAsLead}
                   disabled={leadCheckboxDisabled}
                   onCheckedChange={(checked) => {
-                    if (checked && emailMissing) return;
-
                     updateParticipant(
                       participant.id,
                       "createAsLead",
