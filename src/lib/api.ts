@@ -401,7 +401,8 @@ export interface AddStageParticipantRequest {
   linked_client_id?: number;
   linked_lead_id?: number;
 
-  attended: boolean;
+  // Allow attended to be omitted so frontend can leave it undefined/null when not set
+  attended?: boolean;
   create_as_lead?: boolean;
 }
 

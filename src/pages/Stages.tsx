@@ -51,6 +51,7 @@ import {
   getNumericSetting,
   StageParticipantUI,
 } from "@/lib/api";
+import type { AddStageParticipantRequest } from "@/lib/api";
 import { MetricChip } from "@/components/MetricChip";
 import {
   ParticipantForm,
@@ -165,19 +166,65 @@ function CreateStageDialog() {
       };
       const newStage = await createStage(payload);
 
-      // Add participants (only create as lead if checkbox is checked)
+      // Add participants — accept entries that have at least one contact field
       const validParticipants = participantsList.filter(
-        (p) => p.name.trim().length > 0
+        (p) =>
+          p.name.trim().length > 0 ||
+          p.email.trim().length > 0 ||
+          p.phone.trim().length > 0
       );
 
       for (const p of validParticipants) {
-        await addStageParticipant(newStage.id, {
-          participant_name: p.name.trim(),
+        console.debug("[stages] addStageParticipant (create)", newStage.id, {
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          createAsLead: p.createAsLead,
+        });
+
+        // If name is empty, fall back to email or phone so backend receives a non-empty participant_name
+        const fallbackName =
+          p.name.trim() || p.email.trim() || p.phone.trim() || "Unbekannt";
+        if (!p.name.trim()) {
+          console.debug(
+            "[stages] participant has no name, using fallbackName",
+            fallbackName
+          );
+        }
+
+        const payload: Partial<AddStageParticipantRequest> = {
+          participant_name: fallbackName,
           participant_email: p.email.trim() || undefined,
           participant_phone: p.phone.trim() || undefined,
-          attended: true,
-          create_as_lead: p.createAsLead,
-        });
+          // If no linked client is provided, create a lead when we have any contact info
+          create_as_lead:
+            Boolean(p.createAsLead) ||
+            Boolean(p.name.trim() || p.email.trim() || p.phone.trim()),
+        };
+
+        if (p.attended !== undefined) {
+          payload.attended = Boolean(p.attended);
+        }
+
+        console.debug("[stages] POST payload (create)", newStage.id, payload);
+
+        try {
+          await addStageParticipant(
+            newStage.id,
+            payload as AddStageParticipantRequest
+          );
+        } catch (err) {
+          // Log axios error details if available
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const e: any = err;
+          console.error(
+            "[stages] addStageParticipant (create) failed",
+            e?.response?.status,
+            e?.response?.data,
+            e
+          );
+          throw err; // rethrow so mutation behaves as before
+        }
       }
     },
     onSuccess: async () => {
@@ -328,7 +375,12 @@ function EditStageDialog({ stage }: { stage: Stage }) {
   });
 
   const { mutate, isPending } = useMutation({
-    mutationFn: async () => {
+    // Accept participants to add as variables to avoid stale-closure issues
+    mutationFn: async ({
+      participantsToAdd,
+    }: {
+      participantsToAdd: Participant[];
+    }) => {
       await updateStageInfo(stage.id, {
         name,
         date,
@@ -339,19 +391,74 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         participants: toNumberOrNull(participants),
       });
 
+      // Defensive: log what was passed in so we can debug empty lists
+      console.debug(
+        "[stages] mutate called for stage (edit)",
+        stage.id,
+        "participantsToAdd",
+        participantsToAdd
+      );
+
       // Add new participants (only create as lead if checkbox is checked)
-      const validParticipants = participantsList.filter(
-        (p) => p.name.trim().length > 0
+      const validParticipants = (participantsToAdd ?? []).filter(
+        (p) =>
+          p.name.trim().length > 0 ||
+          p.email.trim().length > 0 ||
+          p.phone.trim().length > 0
+      );
+
+      console.debug(
+        "[stages] validParticipants (edit)",
+        stage.id,
+        validParticipants
       );
 
       for (const p of validParticipants) {
-        await addStageParticipant(stage.id, {
-          participant_name: p.name.trim(),
+        console.debug("[stages] addStageParticipant (edit)", stage.id, {
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          createAsLead: p.createAsLead,
+        });
+
+        const fallbackName =
+          p.name.trim() || p.email.trim() || p.phone.trim() || "Unbekannt";
+        if (!p.name.trim()) {
+          console.debug(
+            "[stages] participant has no name, using fallbackName",
+            fallbackName
+          );
+        }
+
+        const payload: Partial<AddStageParticipantRequest> = {
+          participant_name: fallbackName,
           participant_email: p.email.trim() || undefined,
           participant_phone: p.phone.trim() || undefined,
-          attended: true,
           create_as_lead: p.createAsLead,
-        });
+        };
+
+        if (p.attended !== undefined) {
+          payload.attended = Boolean(p.attended);
+        }
+
+        console.debug("[stages] POST payload (edit)", stage.id, payload);
+
+        try {
+          await addStageParticipant(
+            stage.id,
+            payload as AddStageParticipantRequest
+          );
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const e: any = err;
+          console.error(
+            "[stages] addStageParticipant (edit) failed",
+            e?.response?.status,
+            e?.response?.data,
+            e
+          );
+          throw err;
+        }
       }
     },
     onMutate: async () => {
@@ -521,7 +628,10 @@ function EditStageDialog({ stage }: { stage: Stage }) {
           <Button variant="outline" onClick={() => setOpen(false)}>
             Abbrechen
           </Button>
-          <Button disabled={!canSubmit} onClick={() => mutate()}>
+          <Button
+            disabled={!canSubmit}
+            onClick={() => mutate({ participantsToAdd: participantsList })}
+          >
             {isPending ? "Speichern…" : "Speichern"}
           </Button>
         </DialogFooter>
@@ -553,7 +663,7 @@ export default function Stages() {
     typeof avgRev === "number" && avgRev > 0 ? avgRev : undefined;
   const isAvgReady = !!effectiveAvgRev && !avgRevLoading;
 
-  const stages: Stage[] = data ?? [];
+  const stages = useMemo<Stage[]>(() => data ?? [], [data]);
 
   const filteredStages = useMemo<Stage[]>(() => {
     const term = searchTerm.trim().toLowerCase();
