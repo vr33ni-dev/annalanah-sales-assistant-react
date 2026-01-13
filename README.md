@@ -1,4 +1,4 @@
-# Small Business Sales Assistant
+# Sales Assistant Backend (React + Typescript)
 
 Minimal frontend for the Go backend used in this repo. Lovable was only used to generate the initial skeleton — this repo is maintained locally.
 
@@ -46,6 +46,12 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+
+---
+
+## Release labels
+
+The autobump supports label-driven versioning on merged PRs. If a merged PR has one of the labels `major`, `minor`, or `patch` the release workflow will use that label to decide which part of the semver to increment (major > minor > patch precedence). The workflow requires an explicit label; if no label is present the release job will fail and prompt you to add one of `major`, `minor`, or `patch`.
 
 ---
 > **Note:** The canonical repository is [**on GitHub**](https://github.com/vr33ni-dev/annalanah-sales-assistant-react) · [Mirror on GitLab →](https://gitlab.com/vr33ni-work/annalanah-sales-assistant-react) [![Mirror Status](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/actions/workflows/gitlab-mirror.yml/badge.svg)](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/actions/workflows/gitlab-mirror.yml)
