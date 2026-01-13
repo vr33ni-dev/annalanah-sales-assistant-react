@@ -57,10 +57,15 @@ jobs:
       group: release-on-main-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-  # run on PR merge to main (or manual dispatch)
-  if: ${{ needs.precheck.outputs.run_release == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
-
     steps:
+      - name: Stop early if precheck decided not to run
+        run: |
+          if [ "${{ needs.precheck.outputs.run_release }}" != "true" ]; then
+            echo "Precheck decided not to run release; stopping job."
+            exit 0
+          fi
+
+      # remaining steps follow
       - name: Checkout
         uses: actions/checkout@v4
         with:
