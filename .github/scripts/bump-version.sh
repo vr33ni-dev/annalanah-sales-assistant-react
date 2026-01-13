@@ -132,19 +132,60 @@ if [ "$TARGET" = "VERSION" ]; then
     fi
   fi
 elif [ "$TARGET" = "package.json" ]; then
-  # requires node/npm in runner
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "npm not found in PATH; cannot bump package.json" >&2
-    exit 3
-  fi
-  CUR_VER=$(node -p "require('./package.json').version")
-  echo "Current package.json version: ${CUR_VER}"
-  # If there is no previous tag (first release) we computed NEW_VERSION above
-  # Use the computed NEW_VERSION to set package.json so first tag becomes v0.1.0 (or v1.0.0 for major)
-  if [ -z "${LATEST_TAG}" ]; then
+  # Prefer jq-based edits to package.json (simpler, deterministic). Fall back to npm if jq missing.
+  if command -v jq >/dev/null 2>&1; then
+    CUR_VER=$(jq -r .version package.json)
+    echo "Current package.json version: ${CUR_VER}"
+    TARGET_VER="${NEW_VERSION#v}"
+
+    # Build jq filter: always set .version, optionally sync dependencies if SYNC_DEP is set
+    JQ_FILTER='.version = $ver'
+    if [ -n "${SYNC_DEP:-}" ]; then
+      # SYNC_DEP is a comma-separated list of package names to sync into dependencies and peerDependencies
+      IFS=',' read -ra _PKGS <<< "${SYNC_DEP}"
+      for pkg in "${_PKGS[@]}"; do
+        pkg_trimmed=$(echo "$pkg" | sed 's/^\s*//;s/\s*$//')
+        # extend filter to set both dependencies and peerDependencies entries
+        JQ_FILTER="${JQ_FILTER} | .dependencies[\"${pkg_trimmed}\"] = $ver | .peerDependencies[\"${pkg_trimmed}\"] = $ver"
+      done
+    fi
+
+    if [ "$APPLY" -eq 1 ]; then
+      echo "Applying jq update: setting package.json version -> ${TARGET_VER}"
+      TMPFILE=$(mktemp)
+      if jq --arg ver "${TARGET_VER}" "${JQ_FILTER}" package.json > "$TMPFILE"; then
+        mv "$TMPFILE" package.json
+        echo "Wrote package.json (version ${TARGET_VER})"
+      else
+        rm -f "$TMPFILE"
+        echo "jq failed to write package.json" >&2
+        exit 4
+      fi
+    else
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY RUN: would run: jq --arg ver ${TARGET_VER} '${JQ_FILTER}' package.json > tmp && mv tmp package.json"
+      else
+        echo "Would run: jq --arg ver ${TARGET_VER} '${JQ_FILTER}' package.json > tmp && mv tmp package.json (pass --apply to perform)"
+      fi
+    fi
+
+    if [ "$APPLY" -eq 1 ]; then
+      NEW_VER=$(jq -r .version package.json)
+    else
+      NEW_VER="${NEW_VERSION#v}"
+    fi
+    NEW_TAG="v${NEW_VER}"
+    echo "Updated package.json -> ${NEW_VER}"
+  else
+    # Fallback to npm behavior if jq isn't available
+    if ! command -v npm >/dev/null 2>&1; then
+      echo "Neither jq nor npm found in PATH; cannot bump package.json" >&2
+      exit 3
+    fi
+    CUR_VER=$(node -p "require('./package.json').version")
+    echo "Current package.json version: ${CUR_VER}"
     TARGET_VER="${NEW_VERSION#v}"
     if [ "$APPLY" -eq 1 ]; then
-      echo "No existing tag detected; setting package.json to ${TARGET_VER}"
       npm --no-git-tag-version version "${TARGET_VER}"
     else
       if [ "$DRY_RUN" -eq 1 ]; then
@@ -153,27 +194,14 @@ elif [ "$TARGET" = "package.json" ]; then
         echo "Would run: npm --no-git-tag-version version ${TARGET_VER} (pass --apply to perform)"
       fi
     fi
-  else
-    # Otherwise, set package.json exactly to the computed target version
-    TARGET_VER="${NEW_VERSION#v}"
     if [ "$APPLY" -eq 1 ]; then
-      npm --no-git-tag-version version "${TARGET_VER}"
+      NEW_VER=$(node -p "require('./package.json').version")
     else
-      if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY RUN: would run: npm --no-git-tag-version version ${TARGET_VER}"
-      else
-        echo "Would run: npm --no-git-tag-version version ${TARGET_VER} (pass --apply to perform)"
-      fi
+      NEW_VER="${NEW_VERSION#v}"
     fi
+    NEW_TAG="v${NEW_VER}"
+    echo "Updated package.json -> ${NEW_VER} (via npm fallback)"
   fi
-  if [ "$APPLY" -eq 1 ]; then
-    NEW_VER=$(node -p "require('./package.json').version")
-  else
-    # In compute-only/dry-run mode, don't read package.json (we didn't change it); use the computed NEW_VERSION
-    NEW_VER="${NEW_VERSION#v}"
-  fi
-  NEW_TAG="v${NEW_VER}"
-  echo "Updated package.json -> ${NEW_VER}"
 else
   echo "Unknown target: $TARGET"; exit 2
 fi
