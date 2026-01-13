@@ -94,29 +94,45 @@ jobs:
             echo "No changes to commit"
           fi
 
-      - name: Create v-tag and push (if NEW_TAG)
+      - name: Create v-tag and push (if package.json version)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          NEW_TAG="${{ steps.autobump.outputs.NEW_TAG }}"
-          if [ -z "${NEW_TAG}" ]; then
-            echo "No NEW_TAG from autobump; skipping tag creation"
-          else
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git config user.name "github-actions[bot]"
-            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # fetch tags and remote main
+          git fetch origin --tags
 
-            # If the tag already exists on remote, skip creating/pushing it to avoid failing the job.
-            if git ls-remote --tags origin "refs/tags/${NEW_TAG}" | grep -q "${NEW_TAG}"; then
-              echo "Tag ${NEW_TAG} already exists on remote; skipping tag creation."
-            else
-              git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
-              git push origin HEAD:main || true
-              git push origin "refs/tags/${NEW_TAG}"
-            fi
+          # compute target commit: prefer origin/main (the pushed commit), otherwise local HEAD
+          LOCAL_HEAD=$(git rev-parse --verify HEAD)
+          REMOTE_MAIN=$(git rev-parse --verify origin/main)
+          if [ "$LOCAL_HEAD" != "$REMOTE_MAIN" ]; then
+            echo "Local HEAD ($LOCAL_HEAD) differs from origin/main ($REMOTE_MAIN); tagging origin/main instead."
+            TARGET_COMMIT="$REMOTE_MAIN"
+          else
+            TARGET_COMMIT="$LOCAL_HEAD"
           fi
+
+          # derive tag from package.json to ensure it matches bumped version
+          if [ -f package.json ]; then
+            TAG_FROM_PKG="v$(jq -r .version package.json)"
+          else
+            echo "package.json not found; skipping tag creation"
+            exit 0
+          fi
+
+          # check remote for existing tag
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG_FROM_PKG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_FROM_PKG} already exists on remote; skipping tag creation."
+            exit 0
+          fi
+
+          # create annotated tag at the target commit and push
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -a "${TAG_FROM_PKG}" "$TARGET_COMMIT" -m "Release ${TAG_FROM_PKG}"
+          git push origin "refs/tags/${TAG_FROM_PKG}"
+          echo "Pushed tag ${TAG_FROM_PKG} -> ${TARGET_COMMIT}"
 
       - name: Generate changelog
         env:
