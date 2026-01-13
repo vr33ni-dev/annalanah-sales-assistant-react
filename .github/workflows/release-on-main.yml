@@ -1,0 +1,129 @@
+name: Release (create git tag) on merge to main
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+
+jobs:
+  create_tag:
+    runs-on: ubuntu-latest
+    # run on push to main, or when a PR is closed and merged into main
+    if: |
+      github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: |
+          git fetch --tags origin
+
+      - name: Compute package version, bump via npm and create tag
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          EVENT_NAME=${GITHUB_EVENT_NAME}
+          echo "Event name: ${EVENT_NAME}"
+
+          # Determine bump type
+          BUMP="patch"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+            LABELS_LOWER=$(echo "$LABELS" | tr '[:upper:]' '[:lower:]' || true)
+            echo "PR labels:"
+            echo "$LABELS_LOWER"
+
+            if echo "$LABELS_LOWER" | grep -q "major"; then
+              BUMP="major"
+            elif echo "$LABELS_LOWER" | grep -q "minor"; then
+              BUMP="minor"
+            elif echo "$LABELS_LOWER" | grep -q "patch"; then
+              BUMP="patch"
+            else
+              echo "ERROR: No semantic version label (major/minor/patch) found on merged PR. Labeling is required."
+              exit 1
+            fi
+          else
+            BUMP="patch"
+          fi
+
+          echo "Selected bump: ${BUMP}"
+
+          # Read current package.json version
+          CUR_VER=$(node -p "require('./package.json').version")
+          echo "Current package.json version: ${CUR_VER}"
+
+          # Bump package.json version using npm (no git tag by npm)
+          npm --no-git-tag-version version ${BUMP}
+
+          # Read the new version and create a v-prefixed tag
+          NEW_VER=$(node -p "require('./package.json').version")
+          NEW_TAG="v${NEW_VER}"
+          echo "New package version: ${NEW_VER} -> tag ${NEW_TAG}"
+
+          # Commit package.json and package-lock.json (if present)
+          git add package.json package-lock.json 2>/dev/null || true
+          git commit -m "chore(release): bump package.json to ${NEW_VER} [skip ci]" || true
+
+          # Configure git and push commit + tag
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
+          git push origin HEAD:main || true
+          git push origin "refs/tags/${NEW_TAG}"
+
+      - name: Generate changelog
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EVENT_NAME=${GITHUB_EVENT_NAME}
+          CHANGELOG_FILE=/tmp/changelog.md
+          echo "" > ${CHANGELOG_FILE}
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")
+            PR_TITLE=$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")
+            PR_BODY=$(jq -r '.pull_request.body' "$GITHUB_EVENT_PATH")
+            echo "Merge PR #${PR_NUM}: ${PR_TITLE}" >> ${CHANGELOG_FILE}
+            echo "" >> ${CHANGELOG_FILE}
+            if [ "${PR_BODY}" != "null" ]; then
+              echo "${PR_BODY}" >> ${CHANGELOG_FILE}
+            fi
+          else
+            # direct push: list commits since last tag
+            LAST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+            if [ -z "${LAST_TAG}" ]; then
+              RANGE=""
+              echo "Changes:" >> ${CHANGELOG_FILE}
+            else
+              RANGE="${LAST_TAG}..HEAD"
+              echo "Changes since ${LAST_TAG}:" >> ${CHANGELOG_FILE}
+            fi
+            git --no-pager log ${RANGE} --pretty=format:"- %s (%an)" >> ${CHANGELOG_FILE} || true
+          fi
+          echo "Changelog generated at ${CHANGELOG_FILE}"
+          cat ${CHANGELOG_FILE}
+
+      - name: Create GitHub release (optional)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG=${NEW_TAG}
+          CHANGELOG_FILE=/tmp/changelog.md
+          API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
+          BODY=$(jq -nc --arg tag "$TAG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
+          echo "Creating release for ${TAG}"
+          curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
