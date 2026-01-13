@@ -1,4 +1,4 @@
-# Sales Assistant Backend (React + Typescript)
+# Sales Assistant Frontend (React + Typescript)
 
 Minimal frontend for the Go backend used in this repo. Lovable was only used to generate the initial skeleton — this repo is maintained locally.
 
