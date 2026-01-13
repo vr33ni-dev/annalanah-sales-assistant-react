@@ -26,8 +26,14 @@ jobs:
           BASE_REF="${{ github.event.pull_request.base.ref }}"
           echo "Base ref: $BASE_REF"
 
-          # Collect labels from the PR event payload
-          LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          # Prefer querying the PR live (so re-runs pick up labels added after the original event)
+          PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -n "$PR_NUM" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+            LABELS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUM}" | jq -r '.labels[]?.name' 2>/dev/null || true)
+          else
+            # Fallback to event payload labels
+            LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          fi
           LABELS_LOWER=$(echo "$LABELS" | tr '[:upper:]' '[:lower:]' || true)
           echo "PR labels:"
           echo "$LABELS_LOWER"
