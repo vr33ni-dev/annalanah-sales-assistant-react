@@ -2,6 +2,8 @@ name: Release (create git tag) on merge to main
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 on:
   push:
