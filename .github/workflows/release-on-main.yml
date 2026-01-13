@@ -8,6 +8,7 @@ on:
     branches: [main]
   pull_request:
     types: [closed]
+  workflow_dispatch:
 
 jobs:
   create_tag:
@@ -42,19 +43,19 @@ jobs:
         id: autobump
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_PUSH_TOKEN: ${{ secrets.REPO_PUSH_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           chmod +x .github/scripts/bump-version.sh || true
-          ./.github/scripts/bump-version.sh package.json auto
+          # run in apply mode so the script will modify package.json/VERSION as needed
+          ./.github/scripts/bump-version.sh package.json auto --apply
 
       - name: Commit and push package.json (if changed)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_PUSH_TOKEN: ${{ secrets.REPO_PUSH_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -66,11 +67,7 @@ jobs:
             if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:main; then
               echo "Pushed with GITHUB_TOKEN"
             else
-              if [ -n "${REPO_PUSH_TOKEN:-}" ]; then
-                git push "https://x-access-token:${REPO_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:main
-              else
-                echo "No REPO_PUSH_TOKEN available; continuing (tag push may still include commit)"
-              fi
+              echo "Push failed with GITHUB_TOKEN. If Actions cannot push, add a REPO_PUSH_TOKEN secret (PAT) or enable Actions write permissions in repository settings."
             fi
           else
             echo "No changes to commit"
@@ -143,3 +140,23 @@ jobs:
           fi
           echo "Creating release for ${TAG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
+
+  bump_dry_run:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dry-run bump (manual)
+        id: dryrun
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/bump-version.sh || true
+          ./.github/scripts/bump-version.sh package.json auto --dry-run
