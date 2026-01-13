@@ -8,8 +8,6 @@ permissions:
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [closed]
   workflow_dispatch:
 
 jobs:
@@ -49,8 +47,8 @@ jobs:
       group: release-on-main-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # run on push to main, or when a PR is closed and merged into main
-    if: ${{ needs.precheck.outputs.run_release == 'true' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')) }}
+    # run on push to main (or manual dispatch). We removed pull_request trigger to avoid duplicate runs
+    if: ${{ needs.precheck.outputs.run_release == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
 
     steps:
       - name: Checkout
@@ -299,7 +297,7 @@ jobs:
       - name: Dry-run bump (manual)
         id: dryrun
         env:
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          PR_LABELS: ""
         run: |
           set -euo pipefail
           chmod +x .github/scripts/bump-version.sh || true
