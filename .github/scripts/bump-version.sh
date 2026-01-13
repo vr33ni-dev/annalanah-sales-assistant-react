@@ -154,14 +154,15 @@ elif [ "$TARGET" = "package.json" ]; then
       fi
     fi
   else
-    # Otherwise use the semantic bump via npm
+    # Otherwise, set package.json exactly to the computed target version
+    TARGET_VER="${NEW_VERSION#v}"
     if [ "$APPLY" -eq 1 ]; then
-      npm --no-git-tag-version version "${BUMP}"
+      npm --no-git-tag-version version "${TARGET_VER}"
     else
       if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY RUN: would run: npm --no-git-tag-version version ${BUMP}"
+        echo "DRY RUN: would run: npm --no-git-tag-version version ${TARGET_VER}"
       else
-        echo "Would run: npm --no-git-tag-version version ${BUMP} (pass --apply to perform)"
+        echo "Would run: npm --no-git-tag-version version ${TARGET_VER} (pass --apply to perform)"
       fi
     fi
   fi

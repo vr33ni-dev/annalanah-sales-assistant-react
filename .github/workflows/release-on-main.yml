@@ -27,23 +27,43 @@ jobs:
         run: |
           git fetch --tags origin
 
-      - name: Require release label on merged PRs
-        if: ${{ github.event_name == 'pull_request' }}
+      - id: require_labels
+        name: Require release label on merged PRs
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
-          if [ -z "$(echo "$LABELS" | tr -d '[:space:]')" ]; then
+          PR_LABELS_JSON="[]"
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            PR_LABELS_JSON=$(jq -c '.pull_request.labels // []' "${GITHUB_EVENT_PATH}" 2>/dev/null || echo "[]")
+          else
+            # For push events (merge commit), query the GitHub API for PRs that include this commit and take the first one
+            PR_INFO=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+              -H "Accept: application/vnd.github.groot-preview+json")
+            PR_LABELS_JSON=$(echo "$PR_INFO" | jq -c '.[0].labels // []' 2>/dev/null || echo "[]")
+          fi
+
+          # expose PR_LABELS as a step output for downstream steps
+          echo "PR_LABELS=${PR_LABELS_JSON}" >> "${GITHUB_OUTPUT}"
+
+          LABEL_NAMES=$(echo "$PR_LABELS_JSON" | jq -r '.[].name' || true)
+          if [ -z "$(echo "$LABEL_NAMES" | tr -d '[:space:]')" ]; then
             echo "ERROR: Merged PR does not have a release label (major/minor/patch)."
             exit 1
           fi
+          echo "Found labels: $LABEL_NAMES"
 
       - name: Auto bump version (label-driven)
         id: autobump
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
-          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          PR_LABELS: ${{ steps.require_labels.outputs.PR_LABELS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
@@ -61,9 +81,10 @@ jobs:
           set -euo pipefail
           if git status --porcelain | grep -q '^'; then
             git add package.json package-lock.json || true
-            git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
+            # set git identity before committing to avoid author/identity errors on runners
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
             if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:main; then
               echo "Pushed with GITHUB_TOKEN"
             else
