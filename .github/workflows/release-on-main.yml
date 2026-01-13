@@ -1,5 +1,8 @@
 name: Release (create git tag) on merge to main
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -23,64 +26,73 @@ jobs:
         run: |
           git fetch --tags origin
 
-      - name: Compute package version, bump via npm and create tag
+      - name: Require release label on merged PRs
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+          LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -z "$(echo "$LABELS" | tr -d '[:space:]')" ]; then
+            echo "ERROR: Merged PR does not have a release label (major/minor/patch)."
+            exit 1
+          fi
+
+      - name: Auto bump version (label-driven)
+        id: autobump
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_PUSH_TOKEN: ${{ secrets.REPO_PUSH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          chmod +x .github/scripts/bump-version.sh || true
+          ./.github/scripts/bump-version.sh package.json auto
 
-          EVENT_NAME=${GITHUB_EVENT_NAME}
-          echo "Event name: ${EVENT_NAME}"
-
-          # Determine bump type
-          BUMP="patch"
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
-            LABELS_LOWER=$(echo "$LABELS" | tr '[:upper:]' '[:lower:]' || true)
-            echo "PR labels:"
-            echo "$LABELS_LOWER"
-
-            if echo "$LABELS_LOWER" | grep -q "major"; then
-              BUMP="major"
-            elif echo "$LABELS_LOWER" | grep -q "minor"; then
-              BUMP="minor"
-            elif echo "$LABELS_LOWER" | grep -q "patch"; then
-              BUMP="patch"
+      - name: Commit and push package.json (if changed)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_PUSH_TOKEN: ${{ secrets.REPO_PUSH_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if git status --porcelain | grep -q '^'; then
+            git add package.json package-lock.json || true
+            git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:main; then
+              echo "Pushed with GITHUB_TOKEN"
             else
-              echo "ERROR: No semantic version label (major/minor/patch) found on merged PR. Labeling is required."
-              exit 1
+              if [ -n "${REPO_PUSH_TOKEN:-}" ]; then
+                git push "https://x-access-token:${REPO_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:main
+              else
+                echo "No REPO_PUSH_TOKEN available; continuing (tag push may still include commit)"
+              fi
             fi
           else
-            BUMP="patch"
+            echo "No changes to commit"
           fi
 
-          echo "Selected bump: ${BUMP}"
-
-          # Read current package.json version
-          CUR_VER=$(node -p "require('./package.json').version")
-          echo "Current package.json version: ${CUR_VER}"
-
-          # Bump package.json version using npm (no git tag by npm)
-          npm --no-git-tag-version version ${BUMP}
-
-          # Read the new version and create a v-prefixed tag
-          NEW_VER=$(node -p "require('./package.json').version")
-          NEW_TAG="v${NEW_VER}"
-          echo "New package version: ${NEW_VER} -> tag ${NEW_TAG}"
-
-          # Commit package.json and package-lock.json (if present)
-          git add package.json package-lock.json 2>/dev/null || true
-          git commit -m "chore(release): bump package.json to ${NEW_VER} [skip ci]" || true
-
-          # Configure git and push commit + tag
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
-          git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
-          git push origin HEAD:main || true
-          git push origin "refs/tags/${NEW_TAG}"
+      - name: Create v-tag and push (if NEW_TAG)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          NEW_TAG="${{ steps.autobump.outputs.NEW_TAG }}"
+          if [ -z "${NEW_TAG}" ]; then
+            echo "No NEW_TAG from autobump; skipping tag creation"
+          else
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name "github-actions[bot]"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
+            git push origin HEAD:main || true
+            git push origin "refs/tags/${NEW_TAG}"
+          fi
 
       - name: Generate changelog
         env:
@@ -119,11 +131,15 @@ jobs:
       - name: Create GitHub release (optional)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.autobump.outputs.NEW_TAG }}
         run: |
           set -euo pipefail
-          TAG=${NEW_TAG}
           CHANGELOG_FILE=/tmp/changelog.md
           API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
           BODY=$(jq -nc --arg tag "$TAG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
+          if [ -z "$TAG" ]; then
+            echo "No tag found; skipping GitHub release creation"
+            exit 0
+          fi
           echo "Creating release for ${TAG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
