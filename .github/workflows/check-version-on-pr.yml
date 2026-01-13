@@ -142,13 +142,42 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
 
+            # attempt to sync with remote first (handle fast-forward conflicts)
+            git fetch origin
+            REMOTE_REF="origin/${{ github.event.pull_request.head.ref }}"
+            if git rev-parse --verify "$REMOTE_REF" >/dev/null 2>&1; then
+              # if remote has commits not in local HEAD, attempt to rebase local changes onto remote
+              if ! git merge-base --is-ancestor "$REMOTE_REF" HEAD >/dev/null 2>&1; then
+                echo "Remote branch has commits not in local; attempting rebase onto $REMOTE_REF"
+                if git pull --rebase origin "${{ github.event.pull_request.head.ref }}"; then
+                  echo "Rebase successful"
+                else
+                  echo "Rebase failed; aborting rebase and creating a fallback branch"
+                  git rebase --abort || true
+                  SAFE_BRANCH="bump/${{ github.event.pull_request.head.ref }}-bump-$(date +%s)"
+                  git checkout -b "$SAFE_BRANCH"
+                  if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:"$SAFE_BRANCH"; then
+                    echo "Pushed fallback branch $SAFE_BRANCH"
+                    MSG="Could not push bump to PR branch due to remote divergence; created fallback branch ${SAFE_BRANCH}. Please open a PR to merge it into ${PR_NUM}."
+                    curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+                    exit 1
+                  else
+                    echo "Failed to push fallback branch $SAFE_BRANCH" >&2
+                    exit 1
+                  fi
+                fi
+              else
+                echo "Local HEAD already contains remote commits; continuing to push"
+              fi
+            fi
+
             if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:${{ github.event.pull_request.head.ref }}; then
               echo "Pushed bump to PR branch"
               # comment on PR to let reviewers know we applied the bump
               BODY="Applied automatic version bump to this PR: **$(jq -r .version package.json)**"
               curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
             else
-              echo "Failed to push bump to PR branch; this may be a protected branch or disallowed by policy"
+              echo "Failed to push bump to PR branch after sync attempts; this may be a protected branch or disallowed by policy" >&2
               exit 1
             fi
           else
