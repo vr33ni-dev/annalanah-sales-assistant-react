@@ -103,3 +103,54 @@ jobs:
           echo "Posting comment to $API_URL"
           curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" \
             -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$API_URL" >/dev/null
+
+      - name: Auto-apply bump to PR branch (same-repo PRs)
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "PR is from same repo; attempting to apply bump to PR branch"
+          chmod +x .github/scripts/bump-version.sh || true
+
+          # fetch the PR branch and checkout
+          git fetch --no-tags origin +refs/heads/${{ github.event.pull_request.head.ref }}:refs/remotes/origin/${{ github.event.pull_request.head.ref }} || true
+          git checkout -B "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
+
+          # get live labels for the PR
+          PR_NUM=${{ github.event.pull_request.number }}
+          PR_LABELS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUM}" | jq -c '.labels // []' 2>/dev/null || echo '[]')
+          export PR_LABELS="$PR_LABELS_JSON"
+
+          # run bump in apply mode (will edit package.json)
+          ./.github/scripts/bump-version.sh package.json auto --apply
+
+          # regenerate package-lock.json so the lockfile matches the bumped version
+          if command -v npm >/dev/null 2>&1; then
+            echo "Regenerating package-lock.json (package-lock-only)..."
+            npm install --package-lock-only
+            echo "package-lock.json version: $(node -e "console.log(require('./package-lock.json').version)")" || true
+          else
+            echo "npm not found; skipping package-lock update"
+          fi
+
+          # commit & push if there are changes
+          if git status --porcelain | grep -q '^'; then
+            git add package.json package-lock.json || true
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
+
+            if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:${{ github.event.pull_request.head.ref }}; then
+              echo "Pushed bump to PR branch"
+              # comment on PR to let reviewers know we applied the bump
+              BODY="Applied automatic version bump to this PR: **$(jq -r .version package.json)**"
+              curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+            else
+              echo "Failed to push bump to PR branch; this may be a protected branch or disallowed by policy"
+              exit 1
+            fi
+          else
+            echo "No changes to commit (PR already contains the bump)"
+          fi
