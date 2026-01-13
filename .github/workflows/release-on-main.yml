@@ -6,8 +6,8 @@ permissions:
   pull-requests: write
 
 on:
-  push:
-    branches: [main]
+  pull_request:
+    types: [closed]
   workflow_dispatch:
 
 jobs:
@@ -22,31 +22,34 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const eventName = process.env.GITHUB_EVENT_NAME
-            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/')
-            const sha = process.env.GITHUB_SHA
-            if (eventName === 'push') {
-              // Only skip release runs for pushes that were authored by automation (GitHub Actions).
-              // When a human merges a PR the push should be allowed to run the release.
-              const actor = process.env.GITHUB_ACTOR || '';
-              if (actor.startsWith('github-actions')) {
-                core.info("Push authored by GitHub Actions — checking whether this commit comes from a merged PR...")
-                const resp = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha })
-                if (resp && resp.data && resp.data.length > 0) {
-                  for (const pr of resp.data) {
-                    const p = await github.rest.pulls.get({ owner, repo, pull_number: pr.number })
-                    if (p && p.data && p.data.merged) {
-                      core.info(`Found merged PR #${pr.number}; skipping release run.`)
-                      core.setOutput('run_release','false')
-                      return
-                    }
-                  }
-                }
-              } else {
-                core.info("Push not authored by GitHub Actions; proceeding with release run.")
+            const eventName = process.env.GITHUB_EVENT_NAME || ''
+            const eventPath = process.env.GITHUB_EVENT_PATH || ''
+
+            // Trigger release when a PR targeting main was merged.
+            if (eventName === 'pull_request' && eventPath) {
+              const payload = require(eventPath)
+              const pr = payload.pull_request || {}
+              const merged = !!pr.merged
+              const baseRef = pr.base && pr.base.ref ? pr.base.ref : ''
+              if (merged && baseRef === 'main') {
+                core.info('Pull request merged to main — proceeding with release run.')
+                core.setOutput('run_release','true')
+                return
               }
+              core.info('Pull request closed but not a merged to main event — skipping release run.')
+              core.setOutput('run_release','false')
+              return
             }
-            core.setOutput('run_release','true')
+
+            // Allow manual workflow dispatch
+            if (eventName === 'workflow_dispatch') {
+              core.info('Manual dispatch — proceeding with release run.')
+              core.setOutput('run_release','true')
+              return
+            }
+
+            core.info('Event not eligible for release run — skipping')
+            core.setOutput('run_release','false')
 
   create_tag:
     needs: precheck
@@ -54,8 +57,8 @@ jobs:
       group: release-on-main-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    # run on push to main (or manual dispatch). We removed pull_request trigger to avoid duplicate runs
-    if: ${{ needs.precheck.outputs.run_release == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+  # run on PR merge to main (or manual dispatch)
+  if: ${{ needs.precheck.outputs.run_release == 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
 
     steps:
       - name: Checkout
