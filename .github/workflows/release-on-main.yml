@@ -26,17 +26,24 @@ jobs:
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/')
             const sha = process.env.GITHUB_SHA
             if (eventName === 'push') {
-              core.info("Event is 'push' — checking whether this commit comes from a merged PR...")
-              const resp = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha })
-              if (resp && resp.data && resp.data.length > 0) {
-                for (const pr of resp.data) {
-                  const p = await github.rest.pulls.get({ owner, repo, pull_number: pr.number })
-                  if (p && p.data && p.data.merged) {
-                    core.info(`Found merged PR #${pr.number}; skipping release run.`)
-                    core.setOutput('run_release','false')
-                    return
+              // Only skip release runs for pushes that were authored by automation (GitHub Actions).
+              // When a human merges a PR the push should be allowed to run the release.
+              const actor = process.env.GITHUB_ACTOR || '';
+              if (actor.startsWith('github-actions')) {
+                core.info("Push authored by GitHub Actions — checking whether this commit comes from a merged PR...")
+                const resp = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: sha })
+                if (resp && resp.data && resp.data.length > 0) {
+                  for (const pr of resp.data) {
+                    const p = await github.rest.pulls.get({ owner, repo, pull_number: pr.number })
+                    if (p && p.data && p.data.merged) {
+                      core.info(`Found merged PR #${pr.number}; skipping release run.`)
+                      core.setOutput('run_release','false')
+                      return
+                    }
                   }
                 }
+              } else {
+                core.info("Push not authored by GitHub Actions; proceeding with release run.")
               }
             }
             core.setOutput('run_release','true')
