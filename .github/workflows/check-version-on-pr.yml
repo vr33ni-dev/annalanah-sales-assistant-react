@@ -192,7 +192,9 @@ jobs:
               ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
               COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
               MARKER="Computed release version if merged to"
-              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
+              # Match any comment that contains the marker (not restricted by author) so we
+              # reliably find the computed-version comment even if the author string varies.
+              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
               # Use the package.json version with a leading 'v' to match the computed comment
               PKG_VERSION=$(jq -r .version package.json)
               PKG_VERSION_V="v${PKG_VERSION}"
@@ -244,7 +246,7 @@ jobs:
             echo "Ensuring PR comment reflects applied bump even though no commit was made"
             ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
             COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
-            EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
+            EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
             PKG_VERSION=$(jq -r .version package.json)
             PKG_VERSION_V="v${PKG_VERSION}"
             APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
