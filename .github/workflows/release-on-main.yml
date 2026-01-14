@@ -251,11 +251,20 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")
             PR_TITLE=$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")
-            PR_BODY=$(jq -r '.pull_request.body' "$GITHUB_EVENT_PATH")
+            PR_BODY_RAW=$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")
+
+            # Remove HTML comment blocks (PR templates often use <!-- -->)
+            PR_BODY_NOHTML=$(printf '%s\n' "$PR_BODY_RAW" | sed -E ':a;N;$!ba;s/<!--(.|\n)*?-->//g')
+
+            # Extract the human-written description before template headings like '##' or 'IMPORTANT:'
+            PR_BODY_CLEAN=$(printf '%s\n' "$PR_BODY_NOHTML" | awk '/^## /{exit} /^IMPORTANT:/{exit} {print}')
+            # Trim leading/trailing whitespace/newlines
+            PR_BODY_CLEAN=$(printf '%s' "$PR_BODY_CLEAN" | sed -E 's/^[[:space:]\n]+//; s/[[:space:]\n]+$//')
+
             echo "Merge PR #${PR_NUM}: ${PR_TITLE}" >> ${CHANGELOG_FILE}
-            echo "" >> ${CHANGELOG_FILE}
-            if [ "${PR_BODY}" != "null" ]; then
-              echo "${PR_BODY}" >> ${CHANGELOG_FILE}
+            if [ -n "${PR_BODY_CLEAN}" ]; then
+              echo "" >> ${CHANGELOG_FILE}
+              echo "${PR_BODY_CLEAN}" >> ${CHANGELOG_FILE}
             fi
           else
             # direct push: list commits since last tag
