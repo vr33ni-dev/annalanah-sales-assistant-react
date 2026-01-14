@@ -186,9 +186,22 @@ jobs:
 
             if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:${{ github.event.pull_request.head.ref }}; then
               echo "Pushed bump to PR branch"
-              # comment on PR to let reviewers know we applied the bump
-              BODY="Applied automatic version bump to this PR: **$(jq -r .version package.json)**"
-              curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+              # update existing PR comment (if present) to indicate we applied the bump, to avoid duplicate bot comments
+              ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
+              COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+              MARKER="Computed release version if merged to"
+              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
+              APPLIED_LINE="Applied automatic version bump to this PR: **$(jq -r .version package.json)**"
+              if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+                echo "Updating existing bot comment id=$EXISTING_ID to include applied bump"
+                EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
+                UPDATED_BODY="$EXISTING_BODY\n\n$APPLIED_LINE"
+                UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
+                curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+              else
+                echo "No existing computed-version bot comment found; creating applied bump comment"
+                curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_LINE" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+              fi
             else
               echo "Failed to push bump to PR branch after sync attempts; this may be a protected branch or disallowed by policy" >&2
               exit 1
