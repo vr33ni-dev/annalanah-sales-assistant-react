@@ -27,3 +27,6 @@ dist-ssr
 .env.local
 .env.dev
 .env.prod
+
+# docs
+docs/*
