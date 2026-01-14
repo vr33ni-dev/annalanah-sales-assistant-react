@@ -1,22 +1,4 @@
-# Release flow — compact
-
-Top-down visual summary of the versioning flow.
-
-```mermaid
-flowchart TD
-  PR["PR opened / updated"]
-  PR --> Compute["Compute version from labels"]
-  Compute --> Comment["Upsert single github-actions comment"]
-  Comment --> Apply["Apply bump (label/manual)"]
-  Apply --> Push["Push bump to PR (regen lock)"]
-  Push --> Update["Append 'applied' line"]
-  Comment --> Merge["Merge to main"]
-  Merge --> Autobump["Autobump on main"]
-  Autobump --> Tag["Create tag"]
-  Tag --> Release["Create Release (temp changelog)"]
-```
-
-# Release flow — compact
+# Versioning flow — compact
 
 Top-down visual summary of the versioning flow.
 
