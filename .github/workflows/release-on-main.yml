@@ -8,6 +8,9 @@ permissions:
 on:
   pull_request:
     types: [closed]
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -39,6 +42,66 @@ jobs:
               core.info('Pull request closed but not a merged to main event — skipping release run.')
               core.setOutput('run_release','false')
               return
+            }
+
+            // For pushes, run only for pushes to main and only when a release/tag for the
+            // package.json version is not already present on the repo. This covers the
+            // GitHub behavior where merges that change workflow files may not trigger
+            // the pull_request workflow run: the push event will act as a fallback.
+            if (eventName === 'push') {
+              const ref = process.env.GITHUB_REF || ''
+              if (ref !== 'refs/heads/main') {
+                core.info('Push event is not to main — skipping')
+                core.setOutput('run_release','false')
+                return
+              }
+
+              core.info('Push to main detected — checking for existing release/tag to avoid duplicate runs')
+              try {
+                const [owner, repo] = (process.env.GITHUB_REPOSITORY || '').split('/')
+                const sha = process.env.GITHUB_SHA || ''
+
+                // Try to read package.json at the pushed commit to derive the version
+                let version = null
+                try {
+                  const pkg = await github.rest.repos.getContent({ owner, repo, path: 'package.json', ref: sha })
+                  const content = Buffer.from(pkg.data.content, pkg.data.encoding).toString()
+                  const parsed = JSON.parse(content || '{}')
+                  version = parsed.version || null
+                } catch (e) {
+                  core.info('Could not read package.json at pushed commit; will proceed with release run as a fallback')
+                }
+
+                if (version) {
+                  const tag = `v${version}`
+                  // If a Release already exists for this tag, skip
+                  try {
+                    await github.rest.repos.getReleaseByTag({ owner, repo, tag })
+                    core.info(`Release for ${tag} already exists — skipping release run.`)
+                    core.setOutput('run_release','false')
+                    return
+                  } catch (e) {
+                    // Not found — continue to check refs
+                  }
+
+                  try {
+                    await github.rest.git.getRef({ owner, repo, ref: `refs/tags/${tag}` })
+                    core.info(`Tag ${tag} already exists — skipping release run.`)
+                    core.setOutput('run_release','false')
+                    return
+                  } catch (e) {
+                    // Tag not found — proceed
+                  }
+                }
+
+                core.info('No existing release/tag detected for pushed commit — proceeding with release run.')
+                core.setOutput('run_release','true')
+                return
+              } catch (err) {
+                core.info('Error while checking tags/releases for push; proceeding to run release as a safe fallback.')
+                core.setOutput('run_release','true')
+                return
+              }
             }
 
             // Allow manual workflow dispatch
