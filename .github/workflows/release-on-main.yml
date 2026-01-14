@@ -188,9 +188,12 @@ jobs:
                 else
                   echo "No event payload available; cannot post PR comment explaining blocked update."
                 fi
-                # Stop the release job so maintainers can resolve the bump manually (avoid creating unknown branches)
-                echo "Release cannot continue until package.json is updated on main. Failing the job to surface the issue."
-                exit 1
+                # Do not fail the job here. Instead record that the bump was not applied
+                # so downstream steps can still create a tag/release based on the computed
+                # version. This avoids failing the whole release when branch protection
+                # prevents actions from pushing to main.
+                echo "BUMP_APPLY_FAILED=1" >> "$GITHUB_ENV"
+                echo "Continuing release run: will attempt to create tag/release without updating package.json on main."
               fi
             fi
           else
@@ -235,8 +238,21 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git tag -a "${TAG_FROM_PKG}" "$TARGET_COMMIT" -m "Release ${TAG_FROM_PKG}"
-          git push origin "refs/tags/${TAG_FROM_PKG}"
-          echo "Pushed tag ${TAG_FROM_PKG} -> ${TARGET_COMMIT}"
+          if git push origin "refs/tags/${TAG_FROM_PKG}"; then
+            echo "Pushed tag ${TAG_FROM_PKG} -> ${TARGET_COMMIT}"
+          else
+            echo "git push of tag ${TAG_FROM_PKG} failed; attempting to create tag ref via GitHub API"
+            # Create a lightweight tag ref via the GitHub API as a fallback
+            API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs"
+            REF_PAYLOAD=$(jq -nc --arg ref "refs/tags/${TAG_FROM_PKG}" --arg sha "$TARGET_COMMIT" '{ref:$ref, sha:$sha}')
+            CREATE_RESP=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$REF_PAYLOAD" "$API_URL" || true)
+            if echo "$CREATE_RESP" | jq -e .ref >/dev/null 2>&1; then
+              echo "Created tag ref ${TAG_FROM_PKG} -> ${TARGET_COMMIT} via API"
+            else
+              echo "Failed to create tag ref via API; response: $CREATE_RESP" >&2
+              echo "Tag creation failed; skipping tag push step."
+            fi
+          fi
 
       - name: Generate changelog
         env:
@@ -343,16 +359,25 @@ jobs:
 
           # Ensure the tag exists on remote before creating a Release
           if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG_FROM_PKG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG_FROM_PKG} not found on remote; skipping release creation"
-            # Post a comment to the PR so maintainers know a tag wasn't found
-            if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
-              PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
-              if [ -n "${PR_NUM}" ]; then
-                MSG="Release skipped: tag ${TAG_FROM_PKG} not found on remote. The tag-step may have been skipped or branch protections prevented pushing the bump. Please merge the bump commit or create the tag manually."
-                curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+            echo "Tag ${TAG_FROM_PKG} not found on remote; attempting to create tag ref via API"
+            # attempt to create the tag ref pointing to TARGET_COMMIT via API (fallback when git push tags fails)
+            API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/refs"
+            REF_PAYLOAD=$(jq -nc --arg ref "refs/tags/${TAG_FROM_PKG}" --arg sha "${TARGET_COMMIT}" '{ref:$ref, sha:$sha}')
+            CREATE_RESP=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$REF_PAYLOAD" "$API_URL" || true)
+            if echo "$CREATE_RESP" | jq -e .ref >/dev/null 2>&1; then
+              echo "Created tag ref ${TAG_FROM_PKG} -> ${TARGET_COMMIT} via API"
+            else
+              echo "Failed to create tag ref via API; response: $CREATE_RESP" >&2
+              # Post a comment to the PR so maintainers know a tag wasn't found
+              if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+                PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+                if [ -n "${PR_NUM}" ]; then
+                  MSG="Release skipped: tag ${TAG_FROM_PKG} not found on remote and API creation failed. The tag-step may have been skipped or branch protections prevented pushing the bump. Please merge the bump commit or create the tag manually."
+                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+                fi
               fi
+              exit 0
             fi
-            exit 0
           fi
 
           BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
