@@ -110,11 +110,21 @@ jobs:
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
 
           MARKER="Computed release version if merged to"
-          # If any comment already contains an applied-by timestamp, extract that
-          # applied line and reuse it so we don't revert applied -> pending.
-          # Robustly find any existing applied-line across all comment bodies.
-          # Use jq to print bodies and awk to extract the first matching applied line.
-          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+          # If the PR's package.json already contains the computed version, treat
+          # the bump as applied and construct an applied-line so the compute
+          # comment reflects that state even if the apply step ran earlier.
+          COMPUTED_V=$(printf '%s\n' "$RAW_COMMENT" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
+          PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
+          PKG_VERSION_V="v${PKG_VERSION:-}"
+          APPLIED_LINE=""
+          if [ -n "$(printf '%s' "$COMPUTED_V")" ] && [ "$COMPUTED_V" = "$PKG_VERSION_V" ]; then
+            APPLIED_LINE="Applied automatic version bump to this PR: **${COMPUTED_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+          fi
+          # If we don't already know the applied-line from package.json, try to
+          # extract an applied-line from any existing comment bodies.
+          if [ -z "$(printf '%s' "$APPLIED_LINE")" ]; then
+            APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+          fi
           if [ -n "$(printf '%s' "$APPLIED_LINE")" ]; then
             # Build COMMENT_BODY by replacing the pending line with the applied line
             # from the existing comment (keeps applied state and actor/timestamp).
