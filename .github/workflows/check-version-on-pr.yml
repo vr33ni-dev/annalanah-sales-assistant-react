@@ -193,8 +193,10 @@ jobs:
               COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
               MARKER="Computed release version if merged to"
               EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
-              APPLIED_PENDING="Applied automatic version bump to this PR: **$(jq -r .version package.json)** (pending)"
-              APPLIED_APPLIED="Applied automatic version bump to this PR: **$(jq -r .version package.json)** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+              # Use the package.json version with a leading 'v' to match the computed comment
+              PKG_VERSION=$(jq -r .version package.json)
+              PKG_VERSION_V="v${PKG_VERSION}"
+              APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
 
               if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
                 echo "Updating existing bot comment id=$EXISTING_ID to mark bump as applied"
@@ -204,8 +206,8 @@ jobs:
                 if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_APPLIED"; then
                   echo "Applied-line already present in existing comment; skipping update"
                 else
-                  # If the comment contains the pending applied-line, replace that line with the applied form
-                  if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_PENDING"; then
+                  # If the comment contains any line starting with the applied-line prefix, replace it with the applied form
+                  if printf '%s' "$EXISTING_BODY" | grep -E -q "^Applied automatic version bump to this PR:"; then
                     UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^Applied automatic version bump to this PR:/) { print repl } else print }')
                   else
                     # Fallback: append applied line as a new paragraph
