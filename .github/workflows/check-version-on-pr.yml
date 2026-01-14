@@ -314,6 +314,7 @@ jobs:
               ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
               COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
               MARKER="Computed release version if merged to"
+              MARKER_HTML="<!-- version-bot-comment -->"
               # Prefer a github-actions[bot] authored comment that contains the marker,
               # but fall back to any comment that contains the marker if needed. This
               # avoids picking an unrelated comment and ensures the bot can PATCH it.
