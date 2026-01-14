@@ -338,6 +338,9 @@ jobs:
               if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:"$SAFE_BRANCH"; then
                 echo "Pushed fallback branch $SAFE_BRANCH"
                 # Create a pull request from SAFE_BRANCH -> original PR branch
+                # Ensure we have the package version variables available
+                PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
+                PKG_VERSION_V="v${PKG_VERSION}"
                 PR_TITLE="chore(release): bump package.json to ${PKG_VERSION}"
                 PR_BODY="Automated bump created by workflow to apply computed version ${PKG_VERSION_V}. Please review and merge into ${PR_HEAD_REF}."
                 CREATE_PR=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg title \"$PR_TITLE\" --arg head \"$SAFE_BRANCH\" --arg base \"$PR_HEAD_REF\" --arg body \"$PR_BODY\" '{title:$title, head:$head, base:$base, body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls")
