@@ -145,6 +145,15 @@ jobs:
           ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
           echo "Looking for existing bot comment to update"
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+          # If any existing comment already mentions the computed version, skip creating/updating
+          # a computed-version bot comment to avoid duplicates (covers human or bot comments).
+          COMPUTED_V=$(printf '%s\n' "$RAW_COMMENT" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
+          if [ -n "${COMPUTED_V}" ]; then
+            if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "${COMPUTED_V}"; then
+              echo "A comment already contains ${COMPUTED_V}; skipping comment create/update to avoid duplicates."
+              exit 0
+            fi
+          fi
 
           MARKER="Computed release version if merged to"
           MARKER_HTML="<!-- version-bot-comment -->"
