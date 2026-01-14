@@ -157,10 +157,25 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "chore(release): bump package.json version to $(jq -r .version package.json) [skip ci]" || true
 
-            # attempt to sync with remote first (handle fast-forward conflicts)
+                NEW_VERSION="v1.0.0"
             git fetch origin
             REMOTE_REF="origin/${{ github.event.pull_request.head.ref }}"
             if git rev-parse --verify "$REMOTE_REF" >/dev/null 2>&1; then
+            else
+              BASE=${LATEST_TAG#v}
+              IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE}"
+              MAJOR=${MAJOR:-0}
+              MINOR=${MINOR:-0}
+              PATCH=${PATCH:-0}
+              if [ "$BUMP" = "major" ]; then
+                MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
+              elif [ "$BUMP" = "minor" ]; then
+                MINOR=$((MINOR+1)); PATCH=0
+              else
+                PATCH=$((PATCH+1))
+              fi
+              NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+            fi
               # if remote has commits not in local HEAD, attempt to rebase local changes onto remote
               if ! git merge-base --is-ancestor "$REMOTE_REF" HEAD >/dev/null 2>&1; then
                 echo "Remote branch has commits not in local; attempting rebase onto $REMOTE_REF"
@@ -192,9 +207,10 @@ jobs:
               ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
               COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
               MARKER="Computed release version if merged to"
-              # Match any comment that contains the marker (not restricted by author) so we
-              # reliably find the computed-version comment even if the author string varies.
-              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
+              # Prefer a github-actions[bot] authored comment that contains the marker,
+              # but fall back to any comment that contains the marker if needed. This
+              # avoids picking an unrelated comment and ensures the bot can PATCH it.
+              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '(.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker)))) , (.[] | select(.body | contains($marker))) | .id' | head -n1 || true)
               # Use the package.json version with a leading 'v' to match the computed comment
               PKG_VERSION=$(jq -r .version package.json)
               PKG_VERSION_V="v${PKG_VERSION}"
@@ -214,8 +230,8 @@ jobs:
                   echo "Applied-line already present in existing comment; skipping update"
                 else
                   # If the comment contains any line starting with the applied-line prefix, replace it with the applied form
-                  if printf '%s' "$EXISTING_BODY" | grep -E -q "^Applied automatic version bump to this PR:"; then
-                    UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^Applied automatic version bump to this PR:/) { print repl } else print }')
+                  if printf '%s' "$EXISTING_BODY" | grep -E -q "^[[:space:]]*Applied automatic version bump to this PR:"; then
+                    UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^[[:space:]]*Applied automatic version bump to this PR:/) { print repl } else print }')
                   else
                     # Fallback: append applied line as a new paragraph
                     UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
@@ -246,7 +262,8 @@ jobs:
             echo "Ensuring PR comment reflects applied bump even though no commit was made"
             ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
             COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
-            EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
+            # Prefer a github-actions[bot] comment first, then fall back to any match
+            EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '(.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker)))) , (.[] | select(.body | contains($marker))) | .id' | head -n1 || true)
             PKG_VERSION=$(jq -r .version package.json)
             PKG_VERSION_V="v${PKG_VERSION}"
             APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
@@ -256,8 +273,8 @@ jobs:
               if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_APPLIED"; then
                 echo "Applied-line already present; nothing to do"
               else
-                if printf '%s' "$EXISTING_BODY" | grep -E -q "^Applied automatic version bump to this PR:"; then
-                  UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^Applied automatic version bump to this PR:/) { print repl } else print }')
+                if printf '%s' "$EXISTING_BODY" | grep -E -q "^[[:space:]]*Applied automatic version bump to this PR:"; then
+                  UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^[[:space:]]*Applied automatic version bump to this PR:/) { print repl } else print }')
                 else
                   UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
                 fi
