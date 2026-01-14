@@ -13,7 +13,7 @@ jobs:
   check-version:
     concurrency:
       group: check-version-pr-${{ github.event.pull_request.number }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     runs-on: ubuntu-latest
 
     steps:
@@ -222,11 +222,10 @@ jobs:
           fi
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
-        # Run the auto-apply step only when the PR comes from the same repo AND
-        # the event is a label change or a synchronize (push to the PR branch).
-        # We include 'synchronize' so label+push flows where the label was added
-        # earlier still get the bump applied when the branch is updated.
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (github.event.action == 'labeled' || github.event.action == 'unlabeled' || github.event.action == 'synchronize') }}
+        # Run the auto-apply step for same-repo PRs when the label check passed
+        # (i.e. the PR contains a major/minor/patch label). This allows the
+        # auto-apply to run on opened events if the label was already present.
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -294,19 +293,15 @@ jobs:
                 if git pull --rebase origin "${{ github.event.pull_request.head.ref }}"; then
                   echo "Rebase successful"
                 else
-                  echo "Rebase failed; aborting rebase and creating a fallback branch"
+                  echo "Rebase failed; aborting rebase. Per configuration, not creating fallback branches."
                   git rebase --abort || true
-                  SAFE_BRANCH="bump/${{ github.event.pull_request.head.ref }}-bump-$(date +%s)"
-                  git checkout -b "$SAFE_BRANCH"
-                  if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:"$SAFE_BRANCH"; then
-                    echo "Pushed fallback branch $SAFE_BRANCH"
-                    MSG="Could not push bump to PR branch due to remote divergence; created fallback branch ${SAFE_BRANCH}. Please open a PR to merge it into ${PR_NUM}."
+                  # Record that the bump apply failed so downstream steps can update comments
+                  echo "BUMP_APPLY_FAILED=1" >> "$GITHUB_ENV"
+                  MSG="Automated bump could not be pushed to the PR branch due to remote divergence; the bump was applied on the runner but push failed. Please merge the bump or allow Actions to push so the release can proceed."
+                  if [ -n "${PR_NUM:-}" ]; then
                     curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
-                    exit 1
-                  else
-                    echo "Failed to push fallback branch $SAFE_BRANCH" >&2
-                    exit 1
                   fi
+                  # continue without creating branches
                 fi
               else
                 echo "Local HEAD already contains remote commits; continuing to push"
@@ -318,6 +313,7 @@ jobs:
               ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
               COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
               MARKER="Computed release version if merged to"
+              MARKER_HTML="<!-- version-bot-comment -->"
               # Prefer a github-actions[bot] authored comment that contains the marker,
               # but fall back to any comment that contains the marker if needed. This
               # avoids picking an unrelated comment and ensures the bot can PATCH it.

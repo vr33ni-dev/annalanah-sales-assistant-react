@@ -128,6 +128,11 @@ jobs:
             exit 0
           fi
 
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Early guard — skip if tag/release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -166,10 +171,6 @@ jobs:
           fi
 
       # remaining steps follow
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Fetch tags
         run: |
