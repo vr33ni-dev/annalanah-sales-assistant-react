@@ -8,8 +8,6 @@ permissions:
 on:
   pull_request:
     types: [closed]
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -28,61 +26,20 @@ jobs:
             const eventPath = process.env.GITHUB_EVENT_PATH || ''
 
             // Trigger release when a PR targeting main was merged.
-              if (eventName === 'pull_request' && eventPath) {
-                const payload = require(eventPath)
-                const pr = payload.pull_request || {}
-                const merged = !!pr.merged
-                const baseRef = pr.base && pr.base.ref ? pr.base.ref : ''
-                if (merged && baseRef === 'main') {
-                  core.info('Pull request merged to main — proceeding with release run.')
-                  core.setOutput('run_release','true')
-                  return
-                }
-                core.info('Pull request closed but not a merged to main event — skipping release run.')
-                core.setOutput('run_release','false')
-                return
-              }
-
-            // If this is a push to main (e.g. a merged PR created a merge commit on main), allow it
-              if (eventName === 'push') {
-                const ref = process.env.GITHUB_REF || ''
-                if (ref !== 'refs/heads/main') {
-                  core.info('Push event but not to main — skipping release run.')
-                  core.setOutput('run_release','false')
-                  return
-                }
-
-                try {
-                  // Determine if this push commit is associated with a merged PR. If it is, assume
-                  // the pull_request.closed event already triggered the release and skip to avoid
-                  // duplicate runs.
-                  const [owner, repo] = (process.env.GITHUB_REPOSITORY || '').split('/')
-                  const sha = process.env.GITHUB_SHA || ''
-                  if (owner && repo && sha) {
-                    const resp = await github.request('GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls', {
-                      owner,
-                      repo,
-                      commit_sha: sha,
-                      mediaType: { previews: ['groot'] },
-                    })
-                    const prs = resp && resp.data ? resp.data : []
-                    if (prs.length > 0) {
-                      const pr = prs[0]
-                      if (pr.merged) {
-                        core.info('Push appears to be the merge commit for PR #' + (pr.number || '?') + ", skipping because pull_request event should have handled it.")
-                        core.setOutput('run_release','false')
-                        return
-                      }
-                    }
-                  }
-                } catch (e) {
-                  core.info('Could not determine PR association for push commit; proceeding with release run.')
-                }
-
-                core.info('Push to main not associated with merged PR — proceeding with release run.')
+            if (eventName === 'pull_request' && eventPath) {
+              const payload = require(eventPath)
+              const pr = payload.pull_request || {}
+              const merged = !!pr.merged
+              const baseRef = pr.base && pr.base.ref ? pr.base.ref : ''
+              if (merged && baseRef === 'main') {
+                core.info('Pull request merged to main — proceeding with release run.')
                 core.setOutput('run_release','true')
                 return
               }
+              core.info('Pull request closed but not a merged to main event — skipping release run.')
+              core.setOutput('run_release','false')
+              return
+            }
 
             // Allow manual workflow dispatch
             if (eventName === 'workflow_dispatch') {
