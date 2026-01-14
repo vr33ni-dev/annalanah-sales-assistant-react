@@ -72,7 +72,24 @@ fi
 echo "Target: $TARGET"
 echo "Bump type: $BUMP"
 
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+# Determine latest tag. Prefer tags on the base branch (if BASE_REF is provided),
+# otherwise fall back to nearest tag reachable from HEAD.
+SOURCE_REF="HEAD"
+if [ -n "${BASE_REF:-}" ]; then
+  # ensure we have remote tags for the base ref
+  git fetch origin "${BASE_REF}" --tags >/dev/null 2>&1 || true
+  LATEST_TAG=$(git describe --tags --abbrev=0 "origin/${BASE_REF}" 2>/dev/null || true)
+  if [ -n "${LATEST_TAG}" ]; then
+    SOURCE_REF="origin/${BASE_REF}"
+  fi
+fi
+if [ -z "${LATEST_TAG:-}" ]; then
+  LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+  SOURCE_REF="HEAD"
+fi
+
+# Debug: show which ref we used to compute the latest tag
+echo "Using latest tag: ${LATEST_TAG:-<none>}  (source: ${SOURCE_REF})"
 echo "Latest tag: ${LATEST_TAG:-<none>}"
 
 if [ -z "$LATEST_TAG" ]; then
