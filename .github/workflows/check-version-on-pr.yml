@@ -160,16 +160,20 @@ jobs:
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
         # Run the auto-apply step only when the PR comes from the same repo AND
-        # the event is a label change (label added or removed). This avoids
-        # attempting to push bumps on every 'synchronize' (push) event and
-        # reduces noise/races while still reacting to label removals.
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (github.event.action == 'labeled' || github.event.action == 'unlabeled') }}
+        # the event is a label change or a synchronize (push to the PR branch).
+        # We include 'synchronize' so label+push flows where the label was added
+        # earlier still get the bump applied when the branch is updated.
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (github.event.action == 'labeled' || github.event.action == 'unlabeled' || github.event.action == 'synchronize') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
+          # ensure optional variables computed in other steps do not cause
+          # unbound-variable failures under -u (they may not be exported).
+          LATEST_TAG="${LATEST_TAG:-}"
+          BUMP="${BUMP:-patch}"
           echo "PR is from same repo; attempting to apply bump to PR branch"
           chmod +x .github/scripts/bump-version.sh || true
 
