@@ -49,6 +49,9 @@ jobs:
           LATEST_TAG=""
           if git rev-parse --verify --quiet "refs/tags/$(git describe --tags --abbrev=0 origin/$BASE_REF 2>/dev/null)" >/dev/null 2>&1; then
             LATEST_TAG=$(git describe --tags --abbrev=0 origin/$BASE_REF)
+            # Ensure the marker is defined in this branch (avoid unbound-variable under -u)
+            MARKER="Computed release version if merged to"
+            
           fi
           echo "Latest tag on base: $LATEST_TAG"
 
@@ -109,6 +112,9 @@ jobs:
           MARKER="Computed release version if merged to"
           EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
 
+          DELETE_DUPLICATES="true"
+          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+
           if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
             echo "Found existing bot comment id=$EXISTING_ID; updating"
             UPDATE_URL="https://api.github.com/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}"
@@ -117,6 +123,9 @@ jobs:
             echo "No existing bot comment found; creating a new comment"
             curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
           fi
+
+          # Consolidate candidate comments: prefer bot-authored computed-version comments
+          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
@@ -293,6 +302,8 @@ jobs:
             # 1. Prefer github-actions[bot] comments containing the marker
             # 2. Otherwise prefer github-actions[bot] comments containing an applied-line
             # 3. Otherwise fall back to any comment that contains the marker
+            # Ensure marker is defined in this shell (avoid unbound variable under -u)
+            MARKER="Computed release version if merged to"
             CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
             DELETE_DUPLICATES="true"
             if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
