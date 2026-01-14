@@ -4,8 +4,16 @@ on:
   pull_request:
     types: [opened, edited, labeled, unlabeled, synchronize, reopened]
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   check-version:
+    concurrency:
+      group: check-version-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +29,29 @@ jobs:
       - name: Compute candidate version and comment
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Skip duplicate runs caused by the workflow's own push: when a
+          # pull_request synchronize event is triggered by github-actions[bot]
+          # (our auto-apply push), we should not re-run the compute/comment
+          # logic. Also skip if the head commit contains [skip ci].
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+            EVENT_ACTION=$(jq -r .action "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+            if [ "${EVENT_ACTION}" = "synchronize" ]; then
+              if [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
+                echo "Marking this synchronize event as an actions-bot sync; will skip comment update but continue the run."
+                touch /tmp/skip_comment_update || true
+              fi
+              # extra safety: mark skip if the HEAD commit message contains [skip ci]
+              if git fetch --no-tags origin "${GITHUB_SHA}" >/dev/null 2>&1 || true; then
+                if git show -s --format=%B "${GITHUB_SHA}" | grep -F -q "[skip ci]"; then
+                  echo "Head commit contains [skip ci]; will skip comment update but continue the run."
+                  touch /tmp/skip_comment_update || true
+                fi
+              fi
+            fi
+          fi
           BASE_REF="${{ github.event.pull_request.base.ref }}"
           echo "Base ref: $BASE_REF"
 
@@ -90,18 +119,46 @@ jobs:
           fi
 
           echo "Computed candidate version for this PR: $NEW_VERSION"
+          # Before creating a computed-version comment, check whether any existing
+          # issue comment already mentions this version. If so, skip creating the
+          # computed comment entirely to avoid duplicates (covers both bot and
+          # human-authored comments).
+          PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "$PR_NUM" ]; then
+            ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUM}/comments"
+            COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL" || true)
+            if printf '%s' "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$NEW_VERSION"; then
+              echo "A comment already contains $NEW_VERSION; will skip creating computed comment and mark run so comment steps are no-ops."
+              touch /tmp/skip_comment_update || true
+            fi
+          fi
+
           # Save the comment body into a temporary file and use the action below to post
           # Use printf so the \n sequences become real newlines in the file
           # Include an applied-line in '(pending)' state so comments always show status
-          printf '%s\n\n%s\n' \
-            "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
-            "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
+          # Only create the computed comment file if we haven't been marked to skip comment updates.
+          if [ ! -f /tmp/skip_comment_update ]; then
+            printf '%s\n\n%s\n' \
+              "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
+              "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
+            # Append a hidden marker so the bot can reliably find/update its single comment
+            printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
+          else
+            echo "Skipping creation of /tmp/pr_version_comment.md because /tmp/skip_comment_update is present"
+          fi
 
       - name: Post PR comment with computed version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # If a prior step marked this run as a synchronize-sync from the actions bot
+          # or a [skip ci] commit, skip the comment update to avoid duplicate/refresh
+          # of the bot comment while still allowing the run to retry other actions.
+          if [ -f /tmp/skip_comment_update ]; then
+            echo "Skipping PR comment update for this run (marked by /tmp/skip_comment_update)."
+            exit 0
+          fi
           # Build the comment body, but if an applied-line already exists in any
           # bot comment, preserve that applied-line instead of writing (pending).
           RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
@@ -110,6 +167,7 @@ jobs:
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
 
           MARKER="Computed release version if merged to"
+          MARKER_HTML="<!-- version-bot-comment -->"
           # First, try to extract an existing applied-line from any comment bodies
           # so we preserve the original actor/timestamp and do not refresh it on
           # compute-only runs.
@@ -139,7 +197,12 @@ jobs:
           # Consolidate candidate comments so we only keep one bot-authored
           # comment for this marker. Prefer bot-authored computed-version comments
           # and remove any duplicate bot comments to avoid multiple pending/applied copies.
-          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker) or (.body | test("Applied automatic version bump to this PR:")))) | .id')
+          # Prefer comments that contain our hidden marker (guaranteed bot comment created by this workflow)
+          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker_html "$MARKER_HTML" '.[] | select(.body | contains($marker_html)) | .id')
+          # Fallback to older heuristics for backwards compatibility
+          if [ -z "$(printf '%s' \"$CANDIDATE_IDS\")" ]; then
+            CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker) or (.body | test("Applied automatic version bump to this PR:")))) | .id')
+          fi
           EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
           OTHER_IDS=$(printf '%s\n' "$CANDIDATE_IDS" | sed -n '2,$p' || true)
           for dup in $OTHER_IDS; do
@@ -288,14 +351,15 @@ jobs:
               # Use the package.json version with a leading 'v' to match the computed comment
               PKG_VERSION=$(jq -r .version package.json)
               PKG_VERSION_V="v${PKG_VERSION}"
-              APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+              APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))\n\n${MARKER_HTML}"
 
-              if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+                if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
                 echo "Updating existing bot comment id=$EXISTING_ID to mark bump as applied"
                 EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
 
-                # If the applied form already exists, skip updating
-                if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_APPLIED"; then
+                # If the applied form already exists (match by version only to
+                # tolerate different actor/timestamp formats), skip updating
+                if printf '%s' "$EXISTING_BODY" | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
                   echo "Applied-line already present in existing comment; skipping update"
                 else
                   # If the comment contains any line starting with the applied-line prefix, replace it with the applied form
@@ -305,19 +369,56 @@ jobs:
                   UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
                   curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
                 fi
-              else
-                echo "No existing computed-version bot comment found; checking for existing applied-line comment"
-                # Avoid creating duplicate applied-line comments across other comments
-                if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$APPLIED_APPLIED"; then
-                  echo "An applied-line comment already exists on the issue; skipping creation"
                 else
-                  # Create an applied-line comment since we successfully pushed the bump
-                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                  echo "No existing computed-version bot comment found; checking for existing applied-line comment"
+                  # Avoid creating duplicate applied-line comments across other comments.
+                  # Match by version only so we tolerate different actor/timestamp formats.
+                  if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
+                    echo "An applied-line comment already exists on the issue; skipping creation"
+                  else
+                    # Create an applied-line comment since we successfully pushed the bump
+                    curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                  fi
                 fi
               fi
             else
-              echo "Failed to push bump to PR branch after sync attempts; this may be a protected branch or disallowed by policy" >&2
-              exit 1
+              echo "Push to PR branch failed; not creating fallback PR per user preference; updating bot comment to reflect applied bump and push failure." >&2
+              # Update only the single bot comment (or create it) to include the applied-line and a short note
+              PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
+              PKG_VERSION_V="v${PKG_VERSION}"
+              MARKER="Computed release version if merged to"
+              MARKER_HTML="<!-- version-bot-comment -->"
+              APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))\n\n${MARKER_HTML}\n\nNote: the bump was applied on the runner but pushing to the PR branch failed. Please merge the bump or allow Actions to push so the release can proceed."
+
+              # Refresh comments and try to find our bot comment
+              ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
+              COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker_html "$MARKER_HTML" '.[] | select(.body | contains($marker_html)) | .id')
+              if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+                CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+              fi
+              EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+
+              if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+                EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
+                if printf '%s' "$EXISTING_BODY" | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
+                  echo "Applied-line already present in existing bot comment; nothing to do"
+                else
+                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
+                  UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
+                  curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+                  echo "Updated existing bot comment id=$EXISTING_ID"
+                fi
+              else
+                # No existing bot comment; ensure we don't duplicate existing applied-lines
+                if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
+                  echo "Applied-line already present in other comment; skipping creation"
+                else
+                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                  echo "Created applied-line comment"
+                fi
+              fi
+              exit 0
             fi
           else
             echo "No changes to commit (PR already contains the bump)"
@@ -334,7 +435,12 @@ jobs:
             # 3. Otherwise fall back to any comment that contains the marker
             # Ensure marker is defined in this shell (avoid unbound variable under -u)
             MARKER="Computed release version if merged to"
-            CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+            MARKER_HTML="<!-- version-bot-comment -->"
+            # Prefer our hidden marker so we can reliably find the single bot comment
+            CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker_html "$MARKER_HTML" '.[] | select(.body | contains($marker_html)) | .id')
+            if [ -z "$(printf '%s' \"$CANDIDATE_IDS\")" ]; then
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+            fi
             DELETE_DUPLICATES="true"
             if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
               CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("Applied automatic version bump to this PR:"))) | .id')
@@ -358,11 +464,11 @@ jobs:
             fi
             PKG_VERSION=$(jq -r .version package.json)
             PKG_VERSION_V="v${PKG_VERSION}"
-            APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+            APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))\n\n${MARKER_HTML}"
             if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
               echo "Found comment id=$EXISTING_ID; attempting to replace pending marker"
               EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
-              if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_APPLIED"; then
+              if printf '%s' "$EXISTING_BODY" | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
                 echo "Applied-line already present; nothing to do"
               else
                 # Append applied-line (don't try to replace a pending marker)
@@ -373,7 +479,7 @@ jobs:
               fi
             else
               echo "No computed-version bot comment found; creating applied-line comment if none exists"
-              if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$APPLIED_APPLIED"; then
+              if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
                 echo "Applied-line comment already exists; skipping"
               else
                 curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
