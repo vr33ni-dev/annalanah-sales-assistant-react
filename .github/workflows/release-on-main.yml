@@ -133,6 +133,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ensure origin remote exists
+        run: |
+          set -euo pipefail
+          # Some runner checkout states may not populate an 'origin' remote in all cases
+          # (or a previous edit accidentally removed it). Add it if missing so later
+          # git fetch/origin commands do not fail with "couldn't find remote ref origin".
+          if ! git remote | grep -q '^origin$'; then
+            echo "Adding origin remote for ${GITHUB_REPOSITORY}"
+            git remote add origin "https://github.com/${{ github.repository }}.git" || true
+          else
+            echo "origin remote already present"
+          fi
+
       - name: Early guard — skip if tag/release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -369,7 +382,7 @@ jobs:
           echo "" > ${CHANGELOG_FILE}
 
           # Determine target commit (prefer origin/main)
-          git fetch origin --tags origin main || true
+          git fetch origin --tags main || true
           LOCAL_HEAD=$(git rev-parse --verify HEAD)
           REMOTE_MAIN=$(git rev-parse --verify origin/main)
           if [ "$LOCAL_HEAD" != "$REMOTE_MAIN" ]; then
