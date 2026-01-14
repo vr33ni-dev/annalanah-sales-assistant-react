@@ -29,6 +29,7 @@ jobs:
       - name: Compute candidate version and comment
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           # Skip duplicate runs caused by the workflow's own push: when a
@@ -118,14 +119,33 @@ jobs:
           fi
 
           echo "Computed candidate version for this PR: $NEW_VERSION"
+          # Before creating a computed-version comment, check whether any existing
+          # issue comment already mentions this version. If so, skip creating the
+          # computed comment entirely to avoid duplicates (covers both bot and
+          # human-authored comments).
+          PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "$PR_NUM" ]; then
+            ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUM}/comments"
+            COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL" || true)
+            if printf '%s' "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$NEW_VERSION"; then
+              echo "A comment already contains $NEW_VERSION; will skip creating computed comment and mark run so comment steps are no-ops."
+              touch /tmp/skip_comment_update || true
+            fi
+          fi
+
           # Save the comment body into a temporary file and use the action below to post
           # Use printf so the \n sequences become real newlines in the file
           # Include an applied-line in '(pending)' state so comments always show status
-          printf '%s\n\n%s\n' \
-            "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
-            "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
-          # Append a hidden marker so the bot can reliably find/update its single comment
-          printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
+          # Only create the computed comment file if we haven't been marked to skip comment updates.
+          if [ ! -f /tmp/skip_comment_update ]; then
+            printf '%s\n\n%s\n' \
+              "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
+              "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
+            # Append a hidden marker so the bot can reliably find/update its single comment
+            printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
+          else
+            echo "Skipping creation of /tmp/pr_version_comment.md because /tmp/skip_comment_update is present"
+          fi
 
       - name: Post PR comment with computed version
         env:
@@ -145,15 +165,6 @@ jobs:
           ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
           echo "Looking for existing bot comment to update"
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
-          # If any existing comment already mentions the computed version, skip creating/updating
-          # a computed-version bot comment to avoid duplicates (covers human or bot comments).
-          COMPUTED_V=$(printf '%s\n' "$RAW_COMMENT" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
-          if [ -n "${COMPUTED_V}" ]; then
-            if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "${COMPUTED_V}"; then
-              echo "A comment already contains ${COMPUTED_V}; skipping comment create/update to avoid duplicates."
-              exit 0
-            fi
-          fi
 
           MARKER="Computed release version if merged to"
           MARKER_HTML="<!-- version-bot-comment -->"
