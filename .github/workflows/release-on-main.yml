@@ -285,17 +285,55 @@ jobs:
       - name: Create GitHub release (optional)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.autobump.outputs.NEW_TAG }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: |
           set -euo pipefail
           CHANGELOG_FILE=/tmp/changelog.md
           API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
-          BODY=$(jq -nc --arg tag "$TAG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
-          if [ -z "$TAG" ]; then
-            echo "No tag found; skipping GitHub release creation"
+
+          # Determine the target commit and derive the tag from package.json at that commit
+          git fetch origin --tags || true
+          LOCAL_HEAD=$(git rev-parse --verify HEAD)
+          REMOTE_MAIN=$(git rev-parse --verify origin/main)
+          if [ "$LOCAL_HEAD" != "$REMOTE_MAIN" ]; then
+            TARGET_COMMIT="$REMOTE_MAIN"
+          else
+            TARGET_COMMIT="$LOCAL_HEAD"
+          fi
+
+          TAG_VERSION=$(git show ${TARGET_COMMIT}:package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          if [ -n "${TAG_VERSION}" ] && [ "${TAG_VERSION}" != "null" ]; then
+            TAG_FROM_PKG="v${TAG_VERSION}"
+          else
+            echo "package.json not found at target commit ${TARGET_COMMIT}; skipping release creation"
+            # Post a comment to the PR (if available) so maintainers see why release was skipped
+            if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+              PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+              if [ -n "${PR_NUM}" ]; then
+                MSG="Release skipped: package.json not found at target commit ${TARGET_COMMIT}. Please ensure the bumped package.json was merged to main."
+                curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+              fi
+            fi
             exit 0
           fi
-          echo "Creating release for ${TAG}"
+
+          # Ensure the tag exists on remote before creating a Release
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG_FROM_PKG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_FROM_PKG} not found on remote; skipping release creation"
+            # Post a comment to the PR so maintainers know a tag wasn't found
+            if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+              PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+              if [ -n "${PR_NUM}" ]; then
+                MSG="Release skipped: tag ${TAG_FROM_PKG} not found on remote. The tag-step may have been skipped or branch protections prevented pushing the bump. Please merge the bump commit or create the tag manually."
+                curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+              fi
+            fi
+            exit 0
+          fi
+
+          BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
+          echo "Creating release for ${TAG_FROM_PKG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
 
   bump_dry_run:

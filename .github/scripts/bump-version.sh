@@ -86,7 +86,12 @@ else
   # There is an existing tag. Parse it and decide whether to treat it as a legacy
   # pre-release tag (e.g., v0.0.x) that should be ignored for starting at v0.1.0.
   BASE=${LATEST_TAG#v}
-  IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE}"
+  # Extract numeric semver prefix (strip pre-release/build metadata)
+  # Examples:
+  #  v1.2.3-beta -> 1.2.3
+  #  v1.2 -> 1.2
+  NUM_BASE=$(echo "$BASE" | sed -E 's/^([0-9]+(\.[0-9]+){0,2}).*$/\1/')
+  IFS='.' read -r MAJOR MINOR PATCH <<< "${NUM_BASE}"
   MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
 
   # If the latest tag is in the 0.0.x range, treat it as legacy and start from v0.1.0
@@ -97,22 +102,20 @@ else
       NEW_VERSION="v0.1.0"
     fi
   else
-    case "$BUMP" in
-      major)
-        MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
-        ;;
-      minor)
-        MINOR=$((MINOR+1)); PATCH=0
-        ;;
-      patch)
-        PATCH=$((PATCH+1))
-        ;;
-      *)
-        echo "Unknown bump: $BUMP"; exit 2
-        ;;
-    esac
-
-    NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+    # Compute next version using a tiny Node snippet to avoid brittle shell arithmetic
+    NEXT=$(node -e '
+const [ver,bump]=process.argv.slice(1);
+const m=ver.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+if(!m){console.error("invalid version"); process.exit(2);} 
+let MA=Number(m[1]); let MI=Number(m[2]||0); let PA=Number(m[3]||0);
+if(bump==="major"){MA++;MI=0;PA=0}else if(bump==="minor"){MI++;PA=0}else if(bump==="patch"){PA++}else{console.error("unknown bump"); process.exit(2)}
+console.log(`${MA}.${MI}.${PA}`);
+' "$NUM_BASE" "$BUMP") || true
+    if [ -z "$NEXT" ]; then
+      echo "Failed to compute next version" >&2
+      exit 2
+    fi
+    NEW_VERSION="v${NEXT}"
   fi
 fi
 NEW_TAG="$NEW_VERSION"

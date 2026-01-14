@@ -99,10 +99,22 @@ jobs:
         run: |
           set -euo pipefail
           COMMENT_BODY=$(cat /tmp/pr_version_comment.md)
-          API_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
-          echo "Posting comment to $API_URL"
-          curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" \
-            -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$API_URL" >/dev/null
+          ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          echo "Looking for existing bot comment to update"
+          COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+
+          # Prefer updating an existing github-actions[bot] comment that contains the marker text
+          MARKER="Computed release version if merged to"
+          EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
+
+          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+            echo "Found existing bot comment id=$EXISTING_ID; updating"
+            UPDATE_URL="https://api.github.com/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}"
+            curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+          else
+            echo "No existing bot comment found; creating a new comment"
+            curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+          fi
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
