@@ -31,6 +31,26 @@ jobs:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: |
           set -euo pipefail
+          # Skip duplicate runs caused by the workflow's own push: when a
+          # pull_request synchronize event is triggered by github-actions[bot]
+          # (our auto-apply push), we should not re-run the compute/comment
+          # logic. Also skip if the head commit contains [skip ci].
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+            EVENT_ACTION=$(jq -r .action "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+            if [ "${EVENT_ACTION}" = "synchronize" ]; then
+              if [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
+                echo "Skipping synchronize event triggered by github-actions[bot]."
+                exit 0
+              fi
+              # extra safety: skip if the HEAD commit message contains [skip ci]
+              if git fetch --no-tags origin "${GITHUB_SHA}" >/dev/null 2>&1 || true; then
+                if git show -s --format=%B "${GITHUB_SHA}" | grep -F -q "[skip ci]"; then
+                  echo "Skipping synchronize event because head commit contains [skip ci]."
+                  exit 0
+                fi
+              fi
+            fi
+          fi
           BASE_REF="${{ github.event.pull_request.base.ref }}"
           echo "Base ref: $BASE_REF"
 
@@ -184,7 +204,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
-          ACTIONS_PAT: ${{ secrets.ACTIONS_PAT }}
         run: |
           set -euo pipefail
           # ensure optional variables computed in other steps do not cause
@@ -336,34 +355,43 @@ jobs:
                 fi
               fi
             else
-              echo "Failed to push bump to PR branch after sync attempts; attempting fallback: create branch + PR" >&2
-              # Attempt a safer fallback: create a new branch with the bump and open a PR
-              PR_HEAD_REF=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
-              SAFE_BRANCH="bump/${PR_HEAD_REF}-bump-$(date +%s)"
-              git checkout -b "$SAFE_BRANCH"
-              if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:"$SAFE_BRANCH"; then
-                echo "Pushed fallback branch $SAFE_BRANCH"
-                # Create a pull request from SAFE_BRANCH -> original PR branch
-                # Ensure we have the package version variables available
-                PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
-                PKG_VERSION_V="v${PKG_VERSION}"
-                PR_TITLE="chore(release): bump package.json to ${PKG_VERSION}"
-                PR_BODY="Automated bump created by workflow to apply computed version ${PKG_VERSION_V}. Please review and merge into ${PR_HEAD_REF}."
-                CREATE_PR=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg title \"$PR_TITLE\" --arg head \"$SAFE_BRANCH\" --arg base \"$PR_HEAD_REF\" --arg body \"$PR_BODY\" '{title:$title, head:$head, base:$base, body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls")
-                PR_URL=$(echo "$CREATE_PR" | jq -r .html_url 2>/dev/null || true)
-                if [ -n "$PR_URL" ] && [ "$PR_URL" != "null" ]; then
-                  MSG="Created fallback bump PR: $PR_URL"
-                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
-                  echo "$MSG"
-                  exit 0
+              echo "Push to PR branch failed; not creating fallback PR per user preference; updating bot comment to reflect applied bump and push failure." >&2
+              # Update only the single bot comment (or create it) to include the applied-line and a short note
+              PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
+              PKG_VERSION_V="v${PKG_VERSION}"
+              MARKER="Computed release version if merged to"
+              MARKER_HTML="<!-- version-bot-comment -->"
+              APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))\n\n${MARKER_HTML}\n\nNote: the bump was applied on the runner but pushing to the PR branch failed. Please merge the bump or allow Actions to push so the release can proceed."
+
+              # Refresh comments and try to find our bot comment
+              ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
+              COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker_html "$MARKER_HTML" '.[] | select(.body | contains($marker_html)) | .id')
+              if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+                CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+              fi
+              EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+
+              if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+                EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
+                if printf '%s' "$EXISTING_BODY" | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
+                  echo "Applied-line already present in existing bot comment; nothing to do"
                 else
-                  echo "Failed to create fallback PR; response: $CREATE_PR" >&2
-                  exit 1
+                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
+                  UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
+                  curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+                  echo "Updated existing bot comment id=$EXISTING_ID"
                 fi
               else
-                echo "Failed to push fallback branch $SAFE_BRANCH" >&2
-                exit 1
+                # No existing bot comment; ensure we don't duplicate existing applied-lines
+                if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -E -q "Applied automatic version bump to this PR: .*\*\*${PKG_VERSION_V}\*\*"; then
+                  echo "Applied-line already present in other comment; skipping creation"
+                else
+                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                  echo "Created applied-line comment"
+                fi
               fi
+              exit 0
             fi
           else
             echo "No changes to commit (PR already contains the bump)"
