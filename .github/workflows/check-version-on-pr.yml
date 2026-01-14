@@ -195,12 +195,23 @@ jobs:
               if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
                 echo "Updating existing bot comment id=$EXISTING_ID to include applied bump"
                 EXISTING_BODY=$(echo "$COMMENTS_JSON" | jq -r --arg id "$EXISTING_ID" '.[] | select(.id==($id|tonumber)) | .body' 2>/dev/null || true)
-                UPDATED_BODY="$EXISTING_BODY\n\n$APPLIED_LINE"
-                UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
-                curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+                # Avoid appending the same applied-line multiple times
+                if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_LINE"; then
+                  echo "Applied bump line already present in existing comment; skipping update"
+                else
+                  # Use printf to build the updated body so newlines are real
+                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_LINE")
+                  UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
+                  curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+                fi
               else
-                echo "No existing computed-version bot comment found; creating applied bump comment"
-                curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_LINE" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                echo "No existing computed-version bot comment found; checking for existing applied-line comment"
+                # Avoid creating duplicate applied-line comments across other comments
+                if echo "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$APPLIED_LINE"; then
+                  echo "An applied-line comment already exists on the issue; skipping creation"
+                else
+                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_LINE" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                fi
               fi
             else
               echo "Failed to push bump to PR branch after sync attempts; this may be a protected branch or disallowed by policy" >&2
