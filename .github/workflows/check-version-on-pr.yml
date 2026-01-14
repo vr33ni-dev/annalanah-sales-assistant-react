@@ -39,14 +39,14 @@ jobs:
             EVENT_ACTION=$(jq -r .action "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
             if [ "${EVENT_ACTION}" = "synchronize" ]; then
               if [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
-                echo "Skipping synchronize event triggered by github-actions[bot]."
-                exit 0
+                echo "Marking this synchronize event as an actions-bot sync; will skip comment update but continue the run."
+                touch /tmp/skip_comment_update || true
               fi
-              # extra safety: skip if the HEAD commit message contains [skip ci]
+              # extra safety: mark skip if the HEAD commit message contains [skip ci]
               if git fetch --no-tags origin "${GITHUB_SHA}" >/dev/null 2>&1 || true; then
                 if git show -s --format=%B "${GITHUB_SHA}" | grep -F -q "[skip ci]"; then
-                  echo "Skipping synchronize event because head commit contains [skip ci]."
-                  exit 0
+                  echo "Head commit contains [skip ci]; will skip comment update but continue the run."
+                  touch /tmp/skip_comment_update || true
                 fi
               fi
             fi
@@ -132,6 +132,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # If a prior step marked this run as a synchronize-sync from the actions bot
+          # or a [skip ci] commit, skip the comment update to avoid duplicate/refresh
+          # of the bot comment while still allowing the run to retry other actions.
+          if [ -f /tmp/skip_comment_update ]; then
+            echo "Skipping PR comment update for this run (marked by /tmp/skip_comment_update)."
+            exit 0
+          fi
           # Build the comment body, but if an applied-line already exists in any
           # bot comment, preserve that applied-line instead of writing (pending).
           RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
