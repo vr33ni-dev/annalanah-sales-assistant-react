@@ -200,7 +200,6 @@ jobs:
               else
                 echo "Local HEAD already contains remote commits; continuing to push"
               fi
-            fi
 
             if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:${{ github.event.pull_request.head.ref }}; then
               echo "Pushed bump to PR branch"
