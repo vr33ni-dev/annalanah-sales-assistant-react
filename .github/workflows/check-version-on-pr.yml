@@ -89,9 +89,11 @@ jobs:
           echo "Computed candidate version for this PR: $NEW_VERSION"
           # Save the comment body into a temporary file and use the action below to post
           # Use printf so the \n sequences become real newlines in the file
-          printf '%s\n\n%s\n' \
+          # Include an applied-line in '(pending)' state so comments always show status
+          printf '%s\n\n%s\n\n%s\n' \
             "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
-            "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
+            "Labels considered: $LABELS_LOWER" \
+            "Applied automatic version bump to this PR: **$NEW_VERSION** (pending)" > /tmp/pr_version_comment.md
 
       - name: Post PR comment with computed version
         env:
@@ -199,8 +201,13 @@ jobs:
                 if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_LINE"; then
                   echo "Applied bump line already present in existing comment; skipping update"
                 else
-                  # Use printf to build the updated body so newlines are real
-                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_LINE")
+                  # If the comment contains a 'Status:' line, replace it with the applied line
+                  if printf '%s' "$EXISTING_BODY" | grep -E -q "^Status:"; then
+                    UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | sed -E "s/^Status:.*$/${APPLIED_LINE}/")
+                  else
+                    # Fallback: append applied line as a new paragraph
+                    UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_LINE")
+                  fi
                   UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
                   curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
                 fi
