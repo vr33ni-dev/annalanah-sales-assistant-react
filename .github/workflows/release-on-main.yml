@@ -121,6 +121,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          BASE_REF: main
         run: |
           set -euo pipefail
           chmod +x .github/scripts/bump-version.sh || true
