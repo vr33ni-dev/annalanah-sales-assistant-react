@@ -128,6 +128,43 @@ jobs:
             exit 0
           fi
 
+      - name: Early guard — skip if tag/release exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git fetch origin --tags || true
+
+          # prefer origin/main as the target if available
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            TARGET_COMMIT=$(git rev-parse --verify origin/main)
+          else
+            TARGET_COMMIT=$(git rev-parse --verify HEAD)
+          fi
+
+          # try to read package.json version at the target commit
+          TAG_VERSION=$(git show ${TARGET_COMMIT}:package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          if [ -n "${TAG_VERSION}" ] && [ "${TAG_VERSION}" != "null" ]; then
+            TAG="v${TAG_VERSION}"
+
+            # skip if tag already exists on remote
+            if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+              echo "Tag ${TAG} already exists on remote — skipping release job."
+              exit 0
+            fi
+
+            # skip if a GitHub Release exists for this tag
+            if curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+                 "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+                 | jq -e .id >/dev/null 2>&1; then
+              echo "Release for ${TAG} already exists — skipping release job."
+              exit 0
+            fi
+          else
+            echo "No package.json version found at ${TARGET_COMMIT}; continuing."
+          fi
+
       # remaining steps follow
       - name: Checkout
         uses: actions/checkout@v4
