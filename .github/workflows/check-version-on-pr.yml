@@ -330,8 +330,31 @@ jobs:
                 fi
               fi
             else
-              echo "Failed to push bump to PR branch after sync attempts; this may be a protected branch or disallowed by policy" >&2
-              exit 1
+              echo "Failed to push bump to PR branch after sync attempts; attempting fallback: create branch + PR" >&2
+              # Attempt a safer fallback: create a new branch with the bump and open a PR
+              PR_HEAD_REF=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+              SAFE_BRANCH="bump/${PR_HEAD_REF}-bump-$(date +%s)"
+              git checkout -b "$SAFE_BRANCH"
+              if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:"$SAFE_BRANCH"; then
+                echo "Pushed fallback branch $SAFE_BRANCH"
+                # Create a pull request from SAFE_BRANCH -> original PR branch
+                PR_TITLE="chore(release): bump package.json to ${PKG_VERSION}"
+                PR_BODY="Automated bump created by workflow to apply computed version ${PKG_VERSION_V}. Please review and merge into ${PR_HEAD_REF}."
+                CREATE_PR=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg title \"$PR_TITLE\" --arg head \"$SAFE_BRANCH\" --arg base \"$PR_HEAD_REF\" --arg body \"$PR_BODY\" '{title:$title, head:$head, base:$base, body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls")
+                PR_URL=$(echo "$CREATE_PR" | jq -r .html_url 2>/dev/null || true)
+                if [ -n "$PR_URL" ] && [ "$PR_URL" != "null" ]; then
+                  MSG="Created fallback bump PR: $PR_URL"
+                  curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+                  echo "$MSG"
+                  exit 0
+                else
+                  echo "Failed to create fallback PR; response: $CREATE_PR" >&2
+                  exit 1
+                fi
+              else
+                echo "Failed to push fallback branch $SAFE_BRANCH" >&2
+                exit 1
+              fi
             fi
           else
             echo "No changes to commit (PR already contains the bump)"
