@@ -210,7 +210,33 @@ jobs:
               # Prefer a github-actions[bot] authored comment that contains the marker,
               # but fall back to any comment that contains the marker if needed. This
               # avoids picking an unrelated comment and ensures the bot can PATCH it.
-              EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '(.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker)))) , (.[] | select(.body | contains($marker))) | .id' | head -n1 || true)
+              # Consolidate candidate comments so we only keep one github-actions bot
+              # comment for the computed-version marker. Strategy:
+              # 1. Prefer github-actions[bot] comments containing the marker
+              # 2. Otherwise prefer github-actions[bot] comments containing an applied-line
+              # 3. Otherwise fall back to any comment that contains the marker
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+              DELETE_DUPLICATES="true"
+              if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+                CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("Applied automatic version bump to this PR:"))) | .id')
+              fi
+              if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+                # Fall back to any comment containing the marker, but avoid deleting
+                # duplicates in this case because they may be authored by humans.
+                CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id')
+                DELETE_DUPLICATES="false"
+              fi
+              # Choose the first as the primary
+              EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+              OTHER_IDS=$(printf '%s\n' "$CANDIDATE_IDS" | sed -n '2,$p' || true)
+              if [ "$DELETE_DUPLICATES" = "true" ]; then
+                for dup in $OTHER_IDS; do
+                  if [ -n "$dup" ]; then
+                    echo "Deleting duplicate bot comment id=$dup"
+                    curl -s -X DELETE -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${dup}" >/dev/null || true
+                  fi
+                done
+              fi
               # Use the package.json version with a leading 'v' to match the computed comment
               PKG_VERSION=$(jq -r .version package.json)
               PKG_VERSION_V="v${PKG_VERSION}"
@@ -262,8 +288,33 @@ jobs:
             echo "Ensuring PR comment reflects applied bump even though no commit was made"
             ISSUE_COMMENTS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments"
             COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
-            # Prefer a github-actions[bot] comment first, then fall back to any match
-            EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '(.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker)))) , (.[] | select(.body | contains($marker))) | .id' | head -n1 || true)
+            # Consolidate candidate comments so we only keep one github-actions bot
+            # comment for the computed-version marker. Strategy:
+            # 1. Prefer github-actions[bot] comments containing the marker
+            # 2. Otherwise prefer github-actions[bot] comments containing an applied-line
+            # 3. Otherwise fall back to any comment that contains the marker
+            CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+            DELETE_DUPLICATES="true"
+            if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("Applied automatic version bump to this PR:"))) | .id')
+            fi
+            if [ -z "$(printf '%s' "$CANDIDATE_IDS")" ]; then
+              # Fall back to any comment containing the marker, but avoid deleting
+              # duplicates in this case because they may be authored by humans.
+              CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.body | contains($marker)) | .id')
+              DELETE_DUPLICATES="false"
+            fi
+            # Choose the first as the primary
+            EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+            OTHER_IDS=$(printf '%s\n' "$CANDIDATE_IDS" | sed -n '2,$p' || true)
+            if [ "$DELETE_DUPLICATES" = "true" ]; then
+              for dup in $OTHER_IDS; do
+                if [ -n "$dup" ]; then
+                  echo "Deleting duplicate bot comment id=$dup"
+                  curl -s -X DELETE -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${dup}" >/dev/null || true
+                fi
+              done
+            fi
             PKG_VERSION=$(jq -r .version package.json)
             PKG_VERSION_V="v${PKG_VERSION}"
             APPLIED_APPLIED="Applied automatic version bump to this PR: **${PKG_VERSION_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
