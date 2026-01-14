@@ -258,10 +258,19 @@ jobs:
             # Remove HTML comment blocks (PR templates often use <!-- -->)
             PR_BODY_NOHTML=$(printf '%s\n' "$PR_BODY_RAW" | sed -E ':a;N;$!ba;s/<!--(.|\n)*?-->//g')
 
-            # Extract the human-written description before template headings like '##' or 'IMPORTANT:'
-            PR_BODY_CLEAN=$(printf '%s\n' "$PR_BODY_NOHTML" | awk '/^## /{exit} /^IMPORTANT:/{exit} {print}')
-            # Trim leading/trailing whitespace/newlines
-            PR_BODY_CLEAN=$(printf '%s' "$PR_BODY_CLEAN" | sed -E 's/^[[:space:]\n]+//; s/[[:space:]\n]+$//')
+              # Extract the first meaningful paragraph from the PR body.
+              # Skip common PR-template headings/placeholders (Short summary, Describe the change, Changes since, etc.)
+              PR_BODY_CLEAN=$(printf '%s\n' "$PR_BODY_NOHTML" | awk 'BEGIN{RS=""; ORS="\n\n"} {
+                p=$0; sub(/^[ \t\r\n]+/, "", p); sub(/[ \t\r\n]+$/, "", p);
+                if (p=="") next;
+                # skip paragraphs that look like template headings/placeholders
+                if (p ~ /(^|\n)(Pull Request|Short summary|Short summary \(one or two lines\)|Describe the change|Describe the change and why it is needed|Changes since|Changes since v[0-9]+|## )/i) next;
+                # skip very short paragraphs that are likely placeholders
+                if (length(p) < 12) next;
+                print p; exit
+              }')
+              # Trim leading/trailing whitespace/newlines
+              PR_BODY_CLEAN=$(printf '%s' "$PR_BODY_CLEAN" | sed -E 's/^[[:space:]\n]+//; s/[[:space:]\n]+$//')
 
             echo "Merge PR #${PR_NUM}: ${PR_TITLE}" >> ${CHANGELOG_FILE}
             if [ -n "${PR_BODY_CLEAN}" ]; then
