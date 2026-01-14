@@ -112,7 +112,9 @@ jobs:
           MARKER="Computed release version if merged to"
           # If any comment already contains an applied-by timestamp, extract that
           # applied line and reuse it so we don't revert applied -> pending.
-          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[] | select(.body | test("Applied automatic version bump to this PR:.*\\(applied by")) | .body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+          # Robustly find any existing applied-line across all comment bodies.
+          # Use jq to print bodies and awk to extract the first matching applied line.
+          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
           if [ -n "$(printf '%s' "$APPLIED_LINE")" ]; then
             # Build COMMENT_BODY by replacing the pending line with the applied line
             # from the existing comment (keeps applied state and actor/timestamp).
