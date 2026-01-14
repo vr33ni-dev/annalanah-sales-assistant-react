@@ -303,7 +303,6 @@ jobs:
                   fi
                   # continue without creating branches
                 fi
-                fi
               else
                 echo "Local HEAD already contains remote commits; continuing to push"
               fi
