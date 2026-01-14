@@ -157,6 +157,7 @@ jobs:
           echo "Found labels: $LABEL_NAMES"
 
       - name: Auto bump version (label-driven)
+        if: ${{ github.event_name == 'pull_request' }}
         id: autobump
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
@@ -172,6 +173,7 @@ jobs:
           ./.github/scripts/bump-version.sh package.json auto --apply
 
       - name: Commit and push package.json (if changed)
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
