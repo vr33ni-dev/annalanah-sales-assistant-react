@@ -247,7 +247,9 @@ jobs:
           EVENT_NAME=${GITHUB_EVENT_NAME}
           CHANGELOG_FILE=/tmp/changelog.md
           echo "" > ${CHANGELOG_FILE}
-
+          # For PR merges include the PR title/body (cleaned) and then
+          # append a list of commit messages (indented) since the last tag.
+          PR_BODY_CLEAN=""
           if [ "$EVENT_NAME" = "pull_request" ]; then
             PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")
             PR_TITLE=$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")
@@ -266,18 +268,31 @@ jobs:
               echo "" >> ${CHANGELOG_FILE}
               echo "${PR_BODY_CLEAN}" >> ${CHANGELOG_FILE}
             fi
-          else
-            # direct push: list commits since last tag
-            LAST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
-            if [ -z "${LAST_TAG}" ]; then
-              RANGE=""
-              echo "Changes:" >> ${CHANGELOG_FILE}
-            else
-              RANGE="${LAST_TAG}..HEAD"
-              echo "Changes since ${LAST_TAG}:" >> ${CHANGELOG_FILE}
-            fi
-            git --no-pager log ${RANGE} --pretty=format:"- %s (%an)" >> ${CHANGELOG_FILE} || true
+            echo "" >> ${CHANGELOG_FILE}
           fi
+
+          # Determine target commit and last tag, then list commits since that tag.
+          git fetch origin --tags origin main || true
+          LOCAL_HEAD=$(git rev-parse --verify HEAD)
+          REMOTE_MAIN=$(git rev-parse --verify origin/main)
+          if [ "$LOCAL_HEAD" != "$REMOTE_MAIN" ]; then
+            TARGET_COMMIT="$REMOTE_MAIN"
+          else
+            TARGET_COMMIT="$LOCAL_HEAD"
+          fi
+
+          LAST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+          if [ -z "${LAST_TAG}" ]; then
+            echo "Changes:" >> ${CHANGELOG_FILE}
+            RANGE=""
+          else
+            echo "Changes since ${LAST_TAG}:" >> ${CHANGELOG_FILE}
+            RANGE="${LAST_TAG}..${TARGET_COMMIT}"
+          fi
+
+          # List commit subjects and authors, indented to match previous style
+          git --no-pager log ${RANGE} --pretty=format:"    %s (%an)" >> ${CHANGELOG_FILE} || true
+
           echo "Changelog generated at ${CHANGELOG_FILE}"
           cat ${CHANGELOG_FILE}
 
