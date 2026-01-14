@@ -28,5 +28,5 @@ dist-ssr
 .env.dev
 .env.prod
 
-# docs
+# documentation
 docs/*
