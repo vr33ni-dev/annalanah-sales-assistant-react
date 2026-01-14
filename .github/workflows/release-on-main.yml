@@ -173,35 +173,24 @@ jobs:
               if echo "$UPDATE_RESP" | jq -e .content >/dev/null 2>&1; then
                 echo "Successfully updated package.json on main via Contents API"
               else
-                echo "Contents API update failed; will fall back to creating a branch + PR. Response: $UPDATE_RESP" >&2
-
-                # Create a safe branch name
-                SAFE_VERSION=$(jq -r .version package.json | sed 's/[^A-Za-z0-9._-]/-/g')
-                BRANCH="bump/package-${SAFE_VERSION}-$(date +%s)"
-                echo "Creating branch ${BRANCH} and pushing changes"
-
-                # Create branch locally and push to origin using GITHUB_TOKEN
-                git checkout -b "${BRANCH}"
-                if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" HEAD:${BRANCH}; then
-                  echo "Pushed branch ${BRANCH}"
-                  PR_TITLE="chore(release): bump package.json to $(jq -r .version package.json)"
-                  PR_BODY="Automated PR to update package.json to $(jq -r .version package.json). Created because direct push and Contents API update were blocked."
-                  PR_JSON=$(jq -n --arg title "$PR_TITLE" --arg head "$BRANCH" --arg base "main" --arg body "$PR_BODY" '{title:$title, head:$head, base:$base, body:$body}')
-                  CREATION=$(curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PR_JSON" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls" || true)
-                  PR_URL=$(echo "$CREATION" | jq -r .html_url 2>/dev/null || true)
-                  PR_NUM=$(echo "$CREATION" | jq -r .number 2>/dev/null || true)
-                  if [ -n "$PR_URL" ] && [ "$PR_URL" != "null" ]; then
-                    echo "Opened PR: $PR_URL"
-                    echo "Package bump pushed as PR ${PR_NUM}. Release job will stop until PR is merged."
-                    exit 1
+                echo "Contents API update failed; cannot auto-apply bump due to branch protection. Response: $UPDATE_RESP" >&2
+                # Instead of creating a fallback branch/PR (which may be blocked by org policy),
+                # post an explanatory comment on the merged PR so maintainers can take action.
+                if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+                  PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+                  if [ -n "$PR_NUM" ]; then
+                    MSG="Automated release bump could not be applied to \`main\` due to branch protection. I attempted to update package.json to $(jq -r .version package.json) but the update was rejected. Please merge the bump into main (or allow Actions to create PRs) so the release can proceed."
+                    echo "Posting note to PR #${PR_NUM}: $MSG"
+                    curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
                   else
-                    echo "Failed to create PR. Response: $CREATION" >&2
-                    exit 1
+                    echo "No PR number found in event payload; cannot post explanatory comment."
                   fi
                 else
-                  echo "Failed to push branch ${BRANCH} with GITHUB_TOKEN" >&2
-                  exit 1
+                  echo "No event payload available; cannot post PR comment explaining blocked update."
                 fi
+                # Stop the release job so maintainers can resolve the bump manually (avoid creating unknown branches)
+                echo "Release cannot continue until package.json is updated on main. Failing the job to surface the issue."
+                exit 1
               fi
             fi
           else
