@@ -93,27 +93,48 @@ jobs:
           # Save the comment body into a temporary file and use the action below to post
           # Use printf so the \n sequences become real newlines in the file
           # Include an applied-line in '(pending)' state so comments always show status
-          printf '%s\n\n%s\n\n%s\n' \
+          printf '%s\n\n%s\n' \
             "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
-            "Labels considered: $LABELS_LOWER" \
-            "Applied automatic version bump to this PR: **$NEW_VERSION** (pending)" > /tmp/pr_version_comment.md
+            "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
 
       - name: Post PR comment with computed version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          COMMENT_BODY=$(cat /tmp/pr_version_comment.md)
+          # Build the comment body, but if an applied-line already exists in any
+          # bot comment, preserve that applied-line instead of writing (pending).
+          RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
           ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
           echo "Looking for existing bot comment to update"
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
 
-          # Prefer updating an existing github-actions[bot] comment that contains the marker text
           MARKER="Computed release version if merged to"
-          EXISTING_ID=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login == "github-actions[bot]" and (.body | contains($marker))) | .id' | head -n1 || true)
+          # If any comment already contains an applied-by timestamp, extract that
+          # applied line and reuse it so we don't revert applied -> pending.
+          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[] | select(.body | test("Applied automatic version bump to this PR:.*\\(applied by")) | .body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+          if [ -n "$(printf '%s' "$APPLIED_LINE")" ]; then
+            # Build COMMENT_BODY by replacing the pending line with the applied line
+            # from the existing comment (keeps applied state and actor/timestamp).
+            BASE_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Computed release version if merged to/{print; exit}')
+            LABELS_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Labels considered:/{print; exit}')
+            COMMENT_BODY=$(printf '%s\n\n%s\n\n%s' "$BASE_LINE" "$LABELS_LINE" "$APPLIED_LINE")
+          else
+            COMMENT_BODY="$RAW_COMMENT"
+          fi
 
-          DELETE_DUPLICATES="true"
-          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
+          # Consolidate candidate comments so we only keep one bot-authored
+          # comment for this marker. Prefer bot-authored computed-version comments
+          # and remove any duplicate bot comments to avoid multiple pending/applied copies.
+          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker) or (.body | test("Applied automatic version bump to this PR:")))) | .id')
+          EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+          OTHER_IDS=$(printf '%s\n' "$CANDIDATE_IDS" | sed -n '2,$p' || true)
+          for dup in $OTHER_IDS; do
+            if [ -n "$dup" ]; then
+              echo "Deleting duplicate bot comment id=$dup"
+              curl -s -X DELETE -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/issues/comments/${dup}" >/dev/null || true
+            fi
+          done
 
           if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
             echo "Found existing bot comment id=$EXISTING_ID; updating"
@@ -123,9 +144,6 @@ jobs:
             echo "No existing bot comment found; creating a new comment"
             curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
           fi
-
-          # Consolidate candidate comments: prefer bot-authored computed-version comments
-          CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker))) | .id')
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
         # Run the auto-apply step only when the PR comes from the same repo AND
@@ -247,7 +265,7 @@ jobs:
                   if [ -n "$dup" ]; then
                     echo "Deleting duplicate bot comment id=$dup"
                     curl -s -X DELETE -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${dup}" >/dev/null || true
-                  fsi
+                  fi
                 done
               fi
               # Use the package.json version with a leading 'v' to match the computed comment
@@ -264,12 +282,8 @@ jobs:
                   echo "Applied-line already present in existing comment; skipping update"
                 else
                   # If the comment contains any line starting with the applied-line prefix, replace it with the applied form
-                  if printf '%s' "$EXISTING_BODY" | grep -E -q "^[[:space:]]*Applied automatic version bump to this PR:"; then
-                    UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^[[:space:]]*Applied automatic version bump to this PR:/) { print repl } else print }')
-                  else
-                    # Fallback: append applied line as a new paragraph
-                    UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
-                  fi
+                  # Append the applied-line if it's not already present (do not revert)
+                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
                   # updated body prepared
                   UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
                   curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
@@ -334,11 +348,8 @@ jobs:
               if printf '%s' "$EXISTING_BODY" | grep -F -q "$APPLIED_APPLIED"; then
                 echo "Applied-line already present; nothing to do"
               else
-                if printf '%s' "$EXISTING_BODY" | grep -E -q "^[[:space:]]*Applied automatic version bump to this PR:"; then
-                  UPDATED_BODY=$(printf '%s\n' "$EXISTING_BODY" | awk -v repl="$APPLIED_APPLIED" 'BEGIN{RS="\n";ORS="\n"} { if ($0 ~ /^[[:space:]]*Applied automatic version bump to this PR:/) { print repl } else print }')
-                else
-                  UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
-                fi
+                # Append applied-line (don't try to replace a pending marker)
+                UPDATED_BODY=$(printf '%s\n\n%s' "$EXISTING_BODY" "$APPLIED_APPLIED")
                 echo "Updating comment id=$EXISTING_ID with applied message"
                 UPDATE_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${EXISTING_ID}"
                 curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$UPDATED_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
