@@ -9,6 +9,8 @@ GITHUB_TOKEN=${GITHUB_TOKEN:-}
 GITHUB_EVENT_PATH=${GITHUB_EVENT_PATH:-}
 GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME:-}
 GITHUB_SHA=${GITHUB_SHA:-}
+# initialize RANGE to avoid 'unbound variable' failure when set -u is active
+RANGE=""
 
 # (No dry-run mode) The script performs real pushes and API writes when run
 

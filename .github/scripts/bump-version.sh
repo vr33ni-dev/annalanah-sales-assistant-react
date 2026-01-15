@@ -17,15 +17,9 @@ GITHUB_TOKEN=${GITHUB_TOKEN:-}
 PR_LABELS=${PR_LABELS:-}
 
 # By default the script is compute-only (no writes). Use --apply to actually modify files.
-# --dry-run is an alias for not applying and prints what would happen.
 APPLY=${APPLY:-0}
-DRY_RUN=0
 if [ "${3:-}" = "--apply" ]; then
   APPLY=1
-fi
-if [ "${3:-}" = "--dry-run" ] || [ "${DRY_RUN:-0}" = "1" ]; then
-  DRY_RUN=1
-  APPLY=0
 fi
 
 # Write output for GH Actions (new runner behavior uses GITHUB_OUTPUT file path)
@@ -141,16 +135,12 @@ echo "Computed: ${NEW_VERSION}"
 
 if [ "$TARGET" = "VERSION" ]; then
   # write the v-prefixed value to VERSION to match current repo behaviour
-  if [ "$APPLY" -eq 1 ]; then
-    echo "${NEW_VERSION}" > VERSION
-    echo "Wrote VERSION -> $(cat VERSION)"
-  else
-    if [ "$DRY_RUN" -eq 1 ]; then
-      echo "DRY RUN: would write VERSION -> ${NEW_VERSION}"
+    if [ "$APPLY" -eq 1 ]; then
+      echo "${NEW_VERSION}" > VERSION
+      echo "Wrote VERSION -> $(cat VERSION)"
     else
       echo "Would write VERSION -> ${NEW_VERSION} (pass --apply to perform)"
     fi
-  fi
 elif [ "$TARGET" = "package.json" ]; then
   # Prefer jq-based edits to package.json (simpler, deterministic). Fall back to npm if jq missing.
   if command -v jq >/dev/null 2>&1; then
@@ -182,11 +172,7 @@ elif [ "$TARGET" = "package.json" ]; then
         exit 4
       fi
     else
-      if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY RUN: would run: jq --arg ver ${TARGET_VER} '${JQ_FILTER}' package.json > tmp && mv tmp package.json"
-      else
-        echo "Would run: jq --arg ver ${TARGET_VER} '${JQ_FILTER}' package.json > tmp && mv tmp package.json (pass --apply to perform)"
-      fi
+      echo "Would run: jq --arg ver ${TARGET_VER} '${JQ_FILTER}' package.json > tmp && mv tmp package.json (pass --apply to perform)"
     fi
 
     if [ "$APPLY" -eq 1 ]; then
@@ -208,11 +194,7 @@ elif [ "$TARGET" = "package.json" ]; then
     if [ "$APPLY" -eq 1 ]; then
       npm --no-git-tag-version version "${TARGET_VER}"
     else
-      if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY RUN: would run: npm --no-git-tag-version version ${TARGET_VER}"
-      else
-        echo "Would run: npm --no-git-tag-version version ${TARGET_VER} (pass --apply to perform)"
-      fi
+      echo "Would run: npm --no-git-tag-version version ${TARGET_VER} (pass --apply to perform)"
     fi
     if [ "$APPLY" -eq 1 ]; then
       NEW_VER=$(node -p "require('./package.json').version")
