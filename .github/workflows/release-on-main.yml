@@ -408,18 +408,90 @@ jobs:
             fi
           fi
 
-          # Determine last tag and list commits since that tag
-          LAST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+          # Determine last tag reachable from the target commit and list commits since that tag
+          # Prefer tags reachable from the target commit (so we don't accidentally pick a tag on a different branch)
+          LAST_TAG=$(git describe --tags --abbrev=0 "${TARGET_COMMIT}" 2>/dev/null || true)
           if [ -z "${LAST_TAG}" ]; then
             echo "Changes:" >> ${CHANGELOG_FILE}
             RANGE="${TARGET_COMMIT}"
           else
-            echo "Changes since ${LAST_TAG}:" >> ${CHANGELOG_FILE}
-            RANGE="${LAST_TAG}..${TARGET_COMMIT}"
+            # If the last tag points to the same commit as the target (i.e., the tag was created on the
+            # target commit), we want the commits that led up to that tag — use the previous merged tag
+            # as the starting point when available.
+            LAST_TAG_COMMIT=$(git rev-parse "${LAST_TAG}^{commit}" 2>/dev/null || true)
+            TARGET_COMMIT_SHA=$(git rev-parse "${TARGET_COMMIT}" 2>/dev/null || true)
+            if [ -n "${LAST_TAG_COMMIT}" ] && [ "${LAST_TAG_COMMIT}" = "${TARGET_COMMIT_SHA}" ]; then
+              # find the previous tag merged into the target commit (sorted by creation date)
+              PREV_TAG=$(git tag --sort=-creatordate --merged "${TARGET_COMMIT}" | sed -n '2p' || true)
+              if [ -n "${PREV_TAG}" ]; then
+                echo "Changes since ${PREV_TAG}:" >> ${CHANGELOG_FILE}
+                RANGE="${PREV_TAG}..${TARGET_COMMIT}"
+              else
+                echo "Changes:" >> ${CHANGELOG_FILE}
+                RANGE="${TARGET_COMMIT}"
+              fi
+            else
+              echo "Changes since ${LAST_TAG}:" >> ${CHANGELOG_FILE}
+              RANGE="${LAST_TAG}..${TARGET_COMMIT}"
+            fi
           fi
 
-          # List commit subjects and authors
-          git --no-pager log ${RANGE} --pretty=format:"    %s (%an)" >> ${CHANGELOG_FILE} || true
+          # Collect PR titles merged into main between the start and end of the range using
+          # the GitHub Search API (merged date range). This reduces per-commit API calls.
+          PRS_RAW=/tmp/prs_raw.txt
+          PRS_UNIQ=/tmp/prs_uniq.txt
+          > ${PRS_RAW}
+
+          # Determine date range for merged PR search
+          if echo "${RANGE}" | grep -q '\.\.'; then
+            START_REF=$(echo "${RANGE}" | cut -d'.' -f1)
+          else
+            START_REF=""
+          fi
+
+          if [ -n "${START_REF}" ]; then
+            START_DATE=$(git show -s --format=%cI ${START_REF} 2>/dev/null || true)
+          else
+            # fallback to a very early date when no start ref is available
+            START_DATE="1970-01-01T00:00:00Z"
+          fi
+          END_DATE=$(git show -s --format=%cI ${TARGET_COMMIT} 2>/dev/null || true)
+
+          if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${END_DATE}" ]; then
+            # Build search query and URL-encode it using jq
+            Q="repo:${GITHUB_REPOSITORY} type:pr is:merged base:main merged:${START_DATE}..${END_DATE}"
+            ENCODED_Q=$(jq -nr --arg q "$Q" '$q|@uri')
+
+            per_page=100
+            page=1
+            while :; do
+              RESP=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/search/issues?q=${ENCODED_Q}&per_page=${per_page}&page=${page}" || true)
+              # extract PR number and title
+              echo "$RESP" | jq -r '.items[]? | "\(.number)\t\(.title)"' 2>/dev/null >> ${PRS_RAW} || true
+
+              COUNT=$(echo "$RESP" | jq -r '.items | length' 2>/dev/null || echo 0)
+              if [ "$COUNT" -lt "$per_page" ] || [ "$COUNT" -eq 0 ]; then
+                break
+              fi
+              page=$((page+1))
+            done
+          fi
+
+          # dedupe by PR number, keep first occurrence (which is newest by search ordering)
+          if [ -s ${PRS_RAW} ]; then
+            awk -F"\t" '!seen[$1]++ { print $0 }' ${PRS_RAW} > ${PRS_UNIQ} || true
+          fi
+
+          if [ -s ${PRS_UNIQ} ]; then
+            echo "Pull requests included:" >> ${CHANGELOG_FILE}
+            while IFS=$'\t' read -r num title; do
+              echo "- PR #${num}: ${title}" >> ${CHANGELOG_FILE}
+            done < ${PRS_UNIQ}
+            echo "" >> ${CHANGELOG_FILE}
+          fi
+
+          # List commit subjects only (no bodies), include short hash and author
+          git --no-pager log ${RANGE} --pretty=format:"- %s (%an, %h)" >> ${CHANGELOG_FILE} || true
 
           # If no commits were listed, add a helpful note
           if [ ! -s ${CHANGELOG_FILE} ] || [ "$(wc -c < ${CHANGELOG_FILE})" -le 0 ]; then
