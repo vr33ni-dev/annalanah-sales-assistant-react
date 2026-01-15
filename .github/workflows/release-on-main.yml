@@ -595,7 +595,28 @@ jobs:
             fi
           fi
 
-          BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$tag, body:$body, draft:false, prerelease:false}')
+          # Prefer using the PR title as the Release name (subtitle) when available so the
+          # release page shows the PR title instead of repeating the tag. Fall back to the
+          # tag name when no PR title can be determined.
+          RELEASE_NAME="${TAG_FROM_PKG}"
+          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+            PR_TITLE=$(jq -r '.pull_request.title // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+            if [ -n "${PR_TITLE}" ]; then
+              RELEASE_NAME="$PR_TITLE"
+            fi
+          fi
+
+          # If we still don't have a PR title, try to detect a PR associated with the
+          # target commit (use the first PR title found).
+          if [ "${RELEASE_NAME}" = "${TAG_FROM_PKG}" ]; then
+            PRS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.groot-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${TARGET_COMMIT}/pulls" || true)
+            PR_TITLE_FROM_COMMIT=$(echo "$PRS" | jq -r '.[0].title // empty' 2>/dev/null || true)
+            if [ -n "${PR_TITLE_FROM_COMMIT}" ]; then
+              RELEASE_NAME="${PR_TITLE_FROM_COMMIT}"
+            fi
+          fi
+
+          BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg name "$RELEASE_NAME" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
           echo "Creating release for ${TAG_FROM_PKG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
 
