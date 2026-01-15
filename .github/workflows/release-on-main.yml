@@ -720,12 +720,19 @@ jobs:
             fi
           fi
 
-          # Compose release body: PR lead line (if any) followed by the generated changelog
-          if [ -n "${PR_LEAD_LINE}" ]; then
-            BODY_CONTENT="${PR_LEAD_LINE}\n\n$(cat ${CHANGELOG_FILE} 2>/dev/null || true)"
-          else
-            BODY_CONTENT="$(cat ${CHANGELOG_FILE} 2>/dev/null || true)"
-          fi
+          # Compose release body: PR lead line (if any) followed by the generated changelog.
+          # The changelog currently includes the tag as its first line; 
+          RAW_CHANGELOG=$(cat ${CHANGELOG_FILE} 2>/dev/null || true)
+          # Keep the changelog intact (including the leading tag line). This
+          # makes the release body start with the tag/version header as you
+          # requested.
+          CHANGELOG_BODY="${RAW_CHANGELOG}"
+
+          # Use the changelog as the release body directly. The changelog file
+          # already includes the tag as the first line and (for pull_request
+          # runs) the PR title is included in the changelog so the release
+          # body will match the example format you provided.
+          BODY_CONTENT="${CHANGELOG_BODY}"
 
           BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg name "$RELEASE_NAME" --arg body "$BODY_CONTENT" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
           echo "Creating release for ${TAG_FROM_PKG}"
