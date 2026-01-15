@@ -357,23 +357,3 @@ jobs:
           BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg name "$RELEASE_NAME" --arg body "$BODY_CONTENT" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
           echo "Creating release for ${TAG_FROM_PKG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
-
-  bump_dry_run:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dry-run bump (manual)
-        id: dryrun
-        env:
-          PR_LABELS: ""
-        run: |
-          set -euo pipefail
-          chmod +x .github/scripts/bump-version.sh || true
-          ./.github/scripts/bump-version.sh package.json auto --dry-run
