@@ -34,14 +34,56 @@ jobs:
               const pr = payload.pull_request || {}
               const merged = !!pr.merged
               const baseRef = pr.base && pr.base.ref ? pr.base.ref : ''
-              if (merged && baseRef === 'main') {
-                core.info('Pull request merged to main — proceeding with release run.')
-                core.setOutput('run_release','true')
+                if (merged && baseRef === 'main') {
+                  core.info('Pull request merged to main — checking whether a release/tag already exists for the merged commit')
+                  // If the PR contains a merge_commit_sha, try to read package.json at
+                  // that exact commit and skip the run if a matching tag/release already
+                  // exists. This avoids the PR-triggered run doing bump/tag work when a
+                  // nearly-simultaneous push-run already created the release.
+                  try {
+                    const mergeSha = pr.merge_commit_sha || null
+                    if (mergeSha) {
+                      let version = null
+                      try {
+                        const pkg = await github.rest.repos.getContent({ owner: payload.repository.owner.login, repo: payload.repository.name, path: 'package.json', ref: mergeSha })
+                        const content = Buffer.from(pkg.data.content, pkg.data.encoding).toString()
+                        const parsed = JSON.parse(content || '{}')
+                        version = parsed.version || null
+                      } catch (e) {
+                        core.info('Could not read package.json at merge commit; will proceed with release run as fallback')
+                      }
+
+                      if (version) {
+                        const tag = `v${version}`
+                        try {
+                          await github.rest.repos.getReleaseByTag({ owner: payload.repository.owner.login, repo: payload.repository.name, tag })
+                          core.info(`Release for ${tag} already exists — skipping release run for merged PR.`)
+                          core.setOutput('run_release','false')
+                          return
+                        } catch (e) {
+                          // Not found — continue to check refs
+                        }
+
+                        try {
+                          await github.rest.git.getRef({ owner: payload.repository.owner.login, repo: payload.repository.name, ref: `refs/tags/${tag}` })
+                          core.info(`Tag ${tag} already exists — skipping release run for merged PR.`)
+                          core.setOutput('run_release','false')
+                          return
+                        } catch (e) {
+                          // Tag not found — proceed
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    core.info('Error while checking tags/releases for merged PR; proceeding with release run as a safe fallback.')
+                  }
+                  core.info('Pull request merged to main — proceeding with release run.')
+                  core.setOutput('run_release','true')
+                  return
+                }
+                core.info('Pull request closed but not a merged to main event — skipping release run.')
+                core.setOutput('run_release','false')
                 return
-              }
-              core.info('Pull request closed but not a merged to main event — skipping release run.')
-              core.setOutput('run_release','false')
-              return
             }
 
             // For pushes, run only for pushes to main and only when a release/tag for the
@@ -95,6 +137,58 @@ jobs:
                 }
 
                 core.info('No existing release/tag detected for pushed commit — proceeding with release run.')
+                // Before deciding to run, check whether this push corresponds to a
+                // PR merge and whether a pull_request-triggered release run already
+                // executed for that merge. If so, skip the push-run to avoid a
+                // duplicate release execution.
+                try {
+                  // Query PRs associated with the pushed commit (may be empty)
+                  const prsResp = await github.request('GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls', { owner, repo, commit_sha: sha })
+                  const prs = prsResp.data || []
+                  const mergedPr = prs.find(p => p.base && p.base.ref === 'main' && p.merged_at)
+                  if (mergedPr && mergedPr.number) {
+                    core.info(`Push commit ${sha} is associated with merged PR #${mergedPr.number}; checking for a pull_request-triggered release run.`)
+                    // Poll briefly for a pull_request-triggered run of this workflow for the same head SHA.
+                    // Race conditions can occur where the push event fires before the PR-triggered run
+                    // is created; wait a short time (up to ~30s) for that run to appear before
+                    // deciding to proceed with the push-run fallback.
+                    let skipped = false
+                    const maxAttempts = 6
+                    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                      try {
+                        const wfResp = await github.request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', { owner, repo, workflow_id: 'release-on-main.yml', head_sha: sha, event: 'pull_request', per_page: 1 })
+                        const runs = (wfResp.data && wfResp.data.workflow_runs) || []
+                        if (runs.length > 0) {
+                          const run = runs[0]
+                          core.info(`Found pull_request-triggered release workflow run for head ${sha} (id=${run.id}, status=${run.status}, conclusion=${run.conclusion})`)
+                          // Only skip the push-run if the PR-run completed successfully.
+                          if (run.conclusion === 'success') {
+                            core.info(`PR-run concluded successfully (id=${run.id}) — skipping push-run.`)
+                            core.setOutput('run_release','false')
+                            skipped = true
+                            break
+                          }
+                          // If the PR-run is still in progress or queued, wait and retry
+                          if (run.status === 'in_progress' || run.status === 'queued') {
+                            core.info('PR-run still in progress; waiting briefly for completion before deciding.')
+                          } else {
+                            // PR-run finished but did not succeed — do not skip
+                            core.info('PR-run finished but did not succeed; will not skip push-run.')
+                            break
+                          }
+                        }
+                      } catch (e) {
+                        core.info('Error checking for pull_request runs; will retry briefly.')
+                      }
+                      // wait 5s before next attempt
+                      await new Promise(resolve => setTimeout(resolve, 5000))
+                    }
+                    if (skipped) return
+                  }
+                } catch (e) {
+                  core.info('Error while checking for an existing pull_request run for this push; proceeding with release run as fallback.')
+                }
+
                 core.setOutput('run_release','true')
                 return
               } catch (err) {
@@ -595,28 +689,45 @@ jobs:
             fi
           fi
 
-          # Prefer using the PR title as the Release name (subtitle) when available so the
-          # release page shows the PR title instead of repeating the tag. Fall back to the
-          # tag name when no PR title can be determined.
+          # Use the tag as the Release name/title. Put the PR title (if available)
+          # as the first line of the release body so the release page shows the
+          # version as the title and the PR title as the lead line in the body.
           RELEASE_NAME="${TAG_FROM_PKG}"
+
+          # Try to determine a PR title to include in the release body. Prefer the
+          # event payload (works for pull_request-triggered runs), otherwise look up
+          # PRs associated with the target commit.
+          PR_TITLE=""
+          PR_NUM=""
           if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
             PR_TITLE=$(jq -r '.pull_request.title // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
-            if [ -n "${PR_TITLE}" ]; then
-              RELEASE_NAME="$PR_TITLE"
-            fi
+            PR_NUM=$(jq -r '.pull_request.number // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
           fi
 
-          # If we still don't have a PR title, try to detect a PR associated with the
-          # target commit (use the first PR title found).
-          if [ "${RELEASE_NAME}" = "${TAG_FROM_PKG}" ]; then
+          if [ -z "${PR_TITLE}" ]; then
             PRS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.groot-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${TARGET_COMMIT}/pulls" || true)
-            PR_TITLE_FROM_COMMIT=$(echo "$PRS" | jq -r '.[0].title // empty' 2>/dev/null || true)
-            if [ -n "${PR_TITLE_FROM_COMMIT}" ]; then
-              RELEASE_NAME="${PR_TITLE_FROM_COMMIT}"
+            PR_TITLE=$(echo "$PRS" | jq -r '.[0].title // empty' 2>/dev/null || true)
+            PR_NUM=$(echo "$PRS" | jq -r '.[0].number // empty' 2>/dev/null || true)
+          fi
+
+          # Build a leading PR line if we have a title/number
+          PR_LEAD_LINE=""
+          if [ -n "${PR_TITLE}" ]; then
+            if [ -n "${PR_NUM}" ]; then
+              PR_LEAD_LINE="Merge PR #${PR_NUM}: ${PR_TITLE}"
+            else
+              PR_LEAD_LINE="${PR_TITLE}"
             fi
           fi
 
-          BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg name "$RELEASE_NAME" --arg body "$(cat ${CHANGELOG_FILE} 2>/dev/null || true)" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
+          # Compose release body: PR lead line (if any) followed by the generated changelog
+          if [ -n "${PR_LEAD_LINE}" ]; then
+            BODY_CONTENT="${PR_LEAD_LINE}\n\n$(cat ${CHANGELOG_FILE} 2>/dev/null || true)"
+          else
+            BODY_CONTENT="$(cat ${CHANGELOG_FILE} 2>/dev/null || true)"
+          fi
+
+          BODY=$(jq -nc --arg tag "$TAG_FROM_PKG" --arg name "$RELEASE_NAME" --arg body "$BODY_CONTENT" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
           echo "Creating release for ${TAG_FROM_PKG}"
           curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$BODY" "$API_URL" >/dev/null
 
