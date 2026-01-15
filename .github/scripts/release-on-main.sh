@@ -10,6 +10,8 @@ GITHUB_EVENT_PATH=${GITHUB_EVENT_PATH:-}
 GITHUB_EVENT_NAME=${GITHUB_EVENT_NAME:-}
 GITHUB_SHA=${GITHUB_SHA:-}
 
+# (No dry-run mode) The script performs real pushes and API writes when run
+
 echo "Running consolidated release script"
 
 # If this is a push, check whether the push corresponds to a merged PR and
@@ -139,7 +141,7 @@ if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
           if [ -n "$PR_NUM" ]; then
             MSG="Automated release bump could not be applied to \`main\` due to branch protection. I attempted to update package.json to $(jq -r .version package.json) but the update was rejected. Please merge the bump into main (or allow Actions to create PRs) so the release can proceed."
             echo "Posting note to PR #${PR_NUM}: $MSG"
-            curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
+                    curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$MSG" '{body:$body}')" "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${PR_NUM}/comments" >/dev/null || true
           else
             echo "No PR number found in event payload; cannot post explanatory comment."
           fi
@@ -213,10 +215,10 @@ fi
 if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
   PR_NUM=$(jq -r '.pull_request.number' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
   PR_TITLE=$(jq -r '.pull_request.title' "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
-  if [ -n "${PR_NUM}" ] && [ "${PR_NUM}" != "null" ]; then
-    echo "Merge PR #${PR_NUM}: ${PR_TITLE}" >> ${CHANGELOG_FILE}
-    echo "" >> ${CHANGELOG_FILE}
-  fi
+    if [ -n "${PR_NUM}" ] && [ "${PR_NUM}" != "null" ]; then
+      echo "Merge PR #${PR_NUM}: ${PR_TITLE}" >> ${CHANGELOG_FILE}
+      echo "" >> ${CHANGELOG_FILE}
+    fi
 fi
 LAST_TAG=$(git describe --tags --abbrev=0 "${TARGET_COMMIT}" 2>/dev/null || true)
 if [ -z "${LAST_TAG}" ]; then
