@@ -376,7 +376,6 @@ jobs:
                     curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$APPLIED_APPLIED" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
                   fi
                 fi
-              fi
             else
               echo "Push to PR branch failed; not creating fallback PR per user preference; updating bot comment to reflect applied bump and push failure." >&2
               # Update only the single bot comment (or create it) to include the applied-line and a short note
