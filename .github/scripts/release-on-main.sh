@@ -12,9 +12,18 @@ GITHUB_SHA=${GITHUB_SHA:-}
 # initialize RANGE to avoid 'unbound variable' failure when set -u is active
 RANGE=""
 
+# Control verbosity:
+# - DEBUG=1 enables shell xtrace (very verbose, prints commands)
+# - QUIET=1 suppresses informational logs (keeps errors + final output)
+DEBUG=${DEBUG:-0}
+QUIET=${QUIET:-0}
+
+# simple logging helper
+log() { if [ "${QUIET:-0}" != "1" ]; then echo "[release] $*"; fi }
+
 # (No dry-run mode) The script performs real pushes and API writes when run
 
-echo "Running consolidated release script"
+echo "STEP: Running consolidated release script"
 
 # If this is a push, check whether the push corresponds to a merged PR and
 # whether a pull_request-triggered run exists. If so, skip and exit 0 so the
@@ -55,7 +64,10 @@ else
   echo "origin remote already present"
 fi
 
-set -x
+# Enable xtrace only when DEBUG=1. Avoid noisy '+ +' lines in CI logs by default.
+if [ "${DEBUG:-0}" = "1" ]; then
+  set -x
+fi
 
 # Early guard — skip if tag/release exists (look at package.json at origin/main)
 git fetch origin --tags || true
@@ -65,6 +77,7 @@ else
   TARGET_COMMIT=$(git rev-parse --verify HEAD)
 fi
 TAG_VERSION=$(git show ${TARGET_COMMIT}:package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+echo "STEP: target commit = ${TARGET_COMMIT}, package.json version = ${TAG_VERSION:-<none>}"
 if [ -n "${TAG_VERSION}" ] && [ "${TAG_VERSION}" != "null" ]; then
   TAG="v${TAG_VERSION}"
   if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
@@ -102,8 +115,10 @@ echo "Found labels: $LABEL_NAMES"
 
 # Auto bump version (label-driven) when this is a pull_request event
 if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+  echo "STEP: attempting label-driven bump (pull_request run)"
   chmod +x .github/scripts/bump-version.sh || true
   ./.github/scripts/bump-version.sh package.json auto --apply
+  echo "STEP: bump script finished"
 fi
 
 # Commit and push package.json if changed (for pull_request runs)
@@ -183,6 +198,7 @@ fi
 git config user.email "github-actions[bot]@users.noreply.github.com"
 git config user.name "github-actions[bot]"
 git tag -a "${TAG_FROM_PKG}" "$TARGET_COMMIT" -m "Release ${TAG_FROM_PKG}"
+echo "STEP: created annotated tag ${TAG_FROM_PKG} -> ${TARGET_COMMIT} (local)"
 if git push origin "refs/tags/${TAG_FROM_PKG}"; then
   echo "Pushed tag ${TAG_FROM_PKG} -> ${TARGET_COMMIT}"
 else
@@ -288,6 +304,7 @@ if [ ! -s ${CHANGELOG_FILE} ] || [ "$(wc -c < ${CHANGELOG_FILE})" -le 0 ]; then
 fi
 echo "Changelog generated at ${CHANGELOG_FILE}"
 cat ${CHANGELOG_FILE}
+echo "STEP: changelog contents printed above"
 
 # Create GitHub release
 API_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases"
