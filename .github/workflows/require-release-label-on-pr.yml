@@ -44,12 +44,30 @@ jobs:
             const ok = required.some(r => labels.includes(r))
             if (!ok) {
               const msg = `This repository requires one of the release labels: ${required.join(', ')}. Please add one of these labels before merging.`
-              // Post a comment on the PR to remind the author
+              // Post or update a single reminder comment on the PR to avoid spamming
               try {
                 const { owner, repo } = context.repo
-                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: msg })
+                const marker = '<!-- release-label-check -->'
+                const body = `${marker}\n${msg}`
+
+                // get existing comments on the PR and look for our marker
+                const existingComments = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number })
+                // find a comment created by this app/bot that contains our marker
+                let botLogin = null
+                try {
+                  botLogin = (await github.rest.users.getAuthenticated()).data.login
+                } catch (e) {
+                  core.info('Could not determine authenticated user login; falling back to matching marker only')
+                }
+
+                const found = existingComments.data.find(c => c.body && c.body.includes(marker) && (botLogin ? c.user && c.user.login === botLogin : true))
+                if (found) {
+                  await github.rest.issues.updateComment({ owner, repo, comment_id: found.id, body })
+                } else {
+                  await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body })
+                }
               } catch (e) {
-                core.warning('Failed to post a comment: ' + e.message)
+                core.warning('Failed to post or update reminder comment: ' + e.message)
               }
               core.setFailed(msg)
             } else {
