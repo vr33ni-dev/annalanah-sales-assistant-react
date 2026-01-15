@@ -234,6 +234,8 @@ jobs:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_SHA: ${{ github.sha }}
+          QUIET: 1
+          DEBUG: 0
         run: |
           set -euo pipefail
           chmod +x .github/scripts/release-on-main.sh || true
