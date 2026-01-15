@@ -1,0 +1,57 @@
+name: Require release label on PR
+
+on:
+  pull_request:
+    types:
+      [
+        opened,
+        edited,
+        reopened,
+        labeled,
+        unlabeled,
+        synchronize,
+        ready_for_review,
+      ]
+
+jobs:
+  require-label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check PR target
+        id: check
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request
+            if (!pr) {
+              core.info('No pull_request payload available — skipping label check.')
+              return
+            }
+
+            const base = pr.base && pr.base.ref ? pr.base.ref : ''
+            // Only enforce for PRs targeting `main` (adjust if you use a different default branch)
+            if (base !== 'main') {
+              core.info(`PR targets '${base}' — label requirement only enforced for 'main'. Skipping.`)
+              return
+            }
+
+            const labels = (pr.labels || []).map(l => l.name.toLowerCase())
+            const required = ['major','minor','patch']
+            const ok = required.some(r => labels.includes(r))
+            if (!ok) {
+              const msg = `This repository requires one of the release labels: ${required.join(', ')}. Please add one of these labels before merging.`
+              // Post a comment on the PR to remind the author
+              try {
+                const { owner, repo } = context.repo
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: msg })
+              } catch (e) {
+                core.warning('Failed to post a comment: ' + e.message)
+              }
+              core.setFailed(msg)
+            } else {
+              core.info('Release label present — pass')
+            }
