@@ -53,14 +53,6 @@ jobs:
             echo "AUTO_TOKEN=${GH_TOKEN:-}" >> "$GITHUB_ENV"
           fi
 
-      - name: Expose GH_TOKEN for Auto
-        run: |
-          set -euo pipefail
-          # Make GH_TOKEN available for the auto CLI which expects GH_TOKEN in env
-          if [ -n "${AUTO_TOKEN:-}" ]; then
-            echo "GH_TOKEN=${AUTO_TOKEN}" >> "$GITHUB_ENV"
-          fi
-
       - name: Create release (compute version + changelog, call GitHub API)
         env:
           # Expose repo context and token; AUTO_TOKEN is written to $GITHUB_ENV in the previous step
@@ -138,6 +130,9 @@ jobs:
 
           echo "Creating GitHub release $TAG_NAME"
           # Build JSON payload
+          # Export variables so node can see them via process.env
+          export TAG_NAME="$TAG_NAME"
+          export CHANGELOG="$CHANGELOG"
           PAYLOAD=$(node -e 'const d={tag_name:process.env.TAG_NAME,name:process.env.TAG_NAME,body:process.env.CHANGELOG||"",draft:false,prerelease:false,target_commitish:process.env.GITHUB_SHA||"main"};console.log(JSON.stringify(d));')
 
           # Call GitHub Releases API
