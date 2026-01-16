@@ -34,6 +34,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          # Provide the PR head sha so we can simulate a merge into the base branch
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
@@ -61,6 +63,31 @@ jobs:
             echo "Warning: GH_TOKEN is not set in the environment. Auto will fail if it needs GH access."
           else
             echo "GH_TOKEN is set (value hidden)"
+          fi
+
+          # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
+          # This avoids creating any local branches — we check out the merge
+          # commit in a detached HEAD. If the merge ref is not available (rare),
+          # fall back to creating a detached merged tree without writing branch refs.
+          if [ -n "${PR_NUM:-}" ]; then
+            MERGE_REF="refs/pull/${PR_NUM}/merge"
+            if git ls-remote --exit-code origin "${MERGE_REF}" >/dev/null 2>&1; then
+              echo "Checking out merge ref ${MERGE_REF} (detached)"
+              git fetch origin "${MERGE_REF}" --no-tags
+              git checkout --detach FETCH_HEAD || true
+            else
+              # Fallback: create a detached merged tree by checking out the base
+              # and merging the PR head commit into it without creating a named branch.
+              echo "Merge ref not available, creating a detached merged tree from origin/${BASE_REF} and PR head"
+              git fetch --no-tags origin "${BASE_REF}" || true
+              git checkout --detach origin/"${BASE_REF}" || true
+              if [ -n "${PR_HEAD_SHA:-}" ]; then
+                git fetch origin "${PR_HEAD_SHA}" || true
+                git merge --no-edit --no-ff "${PR_HEAD_SHA}" || true
+              fi
+            fi
+          else
+            echo "PR_NUM not set; running auto on current checkout"
           fi
 
           RAW=$(npx auto version 2>&1 || true)
