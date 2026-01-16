@@ -31,7 +31,7 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           # Prefer an org/repo secret explicitly named GH_TOKEN if available
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
           # Provide the PR head sha so we can simulate a merge into the base branch
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -58,35 +58,53 @@ jobs:
           fi
 
           # Diagnostic: report presence without printing the token value
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Warning: GITHUB_TOKEN is not set in the environment. Auto will fail if it needs GH access."
+          if [ -z "${GH_TOKEN:-}" ] && [ -z "${RELEASE_PAT:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "Warning: no token values are available in the environment. Auto will fail if it needs GH access."
           else
-            echo "GITHUB_TOKEN is set (value hidden)"
+            echo "Token values present (specific values hidden). Will validate and pick one for API calls."
           fi
 
-          # Quick health-check: ensure the token actually works. If it's invalid
-          # (expired or wrong value) we'll try falling back to the built-in
-          # GITHUB_TOKEN before attempting to use it to post comments. This
-          # prevents 'Bad credentials' 401 errors in the logs when an invalid
-          # secret is present.
+          # Token selection: try available tokens in order and pick the first that
+          # returns HTTP 200 from /user. Order: secrets.GH_TOKEN, secrets.RELEASE_PAT, built-in GITHUB_TOKEN.
+          PICKED=""
+
           if [ -n "${GH_TOKEN:-}" ]; then
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
-            if [ "${HTTP_CODE}" != "200" ]; then
-              echo "GITHUB_TOKEN test returned HTTP ${HTTP_CODE}; token may be invalid or expired."
-              # If GITHUB_TOKEN is available and different, try that as a fallback
-              if [ -n "${GH_TOKEN:-}" ] && [ "${GH_TOKEN:-}" != "${GH_TOKEN}" ]; then
-                echo "Falling back to built-in GH_TOKEN for API calls."
-                GITHUB_TOKEN="${GH_TOKEN}"
-                HTTP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
-                if [ "${HTTP_CODE2}" != "200" ]; then
-                  echo "Fallback GITHUB_TOKEN also appears invalid (HTTP ${HTTP_CODE2}); unsetting GH_TOKEN to avoid 401s."
-                  unset GITHUB_TOKEN
-                fi
-              else
-                echo "No valid fallback token available; unsetting GITHUB_TOKEN to avoid 401s."
-                unset GITHUB_TOKEN
-              fi
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${GH_TOKEN}"
+              echo "Using GH_TOKEN from secrets"
+            else
+              echo "secrets.GH_TOKEN test returned HTTP ${HTTP_CODE}; skipping"
             fi
+          fi
+
+          if [ -z "${PICKED}" ] && [ -n "${RELEASE_PAT:-}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${RELEASE_PAT}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${RELEASE_PAT}"
+              echo "Using RELEASE_PAT from secrets"
+            else
+              echo "RELEASE_PAT test returned HTTP ${HTTP_CODE}; skipping"
+            fi
+          fi
+
+          if [ -z "${PICKED}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${GITHUB_TOKEN}"
+              echo "Using built-in GITHUB_TOKEN"
+            else
+              echo "built-in GITHUB_TOKEN test returned HTTP ${HTTP_CODE}; skipping"
+            fi
+          fi
+
+          if [ -n "${PICKED}" ]; then
+            GH_TOKEN="${PICKED}"
+            export GH_TOKEN
+            echo "GH_TOKEN set for subsequent API calls."
+          else
+            echo "No valid token found; GH_TOKEN will be empty and API calls will be skipped."
+            unset GH_TOKEN || true
           fi
 
           # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
