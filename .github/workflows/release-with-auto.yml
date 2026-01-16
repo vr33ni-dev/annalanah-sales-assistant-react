@@ -81,9 +81,33 @@ jobs:
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+
+          # DEBUG: dump refs and packed refs so we can inspect runner-side state
+          echo "DEBUG: git show-ref (heads + tags)" >&2
+          git show-ref --heads --tags 2>&2 || true
+          echo "DEBUG: .git/packed-refs (first 200 lines)" >&2
+          sed -n '1,200p' .git/packed-refs 2>/dev/null || true
+          echo "DEBUG: git for-each-ref (format: refname objectname objecttype creatordate subject)" >&2
+          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' 2>&2 | sed -n '1,200p' || true
+
+          # Sanitize local refs that contain malformed numeric metadata which
+          # cause gitlog (used by auto) to fail. We only delete local refs; we
+          # do not push deletions to origin here. This removes refs whose
+          # raw creatordate contains the JS sentinel 900719... which was seen
+          # in runner failures.
+          echo "DEBUG: sanitizing refs with malformed creatordate" >&2
+          git for-each-ref --format='%(refname) %(creatordate:raw)' | awk '$2 ~ /900719/ {print $1}' | while read -r ref; do
+            echo "Removing local ref: $ref" >&2 || true
+            git update-ref -d "$ref" || true
+          done
+
+          # Run auto and capture full output for diagnostics (don't print secrets)
           RAW_VERSION=$(npx auto version 2>&1 || true)
           echo "auto version output (trimmed):" >&2
           printf '%s\n' "${RAW_VERSION:-}" | sed -n '1,60p' >&2 || true
+          # Also dump the full raw output (helpful when auto errors) to logs
+          echo "auto version output (full):" >&2
+          printf '%s\n' "${RAW_VERSION:-}" >&2 || true
 
           # Try to extract a semver-like token (allow optional leading 'v')
           CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
