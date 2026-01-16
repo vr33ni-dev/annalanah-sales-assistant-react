@@ -30,8 +30,12 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # Prefer an org/repo secret explicitly named GH_TOKEN if available
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          # Provide the PR head sha so we can simulate a merge into the base branch
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
@@ -41,24 +45,77 @@ jobs:
             npm install --no-save auto@latest
           fi
 
-          if [ -n "${RELEASE_PAT:-}" ]; then
-            GH_TOKEN="$RELEASE_PAT"
+          # If a GH_TOKEN was provided directly via secrets.GH_TOKEN prefer it.
+          # Otherwise fall back to RELEASE_PAT or the built-in GITHUB_TOKEN.
+          if [ -n "${GH_TOKEN:-}" ]; then
+            echo "Using GH_TOKEN from secrets"
           else
-            GH_TOKEN="${GITHUB_TOKEN:-}"
+            if [ -n "${RELEASE_PAT:-}" ]; then
+              GH_TOKEN="$RELEASE_PAT"
+            else
+              GH_TOKEN="${GITHUB_TOKEN:-}"
+            fi
+            export GH_TOKEN
           fi
-          export GH_TOKEN
+
+          # Diagnostic: report presence without printing the token value
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "Warning: GH_TOKEN is not set in the environment. Auto will fail if it needs GH access."
+          else
+            echo "GH_TOKEN is set (value hidden)"
+          fi
+
+          # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
+          # This avoids creating any local branches — we check out the merge
+          # commit in a detached HEAD. If the merge ref is not available (rare),
+          # fall back to creating a detached merged tree without writing branch refs.
+          if [ -n "${PR_NUM:-}" ]; then
+            MERGE_REF="refs/pull/${PR_NUM}/merge"
+            if git ls-remote --exit-code origin "${MERGE_REF}" >/dev/null 2>&1; then
+              echo "Checking out merge ref ${MERGE_REF} (detached)"
+              git fetch origin "${MERGE_REF}" --no-tags
+              git checkout --detach FETCH_HEAD || true
+            else
+              # Fallback: create a detached merged tree by checking out the base
+              # and merging the PR head commit into it without creating a named branch.
+              echo "Merge ref not available, creating a detached merged tree from origin/${BASE_REF} and PR head"
+              git fetch --no-tags origin "${BASE_REF}" || true
+              git checkout --detach origin/"${BASE_REF}" || true
+              if [ -n "${PR_HEAD_SHA:-}" ]; then
+                git fetch origin "${PR_HEAD_SHA}" || true
+                git merge --no-edit --no-ff "${PR_HEAD_SHA}" || true
+              fi
+            fi
+          else
+            echo "PR_NUM not set; running auto on current checkout"
+          fi
 
           RAW=$(npx auto version 2>&1 || true)
           echo "$RAW"
 
+          # Read PR labels and look for an explicit bump label (major|minor|patch).
+          # Prefer labels from the event payload (works for fork PRs too). If none
+          # are present in the event, fall back to the API using GH_TOKEN.
+          LABEL_OVERRIDE=""
+          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
+            LABEL_OVERRIDE=$(jq -r '.pull_request.labels[].name // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
+          fi
+
+          if [ -z "$LABEL_OVERRIDE" ]; then
+            LABELS_JSON=$(curl -s -H "Authorization: token ${GH_TOKEN}" "https://api.github.com/repos/${REPO}/issues/${PR_NUM}" || true)
+            LABEL_OVERRIDE=$(echo "$LABELS_JSON" | jq -r '.labels[].name' 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
+          fi
+
+          if [ -n "$LABEL_OVERRIDE" ]; then
+            echo "PR label override detected: $LABEL_OVERRIDE"
+          fi
+
           CANDIDATE=$(echo "$RAW" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 
-          if [ -z "$CANDIDATE" ]; then
-            BUMP=$(echo "$RAW" | grep -Eo 'major|minor|patch' | head -n1 || true)
-            if [ -z "$BUMP" ]; then
-              echo "Could not parse auto output for semver or bump; failing."
-              exit 1
-            fi
+          if [ -n "$LABEL_OVERRIDE" ]; then
+            # Respect explicit label on the PR even if Auto computed a different bump
+            echo "Overriding Auto result with label: $LABEL_OVERRIDE"
+            BUMP="$LABEL_OVERRIDE"
 
             git fetch --no-tags origin "$BASE_REF" || true
             LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
@@ -79,10 +136,37 @@ jobs:
             fi
             CANDIDATE="v${MAJ}.${MIN}.${PAT}"
           else
-            case "$CANDIDATE" in
-              v*) ;;
-              *) CANDIDATE="v${CANDIDATE}" ;;
-            esac
+            if [ -z "$CANDIDATE" ]; then
+              BUMP=$(echo "$RAW" | grep -Eo 'major|minor|patch' | head -n1 || true)
+              if [ -z "$BUMP" ]; then
+                echo "Could not parse auto output for semver or bump; failing."
+                exit 1
+              fi
+
+              git fetch --no-tags origin "$BASE_REF" || true
+              LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
+              if [ -z "$LATEST_TAG" ]; then
+                BASE_VERSION=$(jq -r .version package.json 2>/dev/null || echo "0.0.0")
+              else
+                BASE_VERSION=${LATEST_TAG#v}
+              fi
+
+              IFS='.' read -r MAJ MIN PAT <<< "${BASE_VERSION:-0.0.0}"
+              MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+              if [ "$BUMP" = "major" ]; then
+                MAJ=$((MAJ + 1)); MIN=0; PAT=0
+              elif [ "$BUMP" = "minor" ]; then
+                MIN=$((MIN + 1)); PAT=0
+              else
+                PAT=$((PAT + 1))
+              fi
+              CANDIDATE="v${MAJ}.${MIN}.${PAT}"
+            else
+              case "$CANDIDATE" in
+                v*) ;;
+                *) CANDIDATE="v${CANDIDATE}" ;;
+              esac
+            fi
           fi
 
           echo "Computed candidate: $CANDIDATE"
@@ -91,10 +175,11 @@ jobs:
           COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
           BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
 
-          EXISTING_ID=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
+          # Use GH_TOKEN for API calls (prefer org secret)
+          EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
 
           if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-            curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
+            curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
           else
-            curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
+            curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
           fi
