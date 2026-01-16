@@ -1,185 +1,213 @@
-name: Compute candidate version (PR)
+name: Check VERSION on pull request
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+    types: [opened, edited, labeled, unlabeled, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  pull-requests: write
 
 jobs:
-  compute-candidate:
+  check-version:
+    concurrency:
+      group: check-version-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
+
     outputs:
-      candidate_version: ${{ steps.compute_and_comment.outputs.candidate_version }}
+      candidate_version: ${{ steps.compute_version.outputs.candidate_version }}
     steps:
-      - name: Checkout full history
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Fetch tags
+        run: |
+          git fetch --tags origin
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "18"
 
-      - name: Compute candidate version (auto) and post comment
-        id: compute_and_comment
+      # (unchanged) No token-selection: use the workflow-provided secrets.GITHUB_TOKEN for posting comments
+
+      - name: Compute candidate version and comment
+        id: compute_version
         env:
-          REPO: ${{ github.repository }}
-          PR_NUM: ${{ github.event.pull_request.number }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          # Prefer an org/repo secret explicitly named GH_TOKEN if available
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
-          # Provide the PR head sha so we can simulate a merge into the base branch
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # AUTO_TOKEN and TOKEN_SOURCE (if any) were written to $GITHUB_ENV above
         run: |
           set -euo pipefail
-
-          export PATH="./node_modules/.bin:$PATH"
-
-          if ! command -v auto >/dev/null 2>&1; then
-            npm install --no-save auto@latest
-          fi
-
-          # If a GH_TOKEN was provided directly via secrets.GH_TOKEN prefer it.
-          # Otherwise fall back to RELEASE_PAT or the built-in GITHUB_TOKEN.
-          if [ -n "${GH_TOKEN:-}" ]; then
-            echo "Using GH_TOKEN from secrets"
-          else
-            if [ -n "${RELEASE_PAT:-}" ]; then
-              GH_TOKEN="$RELEASE_PAT"
-            else
-              GH_TOKEN="${GITHUB_TOKEN:-}"
+          # Try to let `auto` compute the bump type (major/minor/patch) first.
+          # Run auto transiently via npx so we do not change package.json or
+          # package-lock.json on the runner.
+          export GH_TOKEN="${GITHUB_TOKEN:-}"
+          AUTO_BUMP="$(npx --yes auto@latest version 2>/dev/null || true)"
+          AUTO_BUMP=$(printf '%s' "$AUTO_BUMP" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
+          if [ -n "$AUTO_BUMP" ]; then
+            echo "auto computed bump: $AUTO_BUMP"
+            # normalize
+            if [ "$AUTO_BUMP" = "patch" ] || [ "$AUTO_BUMP" = "minor" ] || [ "$AUTO_BUMP" = "major" ]; then
+              BUMP="$AUTO_BUMP"
             fi
-            export GH_TOKEN
-          fi
-
-          # Diagnostic: report presence without printing the token value
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Warning: GH_TOKEN is not set in the environment. Auto will fail if it needs GH access."
           else
-            echo "GH_TOKEN is set (value hidden)"
+            echo "auto did not compute a bump; falling back to label-driven logic"
           fi
-
-          # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
-          # This avoids creating any local branches — we check out the merge
-          # commit in a detached HEAD. If the merge ref is not available (rare),
-          # fall back to creating a detached merged tree without writing branch refs.
-          if [ -n "${PR_NUM:-}" ]; then
-            MERGE_REF="refs/pull/${PR_NUM}/merge"
-            if git ls-remote --exit-code origin "${MERGE_REF}" >/dev/null 2>&1; then
-              echo "Checking out merge ref ${MERGE_REF} (detached)"
-              git fetch origin "${MERGE_REF}" --no-tags
-              git checkout --detach FETCH_HEAD || true
-            else
-              # Fallback: create a detached merged tree by checking out the base
-              # and merging the PR head commit into it without creating a named branch.
-              echo "Merge ref not available, creating a detached merged tree from origin/${BASE_REF} and PR head"
-              git fetch --no-tags origin "${BASE_REF}" || true
-              git checkout --detach origin/"${BASE_REF}" || true
-              if [ -n "${PR_HEAD_SHA:-}" ]; then
-                git fetch origin "${PR_HEAD_SHA}" || true
-                git merge --no-edit --no-ff "${PR_HEAD_SHA}" || true
+          # Skip duplicate runs caused by the workflow's own push: when a
+          # pull_request synchronize event is triggered by github-actions[bot]
+          # (our auto-apply push), we should not re-run the compute/comment
+          # logic. Also skip if the head commit contains [skip ci].
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
+            EVENT_ACTION=$(jq -r .action "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
+            if [ "${EVENT_ACTION}" = "synchronize" ]; then
+              if [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
+                echo "Marking this synchronize event as an actions-bot sync; will skip comment update but continue the run."
+                touch /tmp/skip_comment_update || true
+              fi
+              # extra safety: mark skip if the HEAD commit message contains [skip ci]
+              if git fetch --no-tags origin "${GITHUB_SHA}" >/dev/null 2>&1 || true; then
+                if git show -s --format=%B "${GITHUB_SHA}" | grep -F -q "[skip ci]"; then
+                  echo "Head commit contains [skip ci]; will skip comment update but continue the run."
+                  touch /tmp/skip_comment_update || true
+                fi
               fi
             fi
+          fi
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          echo "Base ref: $BASE_REF"
+
+          # Prefer querying the PR live (so re-runs pick up labels added after the original event)
+          PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -n "$PR_NUM" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+            LABELS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUM}" | jq -r '.labels[]?.name' 2>/dev/null || true)
           else
-            echo "PR_NUM not set; running auto on current checkout"
+            # Fallback to event payload labels
+            LABELS=$(jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          fi
+          LABELS_LOWER=$(echo "$LABELS" | tr '[:upper:]' '[:lower:]' || true)
+          echo "PR labels:"
+          echo "$LABELS_LOWER"
+
+          # Enforce that PR labels are present
+          if [ -z "$(echo "$LABELS_LOWER" | tr -d '[:space:]')" ]; then
+            echo "ERROR: PR must include at least one label (major, minor, or patch)."
+            echo "No labels found on PR; failing the job as labels are required."
+            exit 1
           fi
 
-          RAW=$(npx auto version 2>&1 || true)
-          echo "$RAW"
-
-          # Read PR labels and look for an explicit bump label (major|minor|patch).
-          # Prefer labels from the event payload (works for fork PRs too). If none
-          # are present in the event, fall back to the API using GH_TOKEN.
-          LABEL_OVERRIDE=""
-          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
-            LABEL_OVERRIDE=$(jq -r '.pull_request.labels[].name // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
+          # Determine latest tag on base branch
+          LATEST_TAG=""
+          if git rev-parse --verify --quiet "refs/tags/$(git describe --tags --abbrev=0 origin/$BASE_REF 2>/dev/null)" >/dev/null 2>&1; then
+            LATEST_TAG=$(git describe --tags --abbrev=0 origin/$BASE_REF)
+            # Ensure the marker is defined in this branch (avoid unbound-variable under -u)
+            MARKER="Computed release version if merged to"
+            
           fi
+          echo "Latest tag on base: $LATEST_TAG"
 
-          if [ -z "$LABEL_OVERRIDE" ]; then
-            LABELS_JSON=$(curl -s -H "Authorization: token ${GH_TOKEN}" "https://api.github.com/repos/${REPO}/issues/${PR_NUM}" || true)
-            LABEL_OVERRIDE=$(echo "$LABELS_JSON" | jq -r '.labels[].name' 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
+          # Determine bump
+          BUMP="patch"
+          if echo "$LABELS_LOWER" | grep -q "major"; then
+            BUMP="major"
+          elif echo "$LABELS_LOWER" | grep -q "minor"; then
+            BUMP="minor"
+          elif echo "$LABELS_LOWER" | grep -q "patch"; then
+            BUMP="patch"
           fi
+          echo "Selected bump: $BUMP"
 
-          if [ -n "$LABEL_OVERRIDE" ]; then
-            echo "PR label override detected: $LABEL_OVERRIDE"
-          fi
-
-          CANDIDATE=$(echo "$RAW" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
-
-          if [ -n "$LABEL_OVERRIDE" ]; then
-            # Respect explicit label on the PR even if Auto computed a different bump
-            echo "Overriding Auto result with label: $LABEL_OVERRIDE"
-            BUMP="$LABEL_OVERRIDE"
-
-            git fetch --no-tags origin "$BASE_REF" || true
-            LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
-            if [ -z "$LATEST_TAG" ]; then
-              BASE_VERSION=$(jq -r .version package.json 2>/dev/null || echo "0.0.0")
-            else
-              BASE_VERSION=${LATEST_TAG#v}
-            fi
-
-            IFS='.' read -r MAJ MIN PAT <<< "${BASE_VERSION:-0.0.0}"
-            MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
+          # Compute new version
+          if [ -z "$LATEST_TAG" ]; then
             if [ "$BUMP" = "major" ]; then
-              MAJ=$((MAJ + 1)); MIN=0; PAT=0
+              NEW_VERSION="v1.0.0"
+            else
+              NEW_VERSION="v0.1.0"
+            fi
+          else
+            BASE=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE}"
+            MAJOR=${MAJOR:-0}
+            MINOR=${MINOR:-0}
+            PATCH=${PATCH:-0}
+            if [ "$BUMP" = "major" ]; then
+              MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0
             elif [ "$BUMP" = "minor" ]; then
-              MIN=$((MIN + 1)); PAT=0
+              MINOR=$((MINOR+1)); PATCH=0
             else
-              PAT=$((PAT + 1))
+              PATCH=$((PATCH+1))
             fi
-            CANDIDATE="v${MAJ}.${MIN}.${PAT}"
-          else
-            if [ -z "$CANDIDATE" ]; then
-              BUMP=$(echo "$RAW" | grep -Eo 'major|minor|patch' | head -n1 || true)
-              if [ -z "$BUMP" ]; then
-                echo "Could not parse auto output for semver or bump; failing."
-                exit 1
-              fi
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
 
-              git fetch --no-tags origin "$BASE_REF" || true
-              LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
-              if [ -z "$LATEST_TAG" ]; then
-                BASE_VERSION=$(jq -r .version package.json 2>/dev/null || echo "0.0.0")
-              else
-                BASE_VERSION=${LATEST_TAG#v}
-              fi
-
-              IFS='.' read -r MAJ MIN PAT <<< "${BASE_VERSION:-0.0.0}"
-              MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
-              if [ "$BUMP" = "major" ]; then
-                MAJ=$((MAJ + 1)); MIN=0; PAT=0
-              elif [ "$BUMP" = "minor" ]; then
-                MIN=$((MIN + 1)); PAT=0
-              else
-                PAT=$((PAT + 1))
-              fi
-              CANDIDATE="v${MAJ}.${MIN}.${PAT}"
-            else
-              case "$CANDIDATE" in
-                v*) ;;
-                *) CANDIDATE="v${CANDIDATE}" ;;
-              esac
+          echo "Computed candidate version for this PR: $NEW_VERSION"
+          # expose the computed version as a step output for other jobs
+          echo "candidate_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          # Before creating a computed-version comment, check whether any existing
+          # issue comment already mentions this version. If so, skip creating the
+          # computed comment entirely to avoid duplicates (covers both bot and
+          # human-authored comments).
+          PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+          if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "$PR_NUM" ]; then
+            ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUM}/comments"
+            COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL" || true)
+            if printf '%s' "$COMMENTS_JSON" | jq -r '.[].body' | grep -F -q "$NEW_VERSION"; then
+              echo "A comment already contains $NEW_VERSION; will skip creating computed comment and mark run so comment steps are no-ops."
+              touch /tmp/skip_comment_update || true
             fi
           fi
 
-          echo "Computed candidate: $CANDIDATE"
-          echo "candidate_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
-
-          COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
-          BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
-
-          # Use GH_TOKEN for API calls (prefer org secret)
-          EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
-
-          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-            curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
+          # Save the comment body into a temporary file and use the action below to post
+          # Use printf so the \n sequences become real newlines in the file
+          # Include an applied-line in '(pending)' state so comments always show status
+          # Only create the computed comment file if we haven't been marked to skip comment updates.
+          if [ ! -f /tmp/skip_comment_update ]; then
+            printf '%s\n\n%s\n' \
+              "Computed release version if merged to $BASE_REF: **$NEW_VERSION**" \
+              "Labels considered: $LABELS_LOWER" > /tmp/pr_version_comment.md
+            # Append a hidden marker so the bot can reliably find/update its single comment
+            printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
           else
-            curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
+            echo "Skipping creation of /tmp/pr_version_comment.md because /tmp/skip_comment_update is present"
           fi
+
+      - name: Post PR comment with computed version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # If a prior step marked this run as a synchronize-sync from the actions bot
+          # or a [skip ci] commit, skip the comment update to avoid duplicate/refresh
+          # of the bot comment while still allowing the run to retry other actions.
+          if [ -f /tmp/skip_comment_update ]; then
+            echo "Skipping PR comment update for this run (marked by /tmp/skip_comment_update)."
+            exit 0
+          fi
+          # Build the comment body, but if an applied-line already exists in any
+          # bot comment, preserve that applied-line instead of writing (pending).
+          RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
+          ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          echo "Looking for existing bot comment to update"
+          COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
+
+          MARKER="Computed release version if merged to"
+          MARKER_HTML="<!-- version-bot-comment -->"
+          # First, try to extract an existing applied-line from any comment bodies
+          # so we preserve the original actor/timestamp and do not refresh it on
+          # compute-only runs.
+          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+          # If no applied-line is present in comments but the checked-out package.json
+          # already contains the computed version, construct an applied-line once
+          # so the computed comment reflects the applied state. Do not overwrite an
+          # existing applied-line (avoid updating timestamp repeatedly).
+          if [ -z "$(printf '%s' "$APPLIED_LINE")" ]; then
+            # The optional apply-bump step previously lived here. It's intentionally
+            # removed to keep the workflow focused on computing and reporting the
+            # candidate version. If you want to reintroduce automated bump application
+            # into PR branches, consider adding a small script under
+            # .github/scripts/ and invoking it conditionally from a separate job.
+            fi
