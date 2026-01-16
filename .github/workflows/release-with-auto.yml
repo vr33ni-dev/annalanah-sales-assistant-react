@@ -78,6 +78,11 @@ jobs:
           git fetch --tags origin main
 
           # Compute candidate via auto (auto version prints the next version)
+          # Ensure auto can access the GitHub token via process.env.GH_TOKEN.
+          # The token chosen for push/create (AUTO_TOKEN) is written to the
+          # environment by the earlier step; make it available as GH_TOKEN for
+          # the `auto` CLI which expects GH_TOKEN.
+          export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
           RAW_VERSION=$(npx auto version 2>&1 || true)
           # Extract a semver-like token (allow optional leading 'v')
           CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
