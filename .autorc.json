@@ -1,7 +1,7 @@
 {
   "plugins": [
     [
-      "@auto-it/labels",
+      "labels",
       {
         "labels": {
           "patch": { "release": "patch" },
@@ -10,18 +10,12 @@
         }
       }
     ],
-    "@auto-it/release-notes",
-    [
-      "@auto-it/github",
-      {
-        "release": true
-      }
-    ],
-    [
-      "@auto-it/npm",
-      {
-        "publish": false
-      }
-    ]
-  ]
+    "release-notes"
+  ],
+  "github": {
+    "release": true
+  },
+  "npm": {
+    "publish": false
+  }
 }
