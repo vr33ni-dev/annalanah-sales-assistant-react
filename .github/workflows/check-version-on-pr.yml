@@ -1,4 +1,4 @@
-name: Compute candidate version (PR)
+name: Check VERSION on pull request
 
 on:
   pull_request:
@@ -44,10 +44,6 @@ jobs:
           set -euo pipefail
 
           export PATH="./node_modules/.bin:$PATH"
-
-          if ! command -v auto >/dev/null 2>&1; then
-            npm install --no-save auto@latest
-          fi
 
           # If a GH_TOKEN was provided directly via secrets.GH_TOKEN prefer it.
           # Otherwise fall back to RELEASE_PAT or the built-in GH_TOKEN.
@@ -167,105 +163,119 @@ jobs:
             echo "PR_NUM not set; running auto on current checkout"
           fi
 
-          RAW=$(npx auto version 2>&1 || true)
+          RAW=$(npx --yes auto@latest version 2>&1 || true)
           echo "$RAW"
 
-          # Read PR labels and look for an explicit bump label (major|minor|patch).
-          # Prefer labels from the event payload (works for fork PRs too). If none
-          # are present in the event, fall back to the API using GITHUB_TOKEN.
-          LABEL_OVERRIDE=""
-          if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
-            LABEL_OVERRIDE=$(jq -r '.pull_request.labels[].name // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
-          fi
+                - name: Post PR comment with computed version
+                  env:
+                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  run: |
+                    set -euo pipefail
+                    # If a prior step marked this run as a synchronize-sync from the actions bot
+                    # or a [skip ci] commit, skip the comment update to avoid duplicate/refresh
+                    # of the bot comment while still allowing the run to retry other actions.
+                    if [ -f /tmp/skip_comment_update ]; then
+                      echo "Skipping PR comment update for this run (marked by /tmp/skip_comment_update)."
+                      exit 0
+                    fi
+                    # Build the comment body, but if an applied-line already exists in any
+                    # bot comment, preserve that applied-line instead of writing (pending).
+                    RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
+                    ISSUE_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+                    echo "Looking for existing bot comment to update"
+                    COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "$ISSUE_COMMENTS_URL")
 
-          if [ -z "$LABEL_OVERRIDE" ]; then
-            LABELS_JSON=$(curl -s -H "Authorization: token ${GH_TOKEN}" "https://api.github.com/repos/${REPO}/issues/${PR_NUM}" || true)
-            LABEL_OVERRIDE=$(echo "$LABELS_JSON" | jq -r '.labels[].name' 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
-          fi
+                    MARKER="Computed release version if merged to"
+                    MARKER_HTML="<!-- version-bot-comment -->"
+                    # First, try to extract an existing applied-line from any comment bodies
+                    # so we preserve the original actor/timestamp and do not refresh it on
+                    # compute-only runs.
+                    APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
+                    # If no applied-line is present in comments but the checked-out package.json
+                    # already contains the computed version, construct an applied-line once
+                    # so the computed comment reflects the applied state. Do not overwrite an
+                    # existing applied-line (avoid updating timestamp repeatedly).
+                    if [ -z "$(printf '%s' "$APPLIED_LINE")" ]; then
+                      COMPUTED_V=$(printf '%s\n' "$RAW_COMMENT" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
+                      PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
+                      PKG_VERSION_V="v${PKG_VERSION:-}"
+                      if [ -n "$(printf '%s' "$COMPUTED_V")" ] && [ "$COMPUTED_V" = "$PKG_VERSION_V" ]; then
+                        APPLIED_LINE="Applied automatic version bump to this PR: **${COMPUTED_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+                      fi
+                    fi
+                    if [ -n "$(printf '%s' "$APPLIED_LINE")" ]; then
+                      # Build COMMENT_BODY by replacing the pending line with the applied line
+                      # from the existing comment (keeps applied state and actor/timestamp).
+                      BASE_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Computed release version if merged to/{print; exit}')
+                      LABELS_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Labels considered:/{print; exit}')
+                      COMMENT_BODY=$(printf '%s\n\n%s\n\n%s' "$BASE_LINE" "$LABELS_LINE" "$APPLIED_LINE")
+                    else
+                      COMMENT_BODY="$RAW_COMMENT"
+                    fi
 
-          if [ -n "$LABEL_OVERRIDE" ]; then
-            echo "PR label override detected: $LABEL_OVERRIDE"
-          fi
+                    # Consolidate candidate comments so we only keep one bot-authored
+                    # comment for this marker. Prefer bot-authored computed-version comments
+                    # and remove any duplicate bot comments to avoid multiple pending/applied copies.
+                    # Prefer comments that contain our hidden marker (guaranteed bot comment created by this workflow)
+                    CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker_html "$MARKER_HTML" '.[] | select(.body | contains($marker_html)) | .id')
+                    # Fallback to older heuristics for backwards compatibility
+                    if [ -z "$(printf '%s' \"$CANDIDATE_IDS\")" ]; then
+                      CANDIDATE_IDS=$(echo "$COMMENTS_JSON" | jq -r --arg marker "$MARKER" '.[] | select(.user.login=="github-actions[bot]" and (.body | contains($marker) or (.body | test("Applied automatic version bump to this PR:"))) ) | .id')
+                    fi
+                    EXISTING_ID=$(printf '%s\n' "$CANDIDATE_IDS" | head -n1 || true)
+                    OTHER_IDS=$(printf '%s\n' "$CANDIDATE_IDS" | sed -n '2,$p' || true)
+                    for dup in $OTHER_IDS; do
+                      if [ -n "$dup" ]; then
+                        echo "Deleting duplicate bot comment id=$dup"
+                        curl -s -X DELETE -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/issues/comments/${dup}" >/dev/null || true
+                      fi
+                    done
 
-          CANDIDATE=$(echo "$RAW" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+                    if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+                      echo "Found existing bot comment id=$EXISTING_ID; updating"
+                      UPDATE_URL="https://api.github.com/repos/${{ github.repository }}/issues/comments/${EXISTING_ID}"
+                      curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+                    else
+                      echo "No existing bot comment found; creating a new comment"
+                      curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$COMMENT_BODY" '{body:$body}')" "$ISSUE_COMMENTS_URL" >/dev/null || true
+                    fi
 
-          if [ -n "$LABEL_OVERRIDE" ]; then
-            # Respect explicit label on the PR even if Auto computed a different bump
-            echo "Overriding Auto result with label: $LABEL_OVERRIDE"
-            BUMP="$LABEL_OVERRIDE"
+                - name: Auto-apply bump to PR branch (handled by auto now)
+                  # Disabled: bump application should be handled by `auto` in CI. This step
+                  # previously attempted to apply bumps directly into PR branches; keep the
+                  # script here for reference but disable it so only `auto` produces the
+                  # bump commit/tag during the release flow.
+                  if: false
+                  env:
+                    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    GITHUB_REPOSITORY: ${{ github.repository }}
+                    BASE_REF: ${{ github.event.pull_request.base.ref }}
+                  run: |
+                    set -euo pipefail
+                    # ensure optional variables computed in other steps do not cause
+                    # unbound-variable failures under -u (they may not be exported).
+                    LATEST_TAG="${LATEST_TAG:-}"
+                    BUMP="${BUMP:-patch}"
+                    echo "PR is from same repo; attempting to apply bump to PR branch"
+                    chmod +x .github/scripts/bump-version.sh || true
 
-            git fetch --no-tags origin "$BASE_REF" || true
-            LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
-            if [ -z "$LATEST_TAG" ]; then
-              BASE_VERSION=$(jq -r .version package.json 2>/dev/null || echo "0.0.0")
-            else
-              BASE_VERSION=${LATEST_TAG#v}
-            fi
+                    # fetch the PR branch and checkout
+                    git fetch --no-tags origin +refs/heads/${{ github.event.pull_request.head.ref }}:refs/remotes/origin/${{ github.event.pull_request.head.ref }} || true
+                    git checkout -B "${{ github.event.pull_request.head.ref }}" "origin/${{ github.event.pull_request.head.ref }}"
 
-            IFS='.' read -r MAJ MIN PAT <<< "${BASE_VERSION:-0.0.0}"
-            MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
-            if [ "$BUMP" = "major" ]; then
-              MAJ=$((MAJ + 1)); MIN=0; PAT=0
-            elif [ "$BUMP" = "minor" ]; then
-              MIN=$((MIN + 1)); PAT=0
-            else
-              PAT=$((PAT + 1))
-            fi
-            CANDIDATE="v${MAJ}.${MIN}.${PAT}"
-          else
-            if [ -z "$CANDIDATE" ]; then
-              BUMP=$(echo "$RAW" | grep -Eo 'major|minor|patch' | head -n1 || true)
-              if [ -z "$BUMP" ]; then
-                echo "Could not parse auto output for semver or bump; failing."
-                exit 1
-              fi
+                    # get live labels for the PR
+                    PR_NUM=${{ github.event.pull_request.number }}
+                    PR_LABELS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUM}" | jq -c '.labels // []' 2>/dev/null || echo '[]')
+                    export PR_LABELS="$PR_LABELS_JSON"
 
-              git fetch --no-tags origin "$BASE_REF" || true
-              LATEST_TAG=$(git describe --tags --abbrev=0 origin/"$BASE_REF" 2>/dev/null || true)
-              if [ -z "$LATEST_TAG" ]; then
-                BASE_VERSION=$(jq -r .version package.json 2>/dev/null || echo "0.0.0")
-              else
-                BASE_VERSION=${LATEST_TAG#v}
-              fi
+                    # run bump in apply mode (will edit package.json)
+                    ./.github/scripts/bump-version.sh package.json auto --apply
 
-              IFS='.' read -r MAJ MIN PAT <<< "${BASE_VERSION:-0.0.0}"
-              MAJ=${MAJ:-0}; MIN=${MIN:-0}; PAT=${PAT:-0}
-              if [ "$BUMP" = "major" ]; then
-                MAJ=$((MAJ + 1)); MIN=0; PAT=0
-              elif [ "$BUMP" = "minor" ]; then
-                MIN=$((MIN + 1)); PAT=0
-              else
-                PAT=$((PAT + 1))
-              fi
-              CANDIDATE="v${MAJ}.${MIN}.${PAT}"
-            else
-              case "$CANDIDATE" in
-                v*) ;;
-                *) CANDIDATE="v${CANDIDATE}" ;;
-              esac
-            fi
-          fi
-
-          echo "Computed candidate: $CANDIDATE"
-          echo "candidate_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
-
-          COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
-          BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
-
-          # Post or update the bot comment only if we have a token available.
-          # On PRs from forks repository secrets are unavailable; in that case
-          # skip posting the comment to avoid 401/Bad credentials errors.
-          if [ -n "${GH_TOKEN:-}" ]; then
-            # Use GITHUB_TOKEN for API calls (prefer org secret)
-            EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
-
-            if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-              curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body \"$BODY\" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
-            else
-              curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body \"$BODY\" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
-            fi
-          else
-            echo "No GITHUB_TOKEN available; skipping posting candidate-version comment (this is normal for PRs from forks)."
-            echo "Would have posted comment body:" >&2
-            printf '%s\n' "$BODY" >&2
-          fi
+                    # regenerate package-lock.json so the lockfile matches the bumped version
+                    if command -v npm >/dev/null 2>&1; then
+                      echo "Regenerating package-lock.json (package-lock-only)..."
+                      npm install --package-lock-only
+                      echo "package-lock.json version: $(node -e "console.log(require('./package-lock.json').version)")" || true
+                    else
+                      echo "npm not found; skipping package-lock update"
+                    fi
