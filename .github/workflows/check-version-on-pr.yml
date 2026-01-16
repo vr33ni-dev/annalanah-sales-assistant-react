@@ -200,14 +200,19 @@ jobs:
           # so we preserve the original actor/timestamp and do not refresh it on
           # compute-only runs.
           APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
-          # If no applied-line is present in comments but the checked-out package.json
-          # already contains the computed version, construct an applied-line once
-          # so the computed comment reflects the applied state. Do not overwrite an
-          # existing applied-line (avoid updating timestamp repeatedly).
-          if [ -z "$(printf '%s' "$APPLIED_LINE")" ]; then
-            # The optional apply-bump step previously lived here. It's intentionally
-            # removed to keep the workflow focused on computing and reporting the
-            # candidate version. If you want to reintroduce automated bump application
-            # into PR branches, consider adding a small script under
-            # .github/scripts/ and invoking it conditionally from a separate job.
-            fi
+          # If no applied-line is present in comments we purposely do not add an applied-line
+          # here; the apply-bump step is intentionally removed to keep this job
+          # focused on computing and reporting the candidate version.
+
+          # Find an existing bot comment by the hidden marker and update it, otherwise create one
+          COMMENT_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select(.body|test("<!-- version-bot-comment -->")) | .id' | head -n1 || true)
+
+          if [ -n "${COMMENT_ID:-}" ] && [ "${COMMENT_ID}" != "null" ]; then
+            echo "Updating existing comment id=${COMMENT_ID}"
+            PAYLOAD=$(jq -Rn --arg body "$(cat /tmp/pr_version_comment.md)" '{body:$body}')
+            curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "${ISSUE_COMMENTS_URL}/${COMMENT_ID}" || true
+          else
+            echo "Creating new comment"
+            PAYLOAD=$(jq -Rn --arg body "$(cat /tmp/pr_version_comment.md)" '{body:$body}')
+            curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$ISSUE_COMMENTS_URL" || true
+          fi
