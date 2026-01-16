@@ -30,6 +30,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUM: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # Prefer an org/repo secret explicitly named GH_TOKEN if available
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
         run: |
@@ -41,12 +43,25 @@ jobs:
             npm install --no-save auto@latest
           fi
 
-          if [ -n "${RELEASE_PAT:-}" ]; then
-            GH_TOKEN="$RELEASE_PAT"
+          # If a GH_TOKEN was provided directly via secrets.GH_TOKEN prefer it.
+          # Otherwise fall back to RELEASE_PAT or the built-in GITHUB_TOKEN.
+          if [ -n "${GH_TOKEN:-}" ]; then
+            echo "Using GH_TOKEN from secrets"
           else
-            GH_TOKEN="${GITHUB_TOKEN:-}"
+            if [ -n "${RELEASE_PAT:-}" ]; then
+              GH_TOKEN="$RELEASE_PAT"
+            else
+              GH_TOKEN="${GITHUB_TOKEN:-}"
+            fi
+            export GH_TOKEN
           fi
-          export GH_TOKEN
+
+          # Diagnostic: report presence without printing the token value
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "Warning: GH_TOKEN is not set in the environment. Auto will fail if it needs GH access."
+          else
+            echo "GH_TOKEN is set (value hidden)"
+          fi
 
           RAW=$(npx auto version 2>&1 || true)
           echo "$RAW"
@@ -91,10 +106,11 @@ jobs:
           COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
           BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
 
-          EXISTING_ID=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
+          # Use GH_TOKEN for API calls (prefer org secret)
+          EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
 
           if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-            curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
+            curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
           else
-            curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
+            curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
           fi
