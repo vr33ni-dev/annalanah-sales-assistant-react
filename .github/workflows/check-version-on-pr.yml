@@ -50,41 +50,41 @@ jobs:
             echo "Using GH_TOKEN from secrets"
           else
             if [ -n "${RELEASE_PAT:-}" ]; then
-              GH_TOKEN="$RELEASE_PAT"
+              GITHUB_TOKEN="$RELEASE_PAT"
             else
-              GH_TOKEN="${GH_TOKEN:-}"
+              GITHUB_TOKEN="${GH_TOKEN:-}"
             fi
-            export GH_TOKEN
+            export GITHUB_TOKEN
           fi
 
           # Diagnostic: report presence without printing the token value
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Warning: GH_TOKEN is not set in the environment. Auto will fail if it needs GH access."
+            echo "Warning: GITHUB_TOKEN is not set in the environment. Auto will fail if it needs GH access."
           else
-            echo "GH_TOKEN is set (value hidden)"
+            echo "GITHUB_TOKEN is set (value hidden)"
           fi
 
           # Quick health-check: ensure the token actually works. If it's invalid
           # (expired or wrong value) we'll try falling back to the built-in
-          # GH_TOKEN before attempting to use it to post comments. This
+          # GITHUB_TOKEN before attempting to use it to post comments. This
           # prevents 'Bad credentials' 401 errors in the logs when an invalid
           # secret is present.
           if [ -n "${GH_TOKEN:-}" ]; then
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
             if [ "${HTTP_CODE}" != "200" ]; then
-              echo "GH_TOKEN test returned HTTP ${HTTP_CODE}; token may be invalid or expired."
-              # If GH_TOKEN is available and different, try that as a fallback
+              echo "GITHUB_TOKEN test returned HTTP ${HTTP_CODE}; token may be invalid or expired."
+              # If GITHUB_TOKEN is available and different, try that as a fallback
               if [ -n "${GH_TOKEN:-}" ] && [ "${GH_TOKEN:-}" != "${GH_TOKEN}" ]; then
                 echo "Falling back to built-in GH_TOKEN for API calls."
-                GH_TOKEN="${GH_TOKEN}"
+                GITHUB_TOKEN="${GH_TOKEN}"
                 HTTP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
                 if [ "${HTTP_CODE2}" != "200" ]; then
-                  echo "Fallback GH_TOKEN also appears invalid (HTTP ${HTTP_CODE2}); unsetting GH_TOKEN to avoid 401s."
-                  unset GH_TOKEN
+                  echo "Fallback GITHUB_TOKEN also appears invalid (HTTP ${HTTP_CODE2}); unsetting GH_TOKEN to avoid 401s."
+                  unset GITHUB_TOKEN
                 fi
               else
-                echo "No valid fallback token available; unsetting GH_TOKEN to avoid 401s."
-                unset GH_TOKEN
+                echo "No valid fallback token available; unsetting GITHUB_TOKEN to avoid 401s."
+                unset GITHUB_TOKEN
               fi
             fi
           fi
@@ -119,7 +119,7 @@ jobs:
 
           # Read PR labels and look for an explicit bump label (major|minor|patch).
           # Prefer labels from the event payload (works for fork PRs too). If none
-          # are present in the event, fall back to the API using GH_TOKEN.
+          # are present in the event, fall back to the API using GITHUB_TOKEN.
           LABEL_OVERRIDE=""
           if [ -n "${GITHUB_EVENT_PATH:-}" ] && [ -f "${GITHUB_EVENT_PATH}" ]; then
             LABEL_OVERRIDE=$(jq -r '.pull_request.labels[].name // empty' "${GITHUB_EVENT_PATH}" 2>/dev/null | tr '[:upper:]' '[:lower:]' | grep -Eo 'major|minor|patch' | head -n1 || true)
@@ -203,7 +203,7 @@ jobs:
           # On PRs from forks repository secrets are unavailable; in that case
           # skip posting the comment to avoid 401/Bad credentials errors.
           if [ -n "${GH_TOKEN:-}" ]; then
-            # Use GH_TOKEN for API calls (prefer org secret)
+            # Use GITHUB_TOKEN for API calls (prefer org secret)
             EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
 
             if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
@@ -212,7 +212,7 @@ jobs:
               curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body \"$BODY\" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
             fi
           else
-            echo "No GH_TOKEN available; skipping posting candidate-version comment (this is normal for PRs from forks)."
+            echo "No GITHUB_TOKEN available; skipping posting candidate-version comment (this is normal for PRs from forks)."
             echo "Would have posted comment body:" >&2
             printf '%s\n' "$BODY" >&2
           fi
