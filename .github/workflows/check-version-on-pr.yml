@@ -65,6 +65,31 @@ jobs:
             echo "GH_TOKEN is set (value hidden)"
           fi
 
+          # Quick health-check: ensure the token actually works. If it's invalid
+          # (expired or wrong value) we'll try falling back to the built-in
+          # GITHUB_TOKEN before attempting to use it to post comments. This
+          # prevents 'Bad credentials' 401 errors in the logs when an invalid
+          # secret is present.
+          if [ -n "${GH_TOKEN:-}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" != "200" ]; then
+              echo "GH_TOKEN test returned HTTP ${HTTP_CODE}; token may be invalid or expired."
+              # If GITHUB_TOKEN is available and different, try that as a fallback
+              if [ -n "${GITHUB_TOKEN:-}" ] && [ "${GITHUB_TOKEN:-}" != "${GH_TOKEN}" ]; then
+                echo "Falling back to built-in GITHUB_TOKEN for API calls."
+                GH_TOKEN="${GITHUB_TOKEN}"
+                HTTP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GH_TOKEN}" https://api.github.com/user || true)
+                if [ "${HTTP_CODE2}" != "200" ]; then
+                  echo "Fallback GITHUB_TOKEN also appears invalid (HTTP ${HTTP_CODE2}); unsetting GH_TOKEN to avoid 401s."
+                  unset GH_TOKEN
+                fi
+              else
+                echo "No valid fallback token available; unsetting GH_TOKEN to avoid 401s."
+                unset GH_TOKEN
+              fi
+            fi
+          fi
+
           # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
           # This avoids creating any local branches — we check out the merge
           # commit in a detached HEAD. If the merge ref is not available (rare),
@@ -175,11 +200,20 @@ jobs:
           COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
           BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
 
-          # Use GH_TOKEN for API calls (prefer org secret)
-          EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
+          # Post or update the bot comment only if we have a token available.
+          # On PRs from forks repository secrets are unavailable; in that case
+          # skip posting the comment to avoid 401/Bad credentials errors.
+          if [ -n "${GH_TOKEN:-}" ]; then
+            # Use GH_TOKEN for API calls (prefer org secret)
+            EXISTING_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
 
-          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-            curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
+            if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+              curl -s -X PATCH -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body \"$BODY\" '{body:$body}')" "https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}" >/dev/null || true
+            else
+              curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body \"$BODY\" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
+            fi
           else
-            curl -s -H "Authorization: token ${GH_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$BODY" '{body:$body}')" "${COMMENTS_URL}" >/dev/null || true
+            echo "No GH_TOKEN available; skipping posting candidate-version comment (this is normal for PRs from forks)."
+            echo "Would have posted comment body:" >&2
+            printf '%s\n' "$BODY" >&2
           fi

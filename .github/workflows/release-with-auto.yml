@@ -110,14 +110,40 @@ jobs:
           fi
 
           # Create GitHub release using REST API (use AUTO_TOKEN which was written earlier)
+          echo "Ensuring tag ${TAG_NAME} exists and pushing it if we can"
+          # Configure git user for tag creation
+          git config user.name "github-actions[bot]" || true
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
+
+          # Create annotated tag locally if it doesn't exist
+          if ! git rev-parse --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Creating annotated tag ${TAG_NAME}"
+            git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}" || true
+          else
+            echo "Tag ${TAG_NAME} already exists locally"
+          fi
+
+          # Push tag if AUTO_TOKEN is available (prefer RELEASE_PAT). We push via HTTPS
+          # using the token to authenticate so protected-branch rules are respected.
+          if [ -n "${AUTO_TOKEN:-}" ]; then
+            echo "Pushing tag ${TAG_NAME} to origin using provided token"
+            AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
+            # Ensure the remote exists under that URL temporarily
+            git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
+            git push authtemp "${TAG_NAME}" --follow-tags --force || git push authtemp "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" || true
+            git remote remove authtemp 2>/dev/null || true
+          else
+            echo "No AUTO_TOKEN available; skipping git push of tag (Releases API may still create the release referencing the tag name)."
+          fi
+
           echo "Creating GitHub release $TAG_NAME"
-          # Build JSON payload safely with python (available on runner)
+          # Build JSON payload
           PAYLOAD=$(node -e 'const d={tag_name:process.env.TAG_NAME,name:process.env.TAG_NAME,body:process.env.CHANGELOG||"",draft:false,prerelease:false,target_commitish:process.env.GITHUB_SHA||"main"};console.log(JSON.stringify(d));')
 
           # Call GitHub Releases API
           API_URL="https://api.github.com/repos/${OWNER}/${REPO_NAME}/releases"
           HTTP_STATUS=$(printf "%s" "$PAYLOAD" | curl -s -o /dev/stderr -w "%{http_code}" -X POST \
-            -H "Authorization: token ${AUTO_TOKEN}" \
+            -H "Authorization: token ${AUTO_TOKEN:-}" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
             --data @- "$API_URL" || true)
