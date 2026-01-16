@@ -1,0 +1,64 @@
+name: Release (auto)
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-with-auto-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          # Install project dependencies so npx auto uses the repo's version if present
+          npm ci
+
+      - name: Choose token for pushing tags/commits
+        id: choose-token
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Prefer a user-provided PAT (recommended when branch protection prevents pushes by GITHUB_TOKEN).
+          if [ -n "${RELEASE_PAT:-}" ]; then
+            echo "Using RELEASE_PAT for release actions"
+            echo "AUTO_TOKEN=${RELEASE_PAT}" >> "$GITHUB_ENV"
+          else
+            echo "No RELEASE_PAT configured; falling back to GITHUB_TOKEN. If protected branches prevent pushes, create a RELEASE_PAT in repo secrets."
+            echo "AUTO_TOKEN=${GITHUB_TOKEN}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run auto (create bump commit, tag, changelog, release)
+        env:
+          # Expose repo context and token for auto; AUTO_TOKEN is written to $GITHUB_ENV in the previous step
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # AUTO_TOKEN is available as an environment variable (written to GITHUB_ENV above)
+          echo "STEP: running auto to create release"
+          # Use the package script so the repo lockfile controls the auto version.
+          npm run release:auto

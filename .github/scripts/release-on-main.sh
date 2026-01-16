@@ -21,8 +21,6 @@ QUIET=${QUIET:-0}
 # simple logging helper
 log() { if [ "${QUIET:-0}" != "1" ]; then echo "[release] $*"; fi }
 
-# (No dry-run mode) The script performs real pushes and API writes when run
-
 echo "STEP: Running consolidated release script"
 
 # If this is a push, check whether the push corresponds to a merged PR and

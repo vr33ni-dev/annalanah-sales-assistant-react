@@ -1,0 +1,21 @@
+{
+  "plugins": [
+    [
+      "labels",
+      {
+        "labels": {
+          "patch": { "release": "patch" },
+          "minor": { "release": "minor" },
+          "major": { "release": "major" }
+        }
+      }
+    ],
+    "release-notes"
+  ],
+  "github": {
+    "release": true
+  },
+  "npm": {
+    "publish": false
+  }
+}

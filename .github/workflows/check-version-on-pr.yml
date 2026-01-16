@@ -16,6 +16,8 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
 
+    outputs:
+      candidate_version: ${{ steps.compute_version.outputs.candidate_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,12 +28,47 @@ jobs:
         run: |
           git fetch --tags origin
 
+      - name: Setup Node & install auto
+        run: |
+          set -euo pipefail
+          # Install a recent auto CLI locally so we can compute the version reliably
+          # without relying on a global or npx download during the compute step.
+          node -v || true
+          npm --version || true
+          npm install --no-save auto@latest
+
       - name: Compute candidate version and comment
+        id: compute_version
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Ensure local node_modules binaries are available in PATH at runtime.
+          # Do not set PATH via the step env block because literal "$PATH" may
+          # not be expanded by the runner when injected; export here so the
+          # shell expands the existing PATH and system utilities (tr, sed, etc.)
+          # remain available.
+          export PATH="./node_modules/.bin:$PATH"
+          # Try to let `auto` compute the bump type (major/minor/patch) first.
+          # auto needs GH_TOKEN in the environment to inspect PRs; GitHub
+          # Actions exposes this as GITHUB_TOKEN, and auto looks for GH_TOKEN,
+          # so export it here.
+          export GH_TOKEN="${GITHUB_TOKEN:-}"
+          AUTO_BUMP=""
+          if command -v auto >/dev/null 2>&1; then
+            AUTO_BUMP=$(auto version 2>/dev/null || true)
+            AUTO_BUMP=$(printf '%s' "$AUTO_BUMP" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
+          fi
+          if [ -n "$AUTO_BUMP" ]; then
+            echo "auto computed bump: $AUTO_BUMP"
+            # normalize
+            if [ "$AUTO_BUMP" = "patch" ] || [ "$AUTO_BUMP" = "minor" ] || [ "$AUTO_BUMP" = "major" ]; then
+              BUMP="$AUTO_BUMP"
+            fi
+          else
+            echo "auto did not compute a bump; falling back to label-driven logic"
+          fi
           # Skip duplicate runs caused by the workflow's own push: when a
           # pull_request synchronize event is triggered by github-actions[bot]
           # (our auto-apply push), we should not re-run the compute/comment
@@ -119,6 +156,8 @@ jobs:
           fi
 
           echo "Computed candidate version for this PR: $NEW_VERSION"
+          # expose the computed version as a step output for other jobs
+          echo "candidate_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           # Before creating a computed-version comment, check whether any existing
           # issue comment already mentions this version. If so, skip creating the
           # computed comment entirely to avoid duplicates (covers both bot and
@@ -222,10 +261,11 @@ jobs:
           fi
 
       - name: Auto-apply bump to PR branch (same-repo PRs)
-        # Run the auto-apply step for same-repo PRs when the label check passed
-        # (i.e. the PR contains a major/minor/patch label). This allows the
-        # auto-apply to run on opened events if the label was already present.
-        if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        # Disabled: bump application should be handled by `auto` in CI. This step
+        # previously attempted to apply bumps directly into PR branches; keep the
+        # script here for reference but disable it so only `auto` produces the
+        # bump commit/tag during the release flow.
+        if: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
