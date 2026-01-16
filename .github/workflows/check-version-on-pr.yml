@@ -89,7 +89,7 @@ jobs:
           echo "candidate_version=${CANDIDATE}" >> "$GITHUB_OUTPUT"
 
           COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUM}/comments"
-          BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`.)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
+          BODY=$(printf 'Computed release version if merged to `%s`: **%s**\n\n(Computed by `auto version`)\n\n<!-- version-bot-comment -->' "$BASE_REF" "$CANDIDATE")
 
           EXISTING_ID=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "${COMMENTS_URL}" | jq -r --arg marker '<!-- version-bot-comment -->' '.[] | select(.body | contains($marker)) | .id' | head -n1 || true)
 
