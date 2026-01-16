@@ -77,25 +77,44 @@ jobs:
           # Ensure we have commits and tags from origin
           git fetch --tags origin main
 
-          # Compute candidate via auto (auto version prints the next version)
-          # Ensure auto can access the GitHub token via process.env.GH_TOKEN.
-          # The token chosen for push/create (AUTO_TOKEN) is written to the
-          # environment by the earlier step; make it available as GH_TOKEN for
-          # the `auto` CLI which expects GH_TOKEN.
+          # Compute candidate via auto (auto version prints the next version).
+          # Make the chosen token available as GH_TOKEN for auto and guard the
+          # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
           RAW_VERSION=$(npx auto version 2>&1 || true)
-          # Extract a semver-like token (allow optional leading 'v')
+          echo "auto version output (trimmed):" >&2
+          printf '%s\n' "${RAW_VERSION:-}" | sed -n '1,60p' >&2 || true
+
+          # Try to extract a semver-like token (allow optional leading 'v')
           CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
-          if [ -z "$CANDIDATE" ]; then
-            echo "Could not parse a semver from 'auto version' output:" >&2
-            printf "%s\n" "$RAW_VERSION" >&2
-            exit 1
+
+          if [ -n "$CANDIDATE" ]; then
+            # Normalize tag name to start with 'v'
+            case "$CANDIDATE" in
+              v*) TAG_NAME="$CANDIDATE" ;;
+              *) TAG_NAME="v$CANDIDATE" ;;
+            esac
+            echo "Computed candidate tag from auto: $TAG_NAME"
+          else
+            # auto failed or returned unexpected output (e.g. gitlog crash).
+            # Fall back to a conservative git-based patch bump so releases
+            # continue instead of failing the workflow.
+            echo "Warning: 'auto version' did not return a semver; falling back to git-based bump" >&2
+            printf '%s\n' "${RAW_VERSION:-}" >&2 || true
+            if [ -n "${LATEST_TAG:-}" ]; then
+              BASE=${LATEST_TAG#v}
+              IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE}"
+              MAJOR=${MAJOR:-0}
+              MINOR=${MINOR:-0}
+              PATCH=${PATCH:-0}
+              PATCH=$((PATCH+1))
+              TAG_NAME="v${MAJOR}.${MINOR}.${PATCH}"
+            else
+              # No prior tag found, start at v0.1.0 by default
+              TAG_NAME="v0.1.0"
+            fi
+            echo "Fallback candidate tag: $TAG_NAME"
           fi
-          # Normalize tag name to start with 'v'
-          case "$CANDIDATE" in
-            v*) TAG_NAME="$CANDIDATE" ;;
-            *) TAG_NAME="v$CANDIDATE" ;;
-          esac
 
           echo "Computed candidate tag: $TAG_NAME"
 
