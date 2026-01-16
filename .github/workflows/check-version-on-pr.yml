@@ -33,6 +33,7 @@ jobs:
           # Prefer an org/repo secret explicitly named GH_TOKEN if available
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Provide the PR head sha so we can simulate a merge into the base branch
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
