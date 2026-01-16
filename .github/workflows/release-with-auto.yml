@@ -41,16 +41,16 @@ jobs:
         id: choose-token
         env:
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
           # Prefer a user-provided PAT (recommended when branch protection prevents pushes by GH_TOKEN).
           if [ -n "${RELEASE_PAT:-}" ]; then
-            echo "Using RELEASE_PAT for release actions"
+            echo "Using RELEASE_PAT for releasxe actions"
             echo "AUTO_TOKEN=${RELEASE_PAT}" >> "$GITHUB_ENV"
           else
             echo "No RELEASE_PAT configured; falling back to GH_TOKEN. If protected branches prevent pushes, create a RELEASE_PAT in repo secrets."
-            echo "AUTO_TOKEN=${GH_TOKEN}" >> "$GITHUB_ENV"
+            echo "AUTO_TOKEN=${GH_TOKEN:-}" >> "$GITHUB_ENV"
           fi
 
       - name: Expose GH_TOKEN for Auto
