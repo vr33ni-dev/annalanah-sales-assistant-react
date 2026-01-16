@@ -41,16 +41,24 @@ jobs:
         id: choose-token
         env:
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
-          # Prefer a user-provided PAT (recommended when branch protection prevents pushes by GITHUB_TOKEN).
+          # Prefer a user-provided PAT (recommended when branch protection prevents pushes by GH_TOKEN).
           if [ -n "${RELEASE_PAT:-}" ]; then
             echo "Using RELEASE_PAT for release actions"
             echo "AUTO_TOKEN=${RELEASE_PAT}" >> "$GITHUB_ENV"
           else
-            echo "No RELEASE_PAT configured; falling back to GITHUB_TOKEN. If protected branches prevent pushes, create a RELEASE_PAT in repo secrets."
-            echo "AUTO_TOKEN=${GITHUB_TOKEN}" >> "$GITHUB_ENV"
+            echo "No RELEASE_PAT configured; falling back to GH_TOKEN. If protected branches prevent pushes, create a RELEASE_PAT in repo secrets."
+            echo "AUTO_TOKEN=${GH_TOKEN}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Expose GH_TOKEN for Auto
+        run: |
+          set -euo pipefail
+          # Make GH_TOKEN available for the auto CLI which expects GH_TOKEN in env
+          if [ -n "${AUTO_TOKEN:-}" ]; then
+            echo "GH_TOKEN=${AUTO_TOKEN}" >> "$GITHUB_ENV"
           fi
 
       - name: Run auto (create bump commit, tag, changelog, release)
