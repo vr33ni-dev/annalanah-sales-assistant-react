@@ -68,9 +68,18 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_SHA: ${{ github.sha }}
+          OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
           # AUTO_TOKEN is available as an environment variable (written to GITHUB_ENV above)
           echo "STEP: running auto to create release"
-          # Use the package script so the repo lockfile controls the auto version.
-          npm run release:auto
+          # Compute latest tag on origin/main and run auto with explicit owner/repo and bounded range
+          LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+          if [ -n "${LATEST_TAG:-}" ]; then
+            echo "Running auto release from ${LATEST_TAG} to HEAD for ${OWNER}/${REPO_NAME}"
+            npx auto release --from "${LATEST_TAG}" --to HEAD --owner "${OWNER}" --repo "${REPO_NAME}"
+          else
+            echo "No tag found on origin/main; running auto release for ${OWNER}/${REPO_NAME}"
+            npx auto release --owner "${OWNER}" --repo "${REPO_NAME}"
+          fi
