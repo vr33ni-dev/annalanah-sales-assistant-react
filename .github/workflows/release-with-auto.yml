@@ -33,11 +33,13 @@ jobs:
           # Install project dependencies so npx auto uses the repo's version if present
           npm ci
 
-      - name: Install auto plugins (labels, release-notes, github, npm)
+      - name: Install pinned auto CLI
         run: |
           set -euo pipefail
-          # Install the @auto-it plugin packages so auto can load them reliably
-          npm install --no-save @auto-it/labels @auto-it/release-notes @auto-it/github @auto-it/npm
+          # Install a pinned auto version to avoid resolving scoped plugin packages
+          # or relying on external registry auth. Pin to 10.x for compatibility with
+          # existing .autorc (older format).
+          npm install --no-save auto@10
 
       - name: Choose token for pushing tags/commits
         id: choose-token
