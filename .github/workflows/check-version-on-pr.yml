@@ -42,9 +42,14 @@ jobs:
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATH: ./node_modules/.bin:$PATH
         run: |
           set -euo pipefail
+          # Ensure local node_modules binaries are available in PATH at runtime.
+          # Do not set PATH via the step env block because literal "$PATH" may
+          # not be expanded by the runner when injected; export here so the
+          # shell expands the existing PATH and system utilities (tr, sed, etc.)
+          # remain available.
+          export PATH="./node_modules/.bin:$PATH"
           # Try to let `auto` compute the bump type (major/minor/patch) first.
           # auto needs GH_TOKEN in the environment to inspect PRs; GitHub
           # Actions exposes this as GITHUB_TOKEN, and auto looks for GH_TOKEN,
