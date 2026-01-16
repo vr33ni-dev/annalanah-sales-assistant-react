@@ -33,6 +33,12 @@ jobs:
           # Install project dependencies so npx auto uses the repo's version if present
           npm ci
 
+      - name: Install auto plugins (labels, release-notes, github, npm)
+        run: |
+          set -euo pipefail
+          # Install the @auto-it plugin packages so auto can load them reliably
+          npm install --no-save @auto-it/labels @auto-it/release-notes @auto-it/github @auto-it/npm
+
       - name: Choose token for pushing tags/commits
         id: choose-token
         env:
