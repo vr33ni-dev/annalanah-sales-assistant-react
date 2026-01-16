@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       candidate_version: ${{ steps.compute_and_comment.outputs.candidate_version }}
+      token_source: ${{ steps.compute_and_comment.outputs.token_source }}
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
@@ -34,6 +35,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # If set to "true" the step will fail when no valid token is found.
+          # Useful to enforce that PR checks must have a token available.
+          TOKEN_FAIL_ON_NONE: "false"
           # Provide the PR head sha so we can simulate a merge into the base branch
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -99,13 +103,43 @@ jobs:
             fi
           fi
 
+          TOKEN_SOURCE="none"
           if [ -n "${PICKED}" ]; then
             GH_TOKEN="${PICKED}"
             export GH_TOKEN
+            # determine which source we picked
+            if [ "${PICKED}" = "${GH_TOKEN}" ] && [ -n "${GH_TOKEN:-}" ]; then
+              TOKEN_SOURCE="GH_TOKEN"
+            fi
             echo "GH_TOKEN set for subsequent API calls."
           else
             echo "No valid token found; GH_TOKEN will be empty and API calls will be skipped."
             unset GH_TOKEN || true
+          fi
+
+          # If we didn't already set TOKEN_SOURCE to GH_TOKEN, check the other candidates
+          if [ "$TOKEN_SOURCE" = "none" ]; then
+            if [ -n "${RELEASE_PAT:-}" ]; then
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${RELEASE_PAT}" https://api.github.com/user || true)
+              if [ "$HTTP_CODE" = "200" ]; then
+                TOKEN_SOURCE="RELEASE_PAT"
+              fi
+            fi
+          fi
+          if [ "$TOKEN_SOURCE" = "none" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user || true)
+            if [ "$HTTP_CODE" = "200" ]; then
+              TOKEN_SOURCE="GITHUB_TOKEN"
+            fi
+          fi
+
+          # Export the token_source as a step output for visibility
+          echo "token_source=$TOKEN_SOURCE" >> "$GITHUB_OUTPUT"
+
+          # Fail fast if requested
+          if [ "${TOKEN_FAIL_ON_NONE:-false}" = "true" ] && [ "$TOKEN_SOURCE" = "none" ]; then
+            echo "No valid token found and TOKEN_FAIL_ON_NONE=true; failing the job." >&2
+            exit 1
           fi
 
           # Try to check out GitHub's merge ref for the PR (refs/pull/<num>/merge).
