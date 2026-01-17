@@ -30,12 +30,16 @@ jobs:
       - name: Install dependencies
         run: |
           set -euo pipefail
-          # Use npm install here (not npm ci) because package.json was edited in-tree
-          # and the lockfile may not yet match on CI. This installs dependencies
-          # including the pinned 'auto' devDependency.
-          npm install --no-audit --no-fund
+          # Install project dependencies so npx auto uses the repo's version if present
+          npm ci
 
-      # auto is installed by `npm ci` from devDependencies (pinned in package.json)
+      - name: Install pinned auto CLI
+        run: |
+          set -euo pipefail
+          # Install a pinned auto version to avoid resolving scoped plugin packages
+          # or relying on external registry auth. Pin to 10.x for compatibility with
+          # existing .autorc (older format).
+          npm install --no-save auto@10
 
       - name: Choose token for pushing tags/commits
         id: choose-token
