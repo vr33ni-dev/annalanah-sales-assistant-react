@@ -1,0 +1,58 @@
+name: Diagnose refs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node (for scripts)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install minimal deps
+        run: |
+          set -euo pipefail
+          # Install nothing heavy; just ensure npm exists
+          npm --version
+
+      - name: Dump runner refs
+        run: |
+          set -euo pipefail
+          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > refs-with-creatordate.raw || true
+          echo "Wrote refs-with-creatordate.raw"
+
+      - name: Run remote-scan (non-destructive)
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name || github.repository }}
+          AUTO_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GH_TOKEN || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "${AUTO_TOKEN:-}" ]; then
+            REMOTE_URL="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
+          else
+            REMOTE_URL=$(git config --get remote.origin.url || true)
+          fi
+          echo "Using remote: $REMOTE_URL"
+          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt 2>&1 || true
+          echo "Wrote remote-scan.txt"
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: ref-diagnostics
+          path: |
+            refs-with-creatordate.raw
+            remote-scan.txt
