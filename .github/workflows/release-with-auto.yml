@@ -89,6 +89,22 @@ jobs:
           # (This removes bad local copies fetched from origin so tools like `auto` don't crash.)
           bash ./.github/scripts/sanitize-local-refs.sh || true
 
+          # Diagnostic: dump all refs and run remote-scan for CI debugging, then upload as artifact
+          echo "Dumping refs and running remote scan for diagnostics"
+          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > refs-with-creatordate.raw || true
+
+          # Run remote scan using a tokenized URL if AUTO_TOKEN is available; otherwise use origin remote
+          if [ -n "${AUTO_TOKEN:-}" ]; then
+            REMOTE_URL="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
+          else
+            REMOTE_URL=$(git config --get remote.origin.url || true)
+          fi
+          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt || true
+
+          # Upload artifacts (using the GitHub Actions upload action in later step)
+          # Write marker so the workflow can pick these up
+          echo "ARTIFACTS_TO_UPLOAD=refs-with-creatordate.raw remote-scan.txt" >> "$GITHUB_ENV" || true
+
           # Compute candidate via auto (auto version prints the next version).
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
