@@ -1,10 +1,10 @@
 {
-  "name": "sales-assistant-react",
+  "name": "annalanah-sales-assistant-react",
   "private": true,
   "version": "0.1.18",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/vr33ni-dev/annalanah-sales-assistant-react.git"
+    "url": "https://github.com/vr33ni-dev/annalanah-sales-assistant-react.git"
   },
   "type": "module",
   "scripts": {
