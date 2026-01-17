@@ -99,7 +99,7 @@ jobs:
           else
             REMOTE_URL=$(git config --get remote.origin.url || true)
           fi
-          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt || true
+          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt 2>&1 || true
 
           # Upload artifacts (using the GitHub Actions upload action in later step)
           # Write marker so the workflow can pick these up

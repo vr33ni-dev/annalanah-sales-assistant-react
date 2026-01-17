@@ -46,7 +46,7 @@ jobs:
             REMOTE_URL=$(git config --get remote.origin.url || true)
           fi
           echo "Using remote: $REMOTE_URL"
-          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt || true
+          bash ./.github/scripts/find-remote-suspicious-refs.sh "$REMOTE_URL" > remote-scan.txt 2>&1 || true
           echo "Wrote remote-scan.txt"
 
       - name: Upload diagnostics
