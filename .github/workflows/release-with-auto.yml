@@ -85,6 +85,10 @@ jobs:
           # Ensure we have commits and tags from origin
           git fetch --tags origin main
 
+          # Sanitize any refs fetched from origin that may have malformed dates
+          # (This removes bad local copies fetched from origin so tools like `auto` don't crash.)
+          bash ./.github/scripts/sanitize-local-refs.sh || true
+
           # Compute candidate via auto (auto version prints the next version).
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
