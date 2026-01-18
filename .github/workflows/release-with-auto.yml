@@ -209,6 +209,7 @@ jobs:
           fi
 
       - name: Upload auto shipit dry-run output
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: auto-shipit-dry-run
