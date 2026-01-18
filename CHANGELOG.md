@@ -1,3 +1,16 @@
+# v0.1.27 (Sun Jan 18 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Add comments UI across pages ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.1.26 (Sun Jan 18 2026)
 
 #### 🐛 Bug Fix
