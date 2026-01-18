@@ -38,6 +38,8 @@ jobs:
         env:
           PR_NUM: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           export PATH="./node_modules/.bin:$PATH"
@@ -111,4 +113,3 @@ jobs:
             echo "Creating new bot comment"
             curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')" "$COMMENTS_URL" >/dev/null || true
           fi
-          else
