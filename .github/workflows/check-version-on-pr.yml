@@ -157,7 +157,12 @@ jobs:
 
           # List comments and find an existing bot comment by hidden marker
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${AUTH_TOKEN}" "${COMMENTS_URL}" || true)
-          EXISTING_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select((.body|contains("<!-- version-bot-comment -->")) and (.user.type=="Bot")) | .id' | head -n1 || true)
+          # For robustness, match any comment that contains the hidden marker, regardless of
+          # who authored it (some installations may show different user types). Pick the most
+          # recent matching comment to update, which avoids creating duplicates.
+          MATCH_COUNT=$(printf '%s' "$COMMENTS_JSON" | jq '[.[] | select(.body|contains("<!-- version-bot-comment -->"))] | length' || true)
+          echo "Found ${MATCH_COUNT} existing comment(s) containing the marker"
+          EXISTING_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '[.[] | select(.body|contains("<!-- version-bot-comment -->"))] | sort_by(.created_at) | last | .id' 2>/dev/null || true)
 
           if [ -n "$(printf '%s' "$EXISTING_ID" | tr -d '[:space:]')" ] && [ "$EXISTING_ID" != "null" ]; then
             echo "Found existing bot comment id=${EXISTING_ID}; evaluating whether update is needed"
