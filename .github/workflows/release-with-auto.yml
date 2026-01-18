@@ -76,6 +76,16 @@ jobs:
           # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
 
+          # Ensure git identity is configured before invoking `auto` which may
+          # create temporary commits during dry-run. Without this auto can fail
+          # with "Could not find a git name and email to commit with".
+          git config user.name "github-actions[bot]" || true
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
+
+          # Initialize variables to avoid 'unbound variable' when set -u is used
+          CANDIDATE=""
+          RAW_VERSION=""
+
           # Run auto and capture full output for diagnostics (don't print secrets)
             # Prefer using `auto shipit --dry-run` to get the full semver (vX.Y.Z)
             AUTO_SHIPIT_OUTPUT=$(npx auto shipit --dry-run 2>&1 || true)
