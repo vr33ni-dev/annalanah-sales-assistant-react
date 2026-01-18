@@ -66,8 +66,26 @@ jobs:
               git update-ref -d "$ref" || true
             done
 
-            AUTO_BUMP=$(auto version 2>/dev/null || true)
-            AUTO_BUMP=$(printf '%s' "$AUTO_BUMP" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
+            # Run `auto version` and print the raw output to the job log so
+            # PR runs show the exact computed version (helps debugging).
+            # Save the raw output to /tmp/auto-version-output.log for artifacts
+            # or later inspection if needed. Do not fail the step if auto
+            # itself exits non-zero; fall back to label-driven logic below.
+            AUTO_RAW_OUTPUT="$(auto version 2>&1 || true)"
+            if [ -n "$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '[:space:]')" ]; then
+              echo "---- auto version raw output ----"
+              printf '%s\n' "$AUTO_RAW_OUTPUT"
+              echo "---- end auto output ----"
+            else
+              echo "auto version produced no output or failed (non-fatal)"
+            fi
+            # Persist raw output to a file for artifact upload if desired
+            printf '%s\n' "$AUTO_RAW_OUTPUT" > /tmp/auto-version-output.log || true
+            # Preserve previous behavior: try to derive a concise bump token
+            # from auto's output (e.g. 'patch', 'minor', 'major') by stripping
+            # whitespace. If auto printed a semver, the following normalization
+            # will collapse it; label-driven fallback remains below.
+            AUTO_BUMP=$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
           fi
           if [ -n "$AUTO_BUMP" ]; then
             echo "auto computed bump: $AUTO_BUMP"
