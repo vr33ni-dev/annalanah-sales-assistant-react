@@ -22,12 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
+      - name: Setup Node, install deps, and pinned auto
         run: |
           set -euo pipefail
           # Lightweight guard: if this run was triggered by the actions bot (a previous
@@ -36,16 +31,12 @@ jobs:
             echo "Run triggered by github-actions[bot]; exiting to avoid recursive release runs."
             exit 0
           fi
-          # Install project dependencies so npx auto uses the repo's version if present
+          # Verify Node/npm then install project dependencies first (npm ci).
+          node -v || true
+          npm --version || true
           npm ci
-
-      - name: Install pinned auto CLI
-        run: |
-          set -euo pipefail
-          # Install a pinned auto version to avoid resolving scoped plugin packages
-          # or relying on external registry auth. Pin to 10.x for compatibility with
-          # existing .autorc (older format).
-          npm install --no-save auto@10
+          # Install a pinned auto CLI after npm ci so it is not removed by the installer.
+          npm install --no-save auto@latest
 
       - name: Choose token for pushing tags/commits
         id: choose-token
@@ -74,33 +65,13 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          # Use auto only to compute the candidate version. Auto's 'release' command exercises the
-          # GitHub Search API which can fail in some environments; computing the version with
-          # 'auto version' and creating the release via the REST API avoids that.
-          echo "STEP: computing candidate version with 'auto version'"
-          LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
-          if [ -n "${LATEST_TAG:-}" ]; then
-            RANGE="${LATEST_TAG}..origin/main"
-          else
-            RANGE="origin/main"
-          fi
 
           # Diagnostic: dump all refs and run remote-scan for CI debugging, then upload as artifact
           echo "Dumping refs and running remote scan for diagnostics"
           git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > refs-with-creatordate.raw || true
 
-          # Run remote scan using a tokenized URL if AUTO_TOKEN is available; otherwise use origin remote
-          if [ -n "${AUTO_TOKEN:-}" ]; then
-            REMOTE_URL="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
-          else
-            REMOTE_URL=$(git config --get remote.origin.url || true)
-          fi
 
-          # Upload artifacts (using the GitHub Actions upload action in later step)
-          # Write marker so the workflow can pick these up
-          echo "ARTIFACTS_TO_UPLOAD=refs-with-creatordate.raw remote-scan.txt" >> "$GITHUB_ENV" || true
-
-          # Compute candidate via auto (auto version prints the next version).
+          # Compute candidate via auto
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
@@ -115,17 +86,6 @@ jobs:
             else
               echo "auto shipit produced no output or failed (non-fatal)"
             fi
-            # Try to extract a semver from shipit output first (v1.2.3 or 1.2.3)
-            CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
-            # If shipit did not yield a semver, fall back to `auto version` which emits the bump token
-            if [ -z "$(printf '%s' "$CANDIDATE" | tr -d '[:space:]')" ]; then
-              RAW_VERSION=$(npx auto version 2>&1 || true)
-              echo "auto version output (trimmed):" >&2
-              printf '%s\n' "${RAW_VERSION:-}" | sed -n '1,60p' >&2 || true
-              echo "auto version output (full):" >&2
-              printf '%s\n' "${RAW_VERSION:-}" >&2 || true
-              CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
-            fi
 
           if [ -n "$CANDIDATE" ]; then
             # Normalize tag name to start with 'v'
@@ -138,7 +98,7 @@ jobs:
             # auto failed or returned unexpected output (e.g. gitlog crash).
             # Fall back to a conservative git-based patch bump so releases
             # continue instead of failing the workflow.
-            echo "Warning: 'auto version' did not return a semver; falling back to git-based bump" >&2
+            echo "Warning: 'auto shipit --dry-run' did not return a semver; falling back to git-based bump" >&2
             printf '%s\n' "${RAW_VERSION:-}" >&2 || true
             if [ -n "${LATEST_TAG:-}" ]; then
               BASE=${LATEST_TAG#v}
@@ -189,7 +149,7 @@ jobs:
               git push origin HEAD:main || true
             fi
           else
-            echo "No package.json or package-lock changes detected after auto version"
+            echo "No package.json or package-lock changes detected after auto shipit --dry-run"
           fi
 
           # Build a changelog from git history between the last tag and origin/main
