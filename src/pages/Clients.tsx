@@ -19,6 +19,7 @@ import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockClients } from "@/lib/mockData";
+import { CommentsDialog } from "@/components/comments/CommentsDialog";
 
 const sourceLabels = {
   organic: "Organic",
@@ -322,6 +323,11 @@ export default function Clients() {
                         <Button size="sm" onClick={() => handleEdit(client)}>
                           <Pencil className="w-4 h-4" />
                         </Button>
+                        <CommentsDialog
+                          entityType="client"
+                          entityId={client.id}
+                          entityName={client.name}
+                        />
                         <Button
                           size="sm"
                           variant="destructive"

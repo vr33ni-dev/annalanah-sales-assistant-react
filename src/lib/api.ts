@@ -605,3 +605,42 @@ export const runNLQ = async (question: string): Promise<NLQResponse> => {
   const { data } = await api.post<NLQResponse>("/nlq", { question });
   return data;
 };
+
+/* Comments */
+export type CommentEntityType = "client" | "contract" | "salesprocess";
+
+export interface Comment {
+  id: number;
+  entity_type: CommentEntityType;
+  entity_id: number;
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateCommentRequest {
+  entity_type: CommentEntityType;
+  entity_id: number;
+  content: string;
+}
+
+export const getComments = async (
+  entityType: CommentEntityType,
+  entityId: number
+): Promise<Comment[]> => {
+  const { data } = await api.get(`/comments`, {
+    params: { entity_type: entityType, entity_id: entityId },
+  });
+  return asArray<Comment>(data);
+};
+
+export const createComment = async (
+  payload: CreateCommentRequest
+): Promise<Comment> => {
+  const { data } = await api.post("/comments", payload);
+  return data as Comment;
+};
+
+export const deleteComment = async (commentId: number): Promise<void> => {
+  await api.delete(`/comments/${commentId}`);
+};
