@@ -66,11 +66,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Diagnostic: dump all refs and run remote-scan for CI debugging, then upload as artifact
-          echo "Dumping refs for diagnostics (write to /tmp to keep workspace clean)"
-          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > /tmp/refs-with-creatordate.raw || true
-
-
+          # (Diagnostics removed) no files are written by this workflow run.
           # Compute candidate via auto
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
