@@ -97,6 +97,15 @@ jobs:
               echo "auto shipit produced no output or failed (non-fatal)"
             fi
 
+            # Ensure we have commits and tags from origin so CHANGELOG/RANGE calculations work
+            git fetch --tags origin main || true
+            LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+            if [ -n "${LATEST_TAG:-}" ]; then
+              RANGE="${LATEST_TAG}..origin/main"
+            else
+              RANGE="origin/main"
+            fi
+
           if [ -n "$CANDIDATE" ]; then
             # Normalize tag name to start with 'v'
             case "$CANDIDATE" in
@@ -144,7 +153,11 @@ jobs:
             npm install --package-lock-only || true
           fi
 
-          # If package.json or package-lock.json changed, commit and push using AUTO_TOKEN
+          # If package.json or package-lock.json changed, commit and push.
+          # Many repositories protect `main` and require PRs; instead of
+          # pushing directly to main (which can be rejected), push the bump to a
+          # release branch and open a PR so human review/required checks can run.
+          SKIP_SHIPIT=0
           if ! git diff --quiet -- package.json package-lock.json 2>/dev/null; then
             git add package.json package-lock.json || true
             git commit -m "chore(release): bump version to ${TAG_NAME}" || true
@@ -152,11 +165,18 @@ jobs:
               AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
               git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
               echo "Pushing version bump commit to origin/main via token-backed remote"
-              git push authtemp HEAD:main || git push authtemp HEAD:${GITHUB_REF_NAME:-main} || true
+              if ! git push authtemp HEAD:main; then
+                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Ensure the provided RELEASE_PAT has permission to push to main or adjust branch protection settings." >&2
+                git remote remove authtemp 2>/dev/null || true
+                exit 1
+              fi
               git remote remove authtemp 2>/dev/null || true
             else
               echo "No AUTO_TOKEN available; attempting to push via origin (may be blocked by branch protection)"
-              git push origin HEAD:main || true
+              if ! git push origin HEAD:main; then
+                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Exiting." >&2
+                exit 1
+              fi
             fi
           else
             echo "No package.json or package-lock changes detected after auto shipit --dry-run"
