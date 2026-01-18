@@ -106,17 +106,60 @@ jobs:
           REPO=${{ github.repository }}
           COMMENTS_URL="https://api.github.com/repos/${REPO}/issues/${PR_NUMBER}/comments"
           RAW_COMMENT=$(cat /tmp/pr_version_comment.md)
+          # Token selection: prefer secrets.GH_TOKEN, then secrets.RELEASE_PAT, then built-in GITHUB_TOKEN
+          PICKED=""
+          # Try explicit secret named GH_TOKEN first
+          if [ -n "${{ secrets.GH_TOKEN }}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${{ secrets.GH_TOKEN }}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${{ secrets.GH_TOKEN }}"
+              echo "Using secrets.GH_TOKEN"
+            else
+              echo "secrets.GH_TOKEN test returned HTTP ${HTTP_CODE}; skipping"
+            fi
+          fi
+
+          # Next try RELEASE_PAT
+          if [ -z "${PICKED}" ] && [ -n "${{ secrets.RELEASE_PAT }}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${{ secrets.RELEASE_PAT }}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${{ secrets.RELEASE_PAT }}"
+              echo "Using secrets.RELEASE_PAT"
+            else
+              echo "secrets.RELEASE_PAT test returned HTTP ${HTTP_CODE}; skipping"
+            fi
+          fi
+
+          # Finally try the built-in GITHUB_TOKEN (may be empty for fork PRs)
+          if [ -z "${PICKED}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user || true)
+            if [ "${HTTP_CODE}" = "200" ]; then
+              PICKED="${GITHUB_TOKEN}"
+              echo "Using built-in GITHUB_TOKEN"
+            else
+              echo "built-in GITHUB_TOKEN test returned HTTP ${HTTP_CODE}; skipping"
+            fi
+          fi
+
+          if [ -z "${PICKED}" ]; then
+            echo "No valid token available for posting comments; skipping comment creation (normal for fork PRs)."
+            echo "Would have posted the following comment body:" >&2
+            printf '%s\n' "$RAW_COMMENT" >&2
+            exit 0
+          fi
+
+          # Use the picked token for subsequent API calls
+          AUTH_TOKEN="${PICKED}"
 
           # List comments and find an existing bot comment by hidden marker
-          COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "${COMMENTS_URL}" || true)
-          # Match any comment that contains the marker and is authored by a bot account
+          COMMENTS_JSON=$(curl -s -H "Authorization: token ${AUTH_TOKEN}" "${COMMENTS_URL}" || true)
           EXISTING_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select((.body|contains("<!-- version-bot-comment -->")) and (.user.type=="Bot")) | .id' | head -n1 || true)
 
           if [ -n "$(printf '%s' "$EXISTING_ID" | tr -d '[:space:]')" ] && [ "$EXISTING_ID" != "null" ]; then
             echo "Updating existing bot comment id=${EXISTING_ID}"
             UPDATE_URL="https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}"
             PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
-            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$UPDATE_URL" || true)
+            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -X PATCH -H "Authorization: token ${AUTH_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$UPDATE_URL" || true)
             echo "HTTP status: $HTTP_STATUS"
             cat /tmp/comment_resp || true
             if [ "${HTTP_STATUS}" -ge 400 ]; then
@@ -126,7 +169,7 @@ jobs:
           else
             echo "Creating new bot comment"
             PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
-            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$COMMENTS_URL" || true)
+            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -H "Authorization: token ${AUTH_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$COMMENTS_URL" || true)
             echo "HTTP status: $HTTP_STATUS"
             cat /tmp/comment_resp || true
             if [ "${HTTP_STATUS}" -ge 400 ]; then
