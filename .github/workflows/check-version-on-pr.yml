@@ -58,9 +58,14 @@ jobs:
           AUTO_BUMP=""
           SKIP_FALLBACK=0
           if command -v auto >/dev/null 2>&1; then
-            # First try a shipit dry-run to get the full semver auto would
-            # produce. If shipit prints a semver we prefer that and skip the
+            # If shipit prints a semver we prefer that and skip the
             # label-driven fallback. This is non-destructive (dry-run).
+            # Ensure the runner has a git identity so auto can create any local
+            # temporary commits it needs during its dry-run. This does NOT push
+            # or publish anything; it's only to satisfy auto's checks. Using
+            # GITHUB_ACTOR with a noreply email mirrors common CI behavior.
+            git config user.name "${GITHUB_ACTOR:-github-actions[bot]}" || true
+            git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
             AUTO_SHIPIT_OUTPUT="$(./node_modules/.bin/auto shipit --dry-run 2>&1 || true)"
             if [ -n "$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | tr -d '[:space:]')" ]; then
               echo "---- auto shipit dry-run output ----"
@@ -110,26 +115,7 @@ jobs:
           else
             echo "Skipping label-driven fallback because auto shipit provided a full semver"
           fi
-          # Skip duplicate runs caused by the workflow's own push: when a
-          # pull_request synchronize event is triggered by github-actions[bot]
-          # (our auto-apply push), we should not re-run the compute/comment
-          # logic. Also skip if the head commit contains [skip ci].
-          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; then
-            EVENT_ACTION=$(jq -r .action "${GITHUB_EVENT_PATH}" 2>/dev/null || true)
-            if [ "${EVENT_ACTION}" = "synchronize" ]; then
-              if [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
-                echo "Marking this synchronize event as an actions-bot sync; will skip comment update but continue the run."
-                touch /tmp/skip_comment_update || true
-              fi
-              # extra safety: mark skip if the HEAD commit message contains [skip ci]
-              if git fetch --no-tags origin "${GITHUB_SHA}" >/dev/null 2>&1 || true; then
-                if git show -s --format=%B "${GITHUB_SHA}" | grep -F -q "[skip ci]"; then
-                  echo "Head commit contains [skip ci]; will skip comment update but continue the run."
-                  touch /tmp/skip_comment_update || true
-                fi
-              fi
-            fi
-          fi
+
           BASE_REF="${{ github.event.pull_request.base.ref }}"
           echo "Base ref: $BASE_REF"
 
@@ -228,6 +214,9 @@ jobs:
             printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
           else
             echo "Skipping creation of /tmp/pr_version_comment.md because /tmp/skip_comment_update is present"
+          fi
+
+          # Close SKIP_FALLBACK conditional scope
           fi
 
       - name: Post PR comment with computed version
