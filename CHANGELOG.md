@@ -1,3 +1,15 @@
+# v0.1.28 (Sun Jan 18 2026)
+
+#### 🐛 Bug Fix
+
+- upload dry-run-artifact only on failure (during release) [#71](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/71) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.1.27 (Sun Jan 18 2026)
 
 #### ⚠️ Pushed to `main`
