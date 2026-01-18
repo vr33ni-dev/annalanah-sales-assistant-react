@@ -63,14 +63,6 @@ jobs:
             echo "AUTO_TOKEN=${GH_TOKEN:-}" >> "$GITHUB_ENV"
           fi
 
-      - name: Sanitize local git refs (CI only)
-        # Remove local refs with malformed creatordate that can break tools parsing dates
-        # This only affects the runner copy and is safe in CI (we do not modify remote)
-        run: |
-          set -euo pipefail
-          echo "Running local-ref sanitization"
-          bash ./.github/scripts/sanitize-local-refs.sh
-
       - name: Create release (compute version + changelog, call GitHub API)
         env:
           # Expose repo context and token; AUTO_TOKEN is written to $GITHUB_ENV in the previous step
@@ -92,12 +84,6 @@ jobs:
           else
             RANGE="origin/main"
           fi
-          # Ensure we have commits and tags from origin
-          git fetch --tags origin main
-
-          # Sanitize any refs fetched from origin that may have malformed dates
-          # (This removes bad local copies fetched from origin so tools like `auto` don't crash.)
-          bash ./.github/scripts/sanitize-local-refs.sh || true
 
           # Diagnostic: dump all refs and run remote-scan for CI debugging, then upload as artifact
           echo "Dumping refs and running remote scan for diagnostics"
@@ -119,11 +105,6 @@ jobs:
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
-
-          # NOTE: runner-side debugging and sanitization were removed to avoid
-          # deleting local refs in CI runs. We keep the token export and the
-          # safe fallback logic below so releases continue even if `auto`
-          # encounters errors.
 
           # Run auto and capture full output for diagnostics (don't print secrets)
             # Prefer using `auto shipit --dry-run` to get the full semver (vX.Y.Z)
