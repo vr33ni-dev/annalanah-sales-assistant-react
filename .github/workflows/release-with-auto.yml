@@ -140,51 +140,12 @@ jobs:
 
           echo "Computed candidate tag: $TAG_NAME"
 
-          # --- New behavior: apply the version bump to package.json and push it ---
-          # Ensure git identity is configured for commits
-          git config user.name "github-actions[bot]" || true
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
-
-          echo "Applying computed version $TAG_NAME to package.json"
-          # Strip leading 'v' for package.json version field
-          NEW_PKG_VERSION="${TAG_NAME#v}"
-          echo "Setting package.json version to $NEW_PKG_VERSION"
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version=process.argv[1];fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n");' "$NEW_PKG_VERSION"
-
-          # Regenerate lockfile to match updated package.json
-          if [ -f package.json ]; then
-            echo "Updating package-lock.json to reflect bumped package.json"
-            npm install --package-lock-only || true
-          fi
-
-          # If package.json or package-lock.json changed, commit and push.
-          # Many repositories protect `main` and require PRs; instead of
-          # pushing directly to main (which can be rejected), push the bump to a
-          # release branch and open a PR so human review/required checks can run.
-          SKIP_SHIPIT=0
-          if ! git diff --quiet -- package.json package-lock.json 2>/dev/null; then
-            git add package.json package-lock.json || true
-            git commit -m "chore(release): bump version to ${TAG_NAME}" || true
-            if [ -n "${AUTO_TOKEN:-}" ]; then
-              AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
-              git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
-              echo "Pushing version bump commit to origin/main via token-backed remote"
-              if ! git push authtemp HEAD:main; then
-                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Ensure the provided RELEASE_PAT has permission to push to main or adjust branch protection settings." >&2
-                git remote remove authtemp 2>/dev/null || true
-                exit 1
-              fi
-              git remote remove authtemp 2>/dev/null || true
-            else
-              echo "No AUTO_TOKEN available; attempting to push via origin (may be blocked by branch protection)"
-              if ! git push origin HEAD:main; then
-                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Exiting." >&2
-                exit 1
-              fi
-            fi
-          else
-            echo "No package.json or package-lock changes detected after auto shipit --dry-run"
-          fi
+          # We no longer perform a manual package.json bump in CI. Let `auto`
+          # perform the version bump and publish atomically via `auto shipit`.
+          echo "Skipping manual package.json bump; letting 'auto shipit' perform the bump & publish."
+          # Ensure git identity is configured in case auto creates local commits
+          git config user.name "${GITHUB_ACTOR:-github-actions[bot]}" || true
+          git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
 
           # Build a changelog from git history between the last tag and origin/main
           echo "Building changelog for range: $RANGE"
