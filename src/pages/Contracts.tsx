@@ -52,6 +52,7 @@ import {
 import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
 import { formatDateOnly } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
+import { CommentsSection } from "@/components/comments/CommentsSection";
 
 /* ---------------- helpers ---------------- */
 
@@ -719,6 +720,15 @@ export default function Contracts() {
                     Upsell planen
                   </button>
                 )}
+              </div>
+
+              {/* ---------------- Comments Section ---------------- */}
+              <div className="mt-8 border-t pt-6">
+                <CommentsSection
+                  entityType="contract"
+                  entityId={selectedContract.id}
+                  maxHeight="250px"
+                />
               </div>
             </>
           )}

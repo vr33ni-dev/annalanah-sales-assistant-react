@@ -62,6 +62,7 @@ import { isFetchError, StartSalesProcessError } from "@/types/apiError";
 import { MergeConflictDialog } from "@/components/MergeConflictDialog";
 import { LeadSearch } from "@/components/LeadSearch";
 import { Lead } from "@/lib/api";
+import { CommentsDialog } from "@/components/comments/CommentsDialog";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -1246,6 +1247,12 @@ export default function SalesProcessView() {
                     {/* NEW: Actions column */}
                     <TableCell>
                       <div className="flex gap-2">
+                        <CommentsDialog
+                          entityType="salesprocess"
+                          entityId={e.id}
+                          entityName={e.client_name}
+                        />
+
                         {e.stage === SALES_STAGE.FOLLOW_UP &&
                           e.follow_up_result == null && (
                             <Button
