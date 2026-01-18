@@ -239,22 +239,23 @@ jobs:
           # First, try to extract an existing applied-line from any comment bodies
           # so we preserve the original actor/timestamp and do not refresh it on
           # compute-only runs.
-          APPLIED_LINE=$(echo "$COMMENTS_JSON" | jq -r '.[].body' | awk '/Applied automatic version bump to this PR:/{print; exit}' || true)
-          # If no applied-line is present in comments but the checked-out package.json
-          # already contains the computed version, construct an applied-line once
-          # so the computed comment reflects the applied state. Do not overwrite an
-          # existing applied-line (avoid updating timestamp repeatedly).
-          if [ -z "$(printf '%s' "$APPLIED_LINE")" ]; then
-            COMPUTED_V=$(printf '%s\n' "$RAW_COMMENT" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
-            PKG_VERSION=$(jq -r .version package.json 2>/dev/null || true)
-            PKG_VERSION_V="v${PKG_VERSION:-}"
-            if [ -n "$(printf '%s' "$COMPUTED_V")" ] && [ "$COMPUTED_V" = "$PKG_VERSION_V" ]; then
-              APPLIED_LINE="Applied automatic version bump to this PR: **${COMPUTED_V}** (applied by ${GITHUB_ACTOR:-github-actions[bot]} on $(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+          # Find any existing applied-line comment and preserve it only when
+          # it was authored by the bot and the referenced tag exists.
+          APPLIED_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select(.body|contains("Applied automatic version bump to this PR:")) | .id' | head -n1 || true)
+          APPLIED_AUTHOR=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select(.body|contains("Applied automatic version bump to this PR:")) | .user.login' | head -n1 || true)
+          APPLIED_BODY=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select(.body|contains("Applied automatic version bump to this PR:")) | .body' | head -n1 || true)
+          APPLIED_LINE=""
+          if [ -n "$(printf '%s' "$APPLIED_ID")" ] && [ "${APPLIED_AUTHOR:-}" = "github-actions[bot]" ]; then
+            APPLIED_V=$(printf '%s\n' "$APPLIED_BODY" | grep -o "v[0-9]\+\.[0-9]\+\.[0-9]\+" | head -n1 || true)
+            if [ -n "$(printf '%s' "$APPLIED_V")" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/git/ref/tags/${APPLIED_V}") || true
+              if [ "${STATUS:-}" = "200" ]; then
+                APPLIED_LINE="$APPLIED_BODY"
+              fi
             fi
           fi
+
           if [ -n "$(printf '%s' "$APPLIED_LINE")" ]; then
-            # Build COMMENT_BODY by replacing the pending line with the applied line
-            # from the existing comment (keeps applied state and actor/timestamp).
             BASE_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Computed release version if merged to/{print; exit}')
             LABELS_LINE=$(printf '%s\n' "$RAW_COMMENT" | awk '/Labels considered:/{print; exit}')
             COMMENT_BODY=$(printf '%s\n\n%s\n\n%s' "$BASE_LINE" "$LABELS_LINE" "$APPLIED_LINE")

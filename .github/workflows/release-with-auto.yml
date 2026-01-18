@@ -93,6 +93,12 @@ jobs:
               echo "auto shipit produced no output or failed (non-fatal)"
             fi
 
+            # Save the dry-run output as an artifact for auditability (do not
+            # write to repository files). The file will be uploaded by a later
+            # workflow step. This helps compare computed candidate vs actual
+            # release without touching the repo working tree.
+            printf '%s\n' "$AUTO_SHIPIT_OUTPUT" > "$GITHUB_WORKSPACE/auto-shipit-dry-run.log" || true
+
             # Try to extract a semver (v1.2.3 or 1.2.3) from the shipit output
             # Some versions of auto print messages like:
             #   "Would have created a release on GitHub for version: 0.1.24"
@@ -163,3 +169,9 @@ jobs:
             echo "auto shipit failed; aborting release step" >&2
             exit 1
           }
+
+      - name: Upload auto shipit dry-run output
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-shipit-dry-run
+          path: auto-shipit-dry-run.log
