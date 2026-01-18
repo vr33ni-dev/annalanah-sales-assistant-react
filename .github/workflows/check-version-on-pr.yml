@@ -56,45 +56,59 @@ jobs:
           # so export it here.
           export GH_TOKEN="${GITHUB_TOKEN:-}"
           AUTO_BUMP=""
+          SKIP_FALLBACK=0
           if command -v auto >/dev/null 2>&1; then
-            # Sanitize any local refs with malformed numeric metadata before
-            # invoking auto. This mirrors the release job's defensive behavior
-            # so auto's internal gitlog calls don't receive invalid numeric
-            # arguments.
-            git for-each-ref --format='%(refname) %(creatordate:raw)' | awk '$2 ~ /900719/ {print $1}' | while read -r ref; do
-              echo "Removing local ref: $ref" || true
-              git update-ref -d "$ref" || true
-            done
-
-            # Run `auto version` and print the raw output to the job log so
-            # PR runs show the exact computed version (helps debugging).
-            # Save the raw output to /tmp/auto-version-output.log for artifacts
-            # or later inspection if needed. Do not fail the step if auto
-            # itself exits non-zero; fall back to label-driven logic below.
-            AUTO_RAW_OUTPUT="$(auto version 2>&1 || true)"
-            if [ -n "$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '[:space:]')" ]; then
-              echo "---- auto version raw output ----"
-              printf '%s\n' "$AUTO_RAW_OUTPUT"
-              echo "---- end auto output ----"
+            # First try a shipit dry-run to get the full semver auto would
+            # produce. If shipit prints a semver we prefer that and skip the
+            # label-driven fallback. This is non-destructive (dry-run).
+            AUTO_SHIPIT_OUTPUT="$(./node_modules/.bin/auto shipit --dry-run 2>&1 || true)"
+            if [ -n "$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | tr -d '[:space:]')" ]; then
+              echo "---- auto shipit dry-run output ----"
+              printf '%s\n' "$AUTO_SHIPIT_OUTPUT"
+              echo "---- end auto shipit output ----"
             else
-              echo "auto version produced no output or failed (non-fatal)"
+              echo "auto shipit produced no output or failed (non-fatal)"
             fi
-            # Persist raw output to a file for artifact upload if desired
-            printf '%s\n' "$AUTO_RAW_OUTPUT" > /tmp/auto-version-output.log || true
-            # Preserve previous behavior: try to derive a concise bump token
-            # from auto's output (e.g. 'patch', 'minor', 'major') by stripping
-            # whitespace. If auto printed a semver, the following normalization
-            # will collapse it; label-driven fallback remains below.
-            AUTO_BUMP=$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
+            # Try to extract a semver from shipit output (v1.2.3 or 1.2.3)
+            AUTO_SEMVER=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+            if [ -n "$(printf '%s' "$AUTO_SEMVER" | tr -d '[:space:]')" ]; then
+              if printf '%s' "$AUTO_SEMVER" | grep -q '^v'; then
+                NEW_VERSION="$AUTO_SEMVER"
+              else
+                NEW_VERSION="v$AUTO_SEMVER"
+              fi
+              echo "auto shipit computed full semver: $NEW_VERSION; will use this and skip fallback"
+              echo "candidate_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+              # Build the PR comment now so the later comment step can post it.
+              printf '%s\n\n%s\n' \
+                "Computed release version if merged to ${{ github.event.pull_request.base.ref }}: **$NEW_VERSION**" \
+                "(computed by auto shipit --dry-run)" > /tmp/pr_version_comment.md
+              printf '%s\n' "<!-- version-bot-comment -->" >> /tmp/pr_version_comment.md
+              SKIP_FALLBACK=1
+            else
+              # If shipit didn't yield a semver, fall back to lightweight auto version
+              AUTO_RAW_OUTPUT="$(auto version 2>&1 || true)"
+              if [ -n "$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '[:space:]')" ]; then
+                echo "---- auto version raw output ----"
+                printf '%s\n' "$AUTO_RAW_OUTPUT"
+                echo "---- end auto output ----"
+              else
+                echo "auto version produced no output or failed (non-fatal)"
+              fi
+              printf '%s\n' "$AUTO_RAW_OUTPUT" > /tmp/auto-version-output.log || true
+              AUTO_BUMP=$(printf '%s' "$AUTO_RAW_OUTPUT" | tr -d '\n' | tr -d '\r' | tr -d '[:space:]')
+            fi
           fi
-          if [ -n "$AUTO_BUMP" ]; then
+          if [ -n "$AUTO_BUMP" ] && [ "$SKIP_FALLBACK" -eq 0 ]; then
             echo "auto computed bump: $AUTO_BUMP"
             # normalize
             if [ "$AUTO_BUMP" = "patch" ] || [ "$AUTO_BUMP" = "minor" ] || [ "$AUTO_BUMP" = "major" ]; then
               BUMP="$AUTO_BUMP"
             fi
-          else
+          elif [ "$SKIP_FALLBACK" -eq 0 ]; then
             echo "auto did not compute a bump; falling back to label-driven logic"
+          else
+            echo "Skipping label-driven fallback because auto shipit provided a full semver"
           fi
           # Skip duplicate runs caused by the workflow's own push: when a
           # pull_request synchronize event is triggered by github-actions[bot]
@@ -120,6 +134,8 @@ jobs:
           echo "Base ref: $BASE_REF"
 
           # Prefer querying the PR live (so re-runs pick up labels added after the original event)
+          # If shipit already provided a full semver, skip label checks and bump computation.
+          if [ "$SKIP_FALLBACK" -eq 0 ]; then
           PR_NUM=$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
           if [ -n "$PR_NUM" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
             LABELS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUM}" | jq -r '.labels[]?.name' 2>/dev/null || true)
@@ -161,7 +177,8 @@ jobs:
 
           # Compute new version
           if [ -z "$LATEST_TAG" ]; then
-            if [ "$BUMP" = "major" ]; then
+            if [ "$BUMP" = "major" ]; 
+            then
               NEW_VERSION="v1.0.0"
             else
               NEW_VERSION="v0.1.0"
