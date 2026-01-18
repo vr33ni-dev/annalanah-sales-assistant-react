@@ -93,6 +93,12 @@ jobs:
               echo "auto shipit produced no output or failed (non-fatal)"
             fi
 
+            # Save the dry-run output as an artifact for auditability (do not
+            # write to repository files). The file will be uploaded by a later
+            # workflow step. This helps compare computed candidate vs actual
+            # release without touching the repo working tree.
+            printf '%s\n' "$AUTO_SHIPIT_OUTPUT" > "$GITHUB_WORKSPACE/auto-shipit-dry-run.log" || true
+
             # Try to extract a semver (v1.2.3 or 1.2.3) from the shipit output
             # Some versions of auto print messages like:
             #   "Would have created a release on GitHub for version: 0.1.24"
@@ -140,51 +146,12 @@ jobs:
 
           echo "Computed candidate tag: $TAG_NAME"
 
-          # --- New behavior: apply the version bump to package.json and push it ---
-          # Ensure git identity is configured for commits
-          git config user.name "github-actions[bot]" || true
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
-
-          echo "Applying computed version $TAG_NAME to package.json"
-          # Strip leading 'v' for package.json version field
-          NEW_PKG_VERSION="${TAG_NAME#v}"
-          echo "Setting package.json version to $NEW_PKG_VERSION"
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version=process.argv[1];fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n");' "$NEW_PKG_VERSION"
-
-          # Regenerate lockfile to match updated package.json
-          if [ -f package.json ]; then
-            echo "Updating package-lock.json to reflect bumped package.json"
-            npm install --package-lock-only || true
-          fi
-
-          # If package.json or package-lock.json changed, commit and push.
-          # Many repositories protect `main` and require PRs; instead of
-          # pushing directly to main (which can be rejected), push the bump to a
-          # release branch and open a PR so human review/required checks can run.
-          SKIP_SHIPIT=0
-          if ! git diff --quiet -- package.json package-lock.json 2>/dev/null; then
-            git add package.json package-lock.json || true
-            git commit -m "chore(release): bump version to ${TAG_NAME}" || true
-            if [ -n "${AUTO_TOKEN:-}" ]; then
-              AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
-              git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
-              echo "Pushing version bump commit to origin/main via token-backed remote"
-              if ! git push authtemp HEAD:main; then
-                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Ensure the provided RELEASE_PAT has permission to push to main or adjust branch protection settings." >&2
-                git remote remove authtemp 2>/dev/null || true
-                exit 1
-              fi
-              git remote remove authtemp 2>/dev/null || true
-            else
-              echo "No AUTO_TOKEN available; attempting to push via origin (may be blocked by branch protection)"
-              if ! git push origin HEAD:main; then
-                echo "ERROR: Push to main failed. Branch protection likely prevents direct pushes. Exiting." >&2
-                exit 1
-              fi
-            fi
-          else
-            echo "No package.json or package-lock changes detected after auto shipit --dry-run"
-          fi
+          # We no longer perform a manual package.json bump in CI. Let `auto`
+          # perform the version bump and publish atomically via `auto shipit`.
+          echo "Skipping manual package.json bump; letting 'auto shipit' perform the bump & publish."
+          # Ensure git identity is configured in case auto creates local commits
+          git config user.name "${GITHUB_ACTOR:-github-actions[bot]}" || true
+          git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
 
           # Build a changelog from git history between the last tag and origin/main
           echo "Building changelog for range: $RANGE"
@@ -202,3 +169,47 @@ jobs:
             echo "auto shipit failed; aborting release step" >&2
             exit 1
           }
+
+          # After auto shipit runs, update lockfiles if needed and push a dedicated commit
+          echo "Checking for lockfile changes after auto shipit..."
+          # Reinstall to ensure lockfile is deterministic
+          npm ci || true
+
+          # Detect common lockfiles
+          LOCKFILES_CHANGED=$(git status --porcelain --untracked-files=no | grep -E 'package-lock.json|pnpm-lock.yaml|yarn.lock' || true)
+          if [ -n "${LOCKFILES_CHANGED}" ]; then
+            echo "Lockfile changes detected:\n${LOCKFILES_CHANGED}"
+            # Configure git identity (again) before committing
+            git config user.name "${GITHUB_ACTOR:-github-actions[bot]}" || true
+            git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
+
+            # Stage lockfiles that changed
+            git add -A package-lock.json pnpm-lock.yaml yarn.lock || true
+
+            # Create a dedicated commit for lockfile updates
+            if git diff --staged --quiet; then
+              echo "No staged changes to commit"
+            else
+              git commit -m "chore(release): update lockfile(s) after release [skip ci]" || true
+
+              # Push the lockfile commit using the chosen release token (AUTO_TOKEN)
+              if [ -n "${AUTO_TOKEN:-}" ]; then
+                echo "Pushing lockfile commit using AUTO_TOKEN"
+                # Use token in remote URL for push; avoid printing the token
+                git remote set-url origin "https://x-access-token:${AUTO_TOKEN}@github.com/${{ github.repository }}.git"
+                git push origin HEAD:main || {
+                  echo "Failed to push lockfile commit; please push manually or provide a RELEASE_PAT with push rights" >&2
+                }
+              else
+                echo "AUTO_TOKEN is not set; cannot push lockfile commit" >&2
+              fi
+            fi
+          else
+            echo "No lockfile changes detected"
+          fi
+
+      - name: Upload auto shipit dry-run output
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-shipit-dry-run
+          path: auto-shipit-dry-run.log
