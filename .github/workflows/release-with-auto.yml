@@ -67,8 +67,8 @@ jobs:
           set -euo pipefail
 
           # Diagnostic: dump all refs and run remote-scan for CI debugging, then upload as artifact
-          echo "Dumping refs and running remote scan for diagnostics"
-          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > refs-with-creatordate.raw || true
+          echo "Dumping refs for diagnostics (write to /tmp to keep workspace clean)"
+          git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > /tmp/refs-with-creatordate.raw || true
 
 
           # Compute candidate via auto
@@ -96,6 +96,14 @@ jobs:
             else
               echo "auto shipit produced no output or failed (non-fatal)"
             fi
+
+            # Try to extract a semver (v1.2.3 or 1.2.3) from the shipit output
+            # Some versions of auto print messages like:
+            #   "Would have created a release on GitHub for version: 0.1.24"
+            # or
+            #   "Would have published: 0.1.19"
+            # so grep for the first semver-like token and prefer that as CANDIDATE.
+            CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
 
             # Ensure we have commits and tags from origin so CHANGELOG/RANGE calculations work
             git fetch --tags origin main || true
