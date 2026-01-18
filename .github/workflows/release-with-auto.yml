@@ -56,7 +56,7 @@ jobs:
           set -euo pipefail
           # Prefer a user-provided PAT (recommended when branch protection prevents pushes by GH_TOKEN).
           if [ -n "${RELEASE_PAT:-}" ]; then
-            echo "Using RELEASE_PAT for releasxe actions"
+            echo "Using RELEASE_PAT for release actions"
             echo "AUTO_TOKEN=${RELEASE_PAT}" >> "$GITHUB_ENV"
           else
             echo "No RELEASE_PAT configured; falling back to GH_TOKEN. If protected branches prevent pushes, create a RELEASE_PAT in repo secrets."
@@ -153,8 +153,7 @@ jobs:
               v*) TAG_NAME="$CANDIDATE" ;;
               *) TAG_NAME="v$CANDIDATE" ;;
             esac
-            echo "Computed cand
-            idate tag from auto: $TAG_NAME"
+              echo "Computed candidate tag from auto: $TAG_NAME"
           else
             # auto failed or returned unexpected output (e.g. gitlog crash).
             # Fall back to a conservative git-based patch bump so releases
