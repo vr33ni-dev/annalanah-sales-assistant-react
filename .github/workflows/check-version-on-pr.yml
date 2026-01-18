@@ -168,7 +168,24 @@ jobs:
             NEW_TEXT=$(printf '%s' "$RAW_COMMENT" | sed '/<!-- version-bot-comment -->/d' | sed '/Last updated:/d' | sed '/^[[:space:]]*$/d' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')
 
             if [ "${EXISTING_TEXT}" = "${NEW_TEXT}" ]; then
-              echo "Existing comment content is identical to computed content; skipping update."
+              # Content is identical aside from timestamp. Update only if timestamp changed so
+              # the comment shows a fresh "Last updated" line, otherwise skip to avoid churn.
+              EXISTING_TS=$(printf '%s' "$EXISTING_BODY" | grep -E '^Last updated:' | sed 's/^Last updated:[[:space:]]*//' || true)
+              NEW_TS=$(printf '%s' "$RAW_COMMENT" | grep -E '^Last updated:' | sed 's/^Last updated:[[:space:]]*//' || true)
+              if [ "${EXISTING_TS}" != "${NEW_TS}" ]; then
+                echo "Content identical but timestamp changed; updating existing bot comment id=${EXISTING_ID} to refresh timestamp"
+                UPDATE_URL="https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}"
+                PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
+                HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -X PATCH -H "Authorization: token ${AUTH_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$UPDATE_URL" || true)
+                echo "HTTP status: $HTTP_STATUS"
+                cat /tmp/comment_resp || true
+                if [ "${HTTP_STATUS}" -ge 400 ]; then
+                  echo "Failed to update comment (status=$HTTP_STATUS)" >&2
+                  exit 1
+                fi
+              else
+                echo "Existing comment content is identical and timestamp unchanged; skipping update."
+              fi
             else
               echo "Updating existing bot comment id=${EXISTING_ID}"
               UPDATE_URL="https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}"
@@ -182,8 +199,13 @@ jobs:
               fi
             fi
           else
-            echo "No existing bot comment found; skipping creation (per config: only update existing comments)."
-            echo "Would have posted the following comment:" >&2
-            # Print human-readable text only (remove marker and timestamp)
-            printf '%s\n' "$(printf '%s' "$RAW_COMMENT" | sed '/<!-- version-bot-comment -->/d' | sed '/Last updated:/d')" >&2
+            echo "No existing bot comment found; creating new bot comment"
+            PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
+            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -H "Authorization: token ${AUTH_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$COMMENTS_URL" || true)
+            echo "HTTP status: $HTTP_STATUS"
+            cat /tmp/comment_resp || true
+            if [ "${HTTP_STATUS}" -ge 400 ]; then
+              echo "Failed to create comment (status=$HTTP_STATUS)" >&2
+              exit 1
+            fi
           fi
