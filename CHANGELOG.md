@@ -1,3 +1,15 @@
+# v0.1.26 (Sun Jan 18 2026)
+
+#### 🐛 Bug Fix
+
+- let auto do the version bump [#70](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/70) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.1.24 (Sun Jan 18 2026)
 
 #### 🐛 Bug Fix
