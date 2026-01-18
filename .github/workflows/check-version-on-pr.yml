@@ -109,13 +109,28 @@ jobs:
 
           # List comments and find an existing bot comment by hidden marker
           COMMENTS_JSON=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "${COMMENTS_URL}" || true)
-          EXISTING_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select(.user.login=="github-actions[bot]" and (.body|contains("<!-- version-bot-comment -->"))) | .id' | head -n1 || true)
+          # Match any comment that contains the marker and is authored by a bot account
+          EXISTING_ID=$(printf '%s' "$COMMENTS_JSON" | jq -r '.[] | select((.body|contains("<!-- version-bot-comment -->")) and (.user.type=="Bot")) | .id' | head -n1 || true)
 
           if [ -n "$(printf '%s' "$EXISTING_ID" | tr -d '[:space:]')" ] && [ "$EXISTING_ID" != "null" ]; then
             echo "Updating existing bot comment id=${EXISTING_ID}"
             UPDATE_URL="https://api.github.com/repos/${REPO}/issues/comments/${EXISTING_ID}"
-            curl -s -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')" "$UPDATE_URL" >/dev/null || true
+            PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
+            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -X PATCH -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$UPDATE_URL" || true)
+            echo "HTTP status: $HTTP_STATUS"
+            cat /tmp/comment_resp || true
+            if [ "${HTTP_STATUS}" -ge 400 ]; then
+              echo "Failed to update comment (status=$HTTP_STATUS)" >&2
+              exit 1
+            fi
           else
             echo "Creating new bot comment"
-            curl -s -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')" "$COMMENTS_URL" >/dev/null || true
+            PAYLOAD=$(jq -nc --arg body "$RAW_COMMENT" '{body:$body}')
+            HTTP_STATUS=$(curl -s -o /tmp/comment_resp -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$COMMENTS_URL" || true)
+            echo "HTTP status: $HTTP_STATUS"
+            cat /tmp/comment_resp || true
+            if [ "${HTTP_STATUS}" -ge 400 ]; then
+              echo "Failed to create comment (status=$HTTP_STATUS)" >&2
+              exit 1
+            fi
           fi
