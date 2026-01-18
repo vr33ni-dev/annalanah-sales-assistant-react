@@ -170,6 +170,44 @@ jobs:
             exit 1
           }
 
+          # After auto shipit runs, update lockfiles if needed and push a dedicated commit
+          echo "Checking for lockfile changes after auto shipit..."
+          # Reinstall to ensure lockfile is deterministic
+          npm ci || true
+
+          # Detect common lockfiles
+          LOCKFILES_CHANGED=$(git status --porcelain --untracked-files=no | grep -E 'package-lock.json|pnpm-lock.yaml|yarn.lock' || true)
+          if [ -n "${LOCKFILES_CHANGED}" ]; then
+            echo "Lockfile changes detected:\n${LOCKFILES_CHANGED}"
+            # Configure git identity (again) before committing
+            git config user.name "${GITHUB_ACTOR:-github-actions[bot]}" || true
+            git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
+
+            # Stage lockfiles that changed
+            git add -A package-lock.json pnpm-lock.yaml yarn.lock || true
+
+            # Create a dedicated commit for lockfile updates
+            if git diff --staged --quiet; then
+              echo "No staged changes to commit"
+            else
+              git commit -m "chore(release): update lockfile(s) after release [skip ci]" || true
+
+              # Push the lockfile commit using the chosen release token (AUTO_TOKEN)
+              if [ -n "${AUTO_TOKEN:-}" ]; then
+                echo "Pushing lockfile commit using AUTO_TOKEN"
+                # Use token in remote URL for push; avoid printing the token
+                git remote set-url origin "https://x-access-token:${AUTO_TOKEN}@github.com/${{ github.repository }}.git"
+                git push origin HEAD:main || {
+                  echo "Failed to push lockfile commit; please push manually or provide a RELEASE_PAT with push rights" >&2
+                }
+              else
+                echo "AUTO_TOKEN is not set; cannot push lockfile commit" >&2
+              fi
+            fi
+          else
+            echo "No lockfile changes detected"
+          fi
+
       - name: Upload auto shipit dry-run output
         uses: actions/upload-artifact@v4
         with:
