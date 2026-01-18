@@ -71,7 +71,7 @@ jobs:
           git for-each-ref --format='%(refname) %(objectname) %(objecttype) %(creatordate:raw) %(subject)' > refs-with-creatordate.raw || true
 
 
-          # Compute candidate via auto (auto version prints the next version).
+          # Compute candidate via auto
           # Make the chosen token available as GH_TOKEN for auto and guard the
           # invocation so failures do not abort the whole job.
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
