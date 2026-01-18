@@ -30,6 +30,12 @@ jobs:
       - name: Install dependencies
         run: |
           set -euo pipefail
+          # Lightweight guard: if this run was triggered by the actions bot (a previous
+          # automatic push from this workflow), exit early to avoid loops.
+          if [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_ACTOR:-}" = "github-actions[bot]" ]; then
+            echo "Run triggered by github-actions[bot]; exiting to avoid recursive release runs."
+            exit 0
+          fi
           # Install project dependencies so npx auto uses the repo's version if present
           npm ci
 
@@ -120,15 +126,26 @@ jobs:
           # encounters errors.
 
           # Run auto and capture full output for diagnostics (don't print secrets)
-          RAW_VERSION=$(npx auto version 2>&1 || true)
-          echo "auto version output (trimmed):" >&2
-          printf '%s\n' "${RAW_VERSION:-}" | sed -n '1,60p' >&2 || true
-          # Also dump the full raw output (helpful when auto errors) to logs
-          echo "auto version output (full):" >&2
-          printf '%s\n' "${RAW_VERSION:-}" >&2 || true
-
-          # Try to extract a semver-like token (allow optional leading 'v')
-          CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
+            # Prefer using `auto shipit --dry-run` to get the full semver (vX.Y.Z)
+            AUTO_SHIPIT_OUTPUT=$(npx auto shipit --dry-run 2>&1 || true)
+            if [ -n "$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | tr -d '[:space:]')" ]; then
+              echo "---- auto shipit dry-run output ----"
+              printf '%s\n' "$AUTO_SHIPIT_OUTPUT"
+              echo "---- end auto shipit output ----"
+            else
+              echo "auto shipit produced no output or failed (non-fatal)"
+            fi
+            # Try to extract a semver from shipit output first (v1.2.3 or 1.2.3)
+            CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+            # If shipit did not yield a semver, fall back to `auto version` which emits the bump token
+            if [ -z "$(printf '%s' "$CANDIDATE" | tr -d '[:space:]')" ]; then
+              RAW_VERSION=$(npx auto version 2>&1 || true)
+              echo "auto version output (trimmed):" >&2
+              printf '%s\n' "${RAW_VERSION:-}" | sed -n '1,60p' >&2 || true
+              echo "auto version output (full):" >&2
+              printf '%s\n' "${RAW_VERSION:-}" >&2 || true
+              CANDIDATE=$(printf "%s" "$RAW_VERSION" | grep -Eo 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
+            fi
 
           if [ -n "$CANDIDATE" ]; then
             # Normalize tag name to start with 'v'
@@ -136,7 +153,8 @@ jobs:
               v*) TAG_NAME="$CANDIDATE" ;;
               *) TAG_NAME="v$CANDIDATE" ;;
             esac
-            echo "Computed candidate tag from auto: $TAG_NAME"
+            echo "Computed cand
+            idate tag from auto: $TAG_NAME"
           else
             # auto failed or returned unexpected output (e.g. gitlog crash).
             # Fall back to a conservative git-based patch bump so releases
@@ -160,6 +178,41 @@ jobs:
 
           echo "Computed candidate tag: $TAG_NAME"
 
+          # --- New behavior: apply the version bump to package.json and push it ---
+          # Ensure git identity is configured for commits
+          git config user.name "github-actions[bot]" || true
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
+
+          echo "Applying computed version $TAG_NAME to package.json"
+          # Strip leading 'v' for package.json version field
+          NEW_PKG_VERSION="${TAG_NAME#v}"
+          echo "Setting package.json version to $NEW_PKG_VERSION"
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version=process.argv[1];fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n");' "$NEW_PKG_VERSION"
+
+          # Regenerate lockfile to match updated package.json
+          if [ -f package.json ]; then
+            echo "Updating package-lock.json to reflect bumped package.json"
+            npm install --package-lock-only || true
+          fi
+
+          # If package.json or package-lock.json changed, commit and push using AUTO_TOKEN
+          if ! git diff --quiet -- package.json package-lock.json 2>/dev/null; then
+            git add package.json package-lock.json || true
+            git commit -m "chore(release): bump version to ${TAG_NAME}" || true
+            if [ -n "${AUTO_TOKEN:-}" ]; then
+              AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
+              git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
+              echo "Pushing version bump commit to origin/main via token-backed remote"
+              git push authtemp HEAD:main || git push authtemp HEAD:${GITHUB_REF_NAME:-main} || true
+              git remote remove authtemp 2>/dev/null || true
+            else
+              echo "No AUTO_TOKEN available; attempting to push via origin (may be blocked by branch protection)"
+              git push origin HEAD:main || true
+            fi
+          else
+            echo "No package.json or package-lock changes detected after auto version"
+          fi
+
           # Build a changelog from git history between the last tag and origin/main
           echo "Building changelog for range: $RANGE"
           CHANGELOG=$(git --no-pager log "$RANGE" --pretty=format:"- %s (%an, %h)%n%n%b%n")
@@ -167,50 +220,12 @@ jobs:
             CHANGELOG="No changelog entries generated by git log for range $RANGE"
           fi
 
-          # Create GitHub release using REST API (use AUTO_TOKEN which was written earlier)
-          echo "Ensuring tag ${TAG_NAME} exists and pushing it if we can"
-          # Configure git user for tag creation
-          git config user.name "github-actions[bot]" || true
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com" || true
-
-          # Create annotated tag locally if it doesn't exist
-          if ! git rev-parse --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
-            echo "Creating annotated tag ${TAG_NAME}"
-            git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}" || true
-          else
-            echo "Tag ${TAG_NAME} already exists locally"
-          fi
-
-          # Push tag if AUTO_TOKEN is available (prefer RELEASE_PAT). We push via HTTPS
-          # using the token to authenticate so protected-branch rules are respected.
-          if [ -n "${AUTO_TOKEN:-}" ]; then
-            echo "Pushing tag ${TAG_NAME} to origin using provided token"
-            AUTH_REMOTE="https://x-access-token:${AUTO_TOKEN}@github.com/${OWNER}/${REPO_NAME}.git"
-            # Ensure the remote exists under that URL temporarily
-            git remote add authtemp "$AUTH_REMOTE" 2>/dev/null || true
-            git push authtemp "${TAG_NAME}" --follow-tags --force || git push authtemp "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" || true
-            git remote remove authtemp 2>/dev/null || true
-          else
-            echo "No AUTO_TOKEN available; skipping git push of tag (Releases API may still create the release referencing the tag name)."
-          fi
-
-          echo "Creating GitHub release $TAG_NAME"
-          # Build JSON payload
-          # Export variables so node can see them via process.env
-          export TAG_NAME="$TAG_NAME"
-          export CHANGELOG="$CHANGELOG"
-          PAYLOAD=$(node -e 'const d={tag_name:process.env.TAG_NAME,name:process.env.TAG_NAME,body:process.env.CHANGELOG||"",draft:false,prerelease:false,target_commitish:process.env.GITHUB_SHA||"main"};console.log(JSON.stringify(d));')
-
-          # Call GitHub Releases API
-          API_URL="https://api.github.com/repos/${OWNER}/${REPO_NAME}/releases"
-          HTTP_STATUS=$(printf "%s" "$PAYLOAD" | curl -s -o /dev/stderr -w "%{http_code}" -X POST \
-            -H "Authorization: token ${AUTO_TOKEN:-}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            --data @- "$API_URL" || true)
-
-          if [ "$HTTP_STATUS" != "201" ] && [ "$HTTP_STATUS" != "200" ]; then
-            echo "GitHub API returned HTTP $HTTP_STATUS when creating release" >&2
+          # Create the release using `auto shipit` now that package.json has been bumped
+          echo "Running 'auto shipit' to publish the release for ${TAG_NAME}"
+          export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+          # Run auto shipit (non-dry) to create the tag/release on GitHub. It will operate
+          # against the repo and create the release referencing the current HEAD (the bumped commit).
+          npx auto shipit || {
+            echo "auto shipit failed; aborting release step" >&2
             exit 1
-          fi
-          echo "Release $TAG_NAME created successfully."
+          }
