@@ -49,12 +49,12 @@ api.interceptors.response.use(
         Number(sessionStorage.getItem("suppressAuthRedirectUntil") || 0)
     ) {
       location.href = `/auth/google?redirect=${encodeURIComponent(
-        location.href
+        location.href,
       )}`;
       return;
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 export default api;
@@ -86,7 +86,7 @@ export const getClientById = async (id: string | number): Promise<Client> => {
 };
 
 export const createClient = async (
-  payload: Partial<Client>
+  payload: Partial<Client>,
 ): Promise<Client> => {
   const { data } = await api.post("/clients", payload);
   return data as Client;
@@ -94,7 +94,7 @@ export const createClient = async (
 
 export const updateClient = async (
   id: string | number,
-  payload: Partial<Client>
+  payload: Partial<Client>,
 ): Promise<Client> => {
   const { data } = await api.put(`/clients/${id}`, payload);
   return data as Client;
@@ -176,7 +176,7 @@ export async function getSalesProcesses(): Promise<
 }
 
 export const getSalesProcessById = async (
-  id: string | number
+  id: string | number,
 ): Promise<SalesProcess> => {
   const { data } = await api.get(`/sales/${id}`);
   return data as SalesProcess;
@@ -195,7 +195,7 @@ export type SalesProcessUpdateRequest = {
 
 export const updateSalesProcess = async (
   id: string | number,
-  payload: SalesProcessUpdateRequest
+  payload: SalesProcessUpdateRequest,
 ): Promise<SalesProcess> => {
   const { data } = await api.patch(`/sales/${id}`, payload);
   return data as SalesProcess;
@@ -222,7 +222,7 @@ export interface StartSalesProcessResponse {
  * POST /sales/start
  */
 export async function startSalesProcess(
-  payload: StartSalesProcessRequest
+  payload: StartSalesProcessRequest,
 ): Promise<StartSalesProcessResponse> {
   const res = await fetch("/api/sales/start", {
     method: "POST",
@@ -306,14 +306,14 @@ export const getContracts = async (): Promise<Contract[]> => {
 };
 
 export const getContractById = async (
-  id: string | number
+  id: string | number,
 ): Promise<Contract> => {
   const { data } = await api.get(`/contracts/${id}`);
   return data as Contract;
 };
 
 export const createContract = async (
-  payload: Partial<Contract>
+  payload: Partial<Contract>,
 ): Promise<Contract> => {
   const { data } = await api.post("/contracts", payload);
   return data as Contract;
@@ -321,7 +321,7 @@ export const createContract = async (
 
 export const updateContract = async (
   id: string | number,
-  payload: Partial<Contract>
+  payload: Partial<Contract>,
 ): Promise<Contract> => {
   const { data } = await api.patch(`/contracts/${id}`, payload);
   return data as Contract;
@@ -355,7 +355,7 @@ export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
 
 export const updateStageInfo = async (
   id: string | number,
-  payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>
+  payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>,
 ): Promise<void> => {
   await api.patch(`/stages/${id}`, payload);
 };
@@ -369,7 +369,7 @@ export interface UpdateStageStatsRequest {
 }
 export const updateStageStats = async (
   id: string | number,
-  payload: UpdateStageStatsRequest
+  payload: UpdateStageStatsRequest,
 ): Promise<void> => {
   await api.patch(`/stages/${id}/stats`, payload);
 };
@@ -408,7 +408,7 @@ export interface AddStageParticipantRequest {
 
 export const addStageParticipant = async (
   stageId: string | number,
-  payload: AddStageParticipantRequest
+  payload: AddStageParticipantRequest,
 ): Promise<void> => {
   await api.post(`/stages/${stageId}/participants`, payload);
 };
@@ -419,14 +419,14 @@ export interface UpdateStageParticipantRequest {
 export const updateStageParticipant = async (
   stageId: string | number,
   participantId: string | number,
-  payload: UpdateStageParticipantRequest
+  payload: UpdateStageParticipantRequest,
 ): Promise<void> => {
   await api.patch(`/stages/${stageId}/participants/${participantId}`, payload);
 };
 
 export const deleteStageParticipant = async (
   stageId: string | number,
-  participantId: string | number
+  participantId: string | number,
 ): Promise<void> => {
   await api.delete(`/stages/${stageId}/participants/${participantId}`);
 };
@@ -459,7 +459,7 @@ export interface StageParticipantUI {
 }
 
 export const getStageParticipants = async (
-  stageId: string | number
+  stageId: string | number,
 ): Promise<StageParticipant[]> => {
   const { data } = await api.get(`/stages/${stageId}/participants`);
 
@@ -485,7 +485,7 @@ export const getStageParticipants = async (
  */
 export const assignClientToStage = async (
   stageId: string | number,
-  payload: { client_id: number }
+  payload: { client_id: number },
 ): Promise<void> => {
   await api.post(`/stages/${stageId}/assign-client`, payload);
 };
@@ -493,7 +493,7 @@ export const assignClientToStage = async (
 // Upsells
 /** GET /sales/{id}/upsell */
 export const getUpsellForSalesProcess = async (
-  salesProcessId: number
+  salesProcessId: number,
 ): Promise<ContractUpsell[]> => {
   const { data } = await api.get(`/sales/${salesProcessId}/upsell`);
   return data as ContractUpsell[];
@@ -502,7 +502,7 @@ export const getUpsellForSalesProcess = async (
 /** PATCH /sales/{id}/upsell */
 export const createOrUpdateUpsell = async (
   salesProcessId: number,
-  payload: CreateOrUpdateUpsellRequest
+  payload: CreateOrUpdateUpsellRequest,
 ): Promise<{
   upsell_id: number;
   updated: boolean;
@@ -549,11 +549,11 @@ type Setting = {
 
 export const getNumericSetting = async (
   key: string,
-  fallback: number
+  fallback: number,
 ): Promise<number> => {
   try {
     const { data } = await api.get<Setting>(
-      `/settings/${encodeURIComponent(key)}`
+      `/settings/${encodeURIComponent(key)}`,
     );
     const v =
       typeof data?.value_numeric === "number"
@@ -576,7 +576,7 @@ export interface CashflowRow {
 }
 
 export const getCashflowForecast = async (
-  contractId?: number
+  contractId?: number,
 ): Promise<CashflowRow[]> => {
   const url = contractId
     ? `/cashflow/forecast?contract_id=${contractId}`
@@ -613,7 +613,8 @@ export interface Comment {
   id: number;
   entity_type: CommentEntityType;
   entity_id: number;
-  content: string;
+  author?: string;
+  body: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -621,12 +622,12 @@ export interface Comment {
 export interface CreateCommentRequest {
   entity_type: CommentEntityType;
   entity_id: number;
-  content: string;
+  body: string;
 }
 
 export const getComments = async (
   entityType: CommentEntityType,
-  entityId: number
+  entityId: number,
 ): Promise<Comment[]> => {
   const { data } = await api.get(`/comments`, {
     params: { entity_type: entityType, entity_id: entityId },
@@ -635,7 +636,7 @@ export const getComments = async (
 };
 
 export const createComment = async (
-  payload: CreateCommentRequest
+  payload: CreateCommentRequest,
 ): Promise<Comment> => {
   const { data } = await api.post("/comments", payload);
   return data as Comment;

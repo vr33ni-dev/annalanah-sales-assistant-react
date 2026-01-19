@@ -41,7 +41,7 @@ export function CommentsSection({
     data: apiComments = [],
     isLoading,
     isError,
-  } = useQuery({
+  } = useQuery<Comment[], Error>({
     queryKey,
     queryFn: () => getComments(entityType, entityId),
     enabled: !!entityId && !useMockData,
@@ -52,16 +52,21 @@ export function CommentsSection({
     ? [...getMockCommentsForEntity(entityType, entityId), ...localMockComments]
     : apiComments;
 
-  const createMutation = useMutation({
+  const createMutation = useMutation<Comment, unknown, string>({
     mutationFn: (content: string) =>
-      createComment({ entity_type: entityType, entity_id: entityId, content }),
+      // API expects `body` field (backend contract). Pass `body` instead of `content`.
+      createComment({
+        entity_type: entityType,
+        entity_id: entityId,
+        body: content,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       setNewComment("");
     },
   });
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useMutation<void, unknown, number>({
     mutationFn: (commentId: number) => deleteComment(commentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
@@ -79,7 +84,7 @@ export function CommentsSection({
         id: Date.now(),
         entity_type: entityType,
         entity_id: entityId,
-        content: trimmed,
+        body: trimmed,
         created_at: new Date().toISOString(),
       };
       setLocalMockComments((prev) => [...prev, mockComment]);
@@ -110,7 +115,7 @@ export function CommentsSection({
       </div>
 
       {/* Comments List */}
-      <ScrollArea className="pr-4" style={{ maxHeight }}>
+      <ScrollArea className="pr-4" style={{ maxHeight, height: maxHeight }}>
         {isLoading && !useMockData ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -132,8 +137,11 @@ export function CommentsSection({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {comment.content}
+                    <p className="text-sm font-medium">
+                      {comment.author ?? "—"}
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap break-words mt-1">
+                      {comment.body ?? ""}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1.5">
                       {comment.created_at
