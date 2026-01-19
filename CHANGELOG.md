@@ -1,3 +1,16 @@
+# v0.1.29 (Mon Jan 19 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Enhance mock comments data ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.1.28 (Sun Jan 18 2026)
 
 #### 🐛 Bug Fix
