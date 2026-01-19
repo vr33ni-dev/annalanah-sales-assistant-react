@@ -6,6 +6,8 @@ import type {
   Lead,
   SalesProcess,
   Stage,
+  Comment,
+  CommentEntityType,
 } from "./api";
 import { SALES_STAGE } from "@/constants/stages";
 
@@ -512,3 +514,87 @@ export const mockCashflowForecast = [
   { month: "2025-11", confirmed: 0, potential: 0 },
   { month: "2025-12", confirmed: 0, potential: 0 },
 ];
+
+// Mock comments data
+export const mockComments: Comment[] = [
+  {
+    id: 1,
+    entity_type: "client",
+    entity_id: 1,
+    content: "Sehr engagierter Kunde, hat großes Interesse an unserem Coaching-Programm gezeigt.",
+    created_at: "2025-01-10T09:30:00Z",
+  },
+  {
+    id: 2,
+    entity_type: "client",
+    entity_id: 1,
+    content: "Telefongespräch geführt - möchte in Q2 erweitern.",
+    created_at: "2025-01-15T14:20:00Z",
+  },
+  {
+    id: 3,
+    entity_type: "client",
+    entity_id: 2,
+    content: "Erste Beratung war sehr positiv. Follow-up nächste Woche geplant.",
+    created_at: "2025-01-12T11:00:00Z",
+  },
+  {
+    id: 4,
+    entity_type: "contract",
+    entity_id: 1,
+    content: "Vertrag wurde pünktlich unterzeichnet. Alle Unterlagen vollständig.",
+    created_at: "2024-07-01T10:00:00Z",
+  },
+  {
+    id: 5,
+    entity_type: "contract",
+    entity_id: 1,
+    content: "Kunde ist zufrieden mit dem Fortschritt. Verlängerung wahrscheinlich.",
+    created_at: "2024-12-15T16:30:00Z",
+  },
+  {
+    id: 6,
+    entity_type: "contract",
+    entity_id: 3,
+    content: "Zahlungserinnerung wurde versendet.",
+    created_at: "2025-01-05T09:00:00Z",
+  },
+  {
+    id: 7,
+    entity_type: "salesprocess",
+    entity_id: 1,
+    content: "Erstkontakt per E-Mail. Interesse an Premium-Paket.",
+    created_at: "2024-06-15T08:45:00Z",
+  },
+  {
+    id: 8,
+    entity_type: "salesprocess",
+    entity_id: 1,
+    content: "Abschluss erfolgreich! Kunde hat 12-Monats-Vertrag gewählt.",
+    created_at: "2024-07-01T11:30:00Z",
+  },
+  {
+    id: 9,
+    entity_type: "salesprocess",
+    entity_id: 4,
+    content: "Follow-up Call angesetzt für nächste Woche.",
+    created_at: "2025-01-18T15:00:00Z",
+  },
+  {
+    id: 10,
+    entity_type: "salesprocess",
+    entity_id: 3,
+    content: "Angebot wurde versendet. Wartet auf Rückmeldung.",
+    created_at: "2024-09-20T10:15:00Z",
+  },
+];
+
+// Helper to get mock comments for a specific entity
+export const getMockCommentsForEntity = (
+  entityType: CommentEntityType,
+  entityId: number
+): Comment[] => {
+  return mockComments.filter(
+    (c) => c.entity_type === entityType && c.entity_id === entityId
+  );
+};

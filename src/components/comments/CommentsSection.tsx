@@ -14,6 +14,8 @@ import {
   createComment,
   deleteComment,
 } from "@/lib/api";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { getMockCommentsForEntity, isLovablePreview } from "@/lib/mockData";
 
 interface CommentsSectionProps {
   entityType: CommentEntityType;
@@ -29,19 +31,26 @@ export function CommentsSection({
   className,
 }: CommentsSectionProps) {
   const [newComment, setNewComment] = useState("");
+  const [localMockComments, setLocalMockComments] = useState<Comment[]>([]);
   const queryClient = useQueryClient();
+  const { useMockData } = useAuthEnabled();
 
   const queryKey = ["comments", entityType, entityId];
 
   const {
-    data: comments = [],
+    data: apiComments = [],
     isLoading,
     isError,
   } = useQuery({
     queryKey,
     queryFn: () => getComments(entityType, entityId),
-    enabled: !!entityId,
+    enabled: !!entityId && !useMockData,
   });
+
+  // Use mock data in Lovable preview
+  const comments = useMockData
+    ? [...getMockCommentsForEntity(entityType, entityId), ...localMockComments]
+    : apiComments;
 
   const createMutation = useMutation({
     mutationFn: (content: string) =>
@@ -63,7 +72,32 @@ export function CommentsSection({
     e.preventDefault();
     const trimmed = newComment.trim();
     if (!trimmed) return;
-    createMutation.mutate(trimmed);
+
+    if (useMockData) {
+      // In mock mode, add comment locally
+      const mockComment: Comment = {
+        id: Date.now(),
+        entity_type: entityType,
+        entity_id: entityId,
+        content: trimmed,
+        created_at: new Date().toISOString(),
+      };
+      setLocalMockComments((prev) => [...prev, mockComment]);
+      setNewComment("");
+    } else {
+      createMutation.mutate(trimmed);
+    }
+  };
+
+  const handleDelete = (commentId: number) => {
+    if (!window.confirm("Kommentar wirklich löschen?")) return;
+
+    if (useMockData) {
+      // In mock mode, remove from local state
+      setLocalMockComments((prev) => prev.filter((c) => c.id !== commentId));
+    } else {
+      deleteMutation.mutate(commentId);
+    }
   };
 
   return (
@@ -77,11 +111,11 @@ export function CommentsSection({
 
       {/* Comments List */}
       <ScrollArea className="pr-4" style={{ maxHeight }}>
-        {isLoading ? (
+        {isLoading && !useMockData ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
           </div>
-        ) : isError ? (
+        ) : isError && !useMockData ? (
           <p className="text-sm text-destructive">
             Fehler beim Laden der Kommentare.
           </p>
@@ -113,11 +147,7 @@ export function CommentsSection({
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      if (window.confirm("Kommentar wirklich löschen?")) {
-                        deleteMutation.mutate(comment.id);
-                      }
-                    }}
+                    onClick={() => handleDelete(comment.id)}
                     disabled={deleteMutation.isPending}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
