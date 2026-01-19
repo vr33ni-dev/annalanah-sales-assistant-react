@@ -1,3 +1,15 @@
+# v0.2.0 (Mon Jan 19 2026)
+
+#### 🚀 Enhancement
+
+- comment feature updated [#72](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/72) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.1.29 (Mon Jan 19 2026)
 
 #### ⚠️ Pushed to `main`
