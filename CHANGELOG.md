@@ -1,3 +1,15 @@
+# v0.3.0 (Wed Jan 21 2026)
+
+#### 🚀 Enhancement
+
+- Remove bump-version script + references and solely rely on auto for release/versioning [#73](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/73) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.2.0 (Mon Jan 19 2026)
 
 #### 🚀 Enhancement
