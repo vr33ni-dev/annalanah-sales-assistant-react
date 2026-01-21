@@ -63,7 +63,7 @@ function addMonthsIso(iso: string, m: number): string {
   dt.setMonth(dt.getMonth() + m);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
     2,
-    "0"
+    "0",
   )}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
@@ -132,13 +132,13 @@ export default function Contracts() {
   const queryClient = useQueryClient();
 
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
-    null
+    null,
   );
   const [showContractEdit, setShowContractEdit] = useState(false);
 
   const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
-    null
+    null,
   );
 
   // Upsell for selected contract
@@ -189,7 +189,7 @@ export default function Contracts() {
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
     (sum, c) => sum + c.monthly_amount,
-    0
+    0,
   );
   const activeContracts = contracts.length;
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
@@ -216,10 +216,10 @@ export default function Contracts() {
 
   /* ---- Filtered Contracts for Active Contracts table ---- */
   const [dateStart, setDateStart] = useState<string>(
-    startOfYear.toISOString().split("T")[0]
+    startOfYear.toISOString().split("T")[0],
   );
   const [dateEnd, setDateEnd] = useState<string>(
-    now.toISOString().split("T")[0]
+    now.toISOString().split("T")[0],
   );
 
   const filteredContracts = useMemo(() => {
@@ -241,8 +241,7 @@ export default function Contracts() {
       list = list.filter((c) => {
         const cStart = toDateStartOfDay(c.start_date as string | null);
         // prefer server-provided computed end date if present
-        const endFromServer = (c as unknown as { end_date_computed?: string })
-          .end_date_computed;
+        const endFromServer = c.end_date_computed ?? undefined;
         let cEnd = endFromServer ? toDateStartOfDay(endFromServer) : null;
 
         if (!cStart) return false; // contract without start - skip
@@ -255,7 +254,7 @@ export default function Contracts() {
             cEnd = new Date(
               cEnd.getFullYear(),
               cEnd.getMonth(),
-              cEnd.getDate()
+              cEnd.getDate(),
             );
           } else {
             // no end information -> treat as open-ended (far future)
@@ -289,6 +288,64 @@ export default function Contracts() {
   // Auto-open contract based on URL
   useEffect(() => {
     const openParam = searchParams.get("open");
+    const salesProcessParam = searchParams.get("sales_process");
+
+    // If a sales_process param is provided, prefer opening the contract
+    // that references that sales_process_id. If the contract is currently
+    // filtered out by the date window, widen the date window to include
+    // the contract's start..end range so it becomes visible.
+    if (salesProcessParam) {
+      const spId = Number(salesProcessParam);
+      if (!Number.isNaN(spId)) {
+        const match = contracts.find((c) => c.sales_process_id === spId);
+        if (match) {
+          // compute contract visible window
+          const cStart = toDateStartOfDay(match.start_date as string | null);
+          const cEndFromServer = match.end_date_computed ?? undefined;
+          const cEnd = cEndFromServer
+            ? toDateStartOfDay(cEndFromServer)
+            : addMonthsDate(cStart ?? new Date(), match.duration_months ?? 0);
+
+          // If contract not currently within date range, adjust filters
+          const viewStart = toDateStartOfDay(dateStart ?? null);
+          const viewEnd = toDateStartOfDay(dateEnd ?? null);
+
+          const needsExpand =
+            (cStart && viewStart && cStart < viewStart) ||
+            (cEnd && viewEnd && cEnd > viewEnd) ||
+            (!viewStart && cStart) ||
+            (!viewEnd && cEnd);
+
+          if (needsExpand) {
+            if (cStart) setDateStart(cStart.toISOString().split("T")[0]);
+            if (cEnd) setDateEnd(cEnd.toISOString().split("T")[0]);
+          }
+
+          // Make sure the client filter is set so the table shows the matching client
+          if (String(match.client_id) !== clientFilter) {
+            // navigate to the same route but with client param set (this also updates searchParams)
+            const params = new URLSearchParams(
+              Array.from(searchParams.entries()),
+            );
+            params.set("client", String(match.client_id));
+            params.set("open", "1");
+            params.set("sales_process", String(spId));
+            // replace history so it's seamless
+            navigate(
+              { pathname: "/contracts", search: params.toString() },
+              { replace: true },
+            );
+            // selectedContract will be set by the effect below after filters recompute
+            return;
+          }
+
+          // If client filter matches or was already correct, open the contract after filters run
+          setSelectedContract(match);
+          return;
+        }
+      }
+    }
+
     if (openParam && filteredContracts.length > 0) {
       // automatically open the first contract for that client
       setSelectedContract(filteredContracts[0]);
@@ -312,7 +369,7 @@ export default function Contracts() {
   /* ---- Next 3 months (CONFIRMED ONLY) ---- */
   const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
     2,
-    "0"
+    "0",
   )}`;
 
   const futureMonths = (forecast ?? [])
@@ -338,7 +395,7 @@ export default function Contracts() {
   const avgNext3 =
     next3Display.length > 0
       ? Math.round(
-          next3Display.reduce((s, r) => s + r.total, 0) / next3Display.length
+          next3Display.reduce((s, r) => s + r.total, 0) / next3Display.length,
         )
       : 0;
 
@@ -408,17 +465,17 @@ export default function Contracts() {
                     .map((c) => {
                       const start = parseIso(c.start_date);
                       const end = parseIso(
-                        addMonthsIso(c.start_date, c.duration_months)
+                        addMonthsIso(c.start_date, c.duration_months),
                       );
                       const monthsActiveThisYear = monthsOverlap(
                         start,
                         end,
                         new Date(now.getFullYear(), 0, 1),
-                        now
+                        now,
                       );
                       const paidInThisYear = Math.min(
                         c.paid_months,
-                        monthsActiveThisYear
+                        monthsActiveThisYear,
                       );
                       return `${paidInThisYear}×${euro(c.monthly_amount)}`;
                     })
@@ -427,7 +484,7 @@ export default function Contracts() {
             }\n` +
             `= ${euro(ytdCashIn)}\n` +
             `Ø/Monat YTD = ${euro(ytdCashIn)} / ${monthsElapsedYtd} = ${euro(
-              avgMonthlyYtd
+              avgMonthlyYtd,
             )}`
           }
         />
@@ -524,7 +581,7 @@ export default function Contracts() {
                           Monate
                           {contract.next_due_date
                             ? ` • Nächste: ${formatDateOnly(
-                                contract.next_due_date
+                                contract.next_due_date,
                               )}`
                             : ""}
                         </p>
@@ -761,7 +818,7 @@ export default function Contracts() {
             refetchContracts().then((result) => {
               // Get fresh contract from server
               const updated = result.data?.find(
-                (c) => c.id === selectedContract?.id
+                (c) => c.id === selectedContract?.id,
               );
               if (updated) {
                 setSelectedContract(updated); //  refreshes the drawer details
