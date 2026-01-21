@@ -1,3 +1,16 @@
+# v0.3.1 (Wed Jan 21 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Lovable update ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.3.0 (Wed Jan 21 2026)
 
 #### 🚀 Enhancement
