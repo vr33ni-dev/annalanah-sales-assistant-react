@@ -130,7 +130,7 @@ export default function SalesProcessView() {
 
   // Form Merge conflict state
   const [mergeConflicts, setMergeConflicts] = useState<MergeConflicts | null>(
-    null
+    null,
   );
   const [pendingPayload, setPendingPayload] =
     useState<StartSalesProcessRequest | null>(null);
@@ -237,12 +237,12 @@ export default function SalesProcessView() {
 
   const toggleStatusFilter = (value: string) => {
     setActiveStatusFilters((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
     );
   };
   const toggleSourceFilter = (value: string) => {
     setActiveSourceFilters((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
     );
   };
 
@@ -255,7 +255,7 @@ export default function SalesProcessView() {
       return new Date(
         date.getUTCFullYear(),
         date.getUTCMonth(),
-        date.getUTCDate()
+        date.getUTCDate(),
       );
     } catch {
       return null;
@@ -263,7 +263,7 @@ export default function SalesProcessView() {
   }
 
   function normalizeStartPayload(
-    p: StartSalesProcessRequest
+    p: StartSalesProcessRequest,
   ): StartSalesProcessRequest {
     return {
       ...p,
@@ -288,15 +288,15 @@ export default function SalesProcessView() {
               ? "zweitgespräch geplant"
               : "zweitgespräch abgeschlossen"
             : e.stage === SALES_STAGE.CLOSED
-            ? "abgeschlossen"
-            : "verloren";
+              ? "abgeschlossen"
+              : "verloren";
         return activeStatusFilters.includes(label);
       });
     }
 
     if (activeSourceFilters.length > 0) {
       result = result.filter((e) =>
-        e.client_source ? activeSourceFilters.includes(e.client_source) : false
+        e.client_source ? activeSourceFilters.includes(e.client_source) : false,
       );
     }
 
@@ -380,7 +380,7 @@ export default function SalesProcessView() {
             phone: formData.phone || undefined,
             source: formData.source,
             source_stage_id:
-              formData.source === "paid" ? formData.stageId ?? null : null,
+              formData.source === "paid" ? (formData.stageId ?? null) : null,
           });
 
           resolvedLeadId = lead.id; // IMPORTANT: local, synchronous
@@ -396,7 +396,7 @@ export default function SalesProcessView() {
         phone: formData.phone ?? "",
         source: formData.source,
         source_stage_id:
-          formData.source === "paid" ? formData.stageId ?? null : null,
+          formData.source === "paid" ? (formData.stageId ?? null) : null,
         lead_id: resolvedLeadId, // ← always correct
         follow_up_date: format(formData.zweitgespraechDate!, "yyyy-MM-dd"),
       };
@@ -472,7 +472,7 @@ export default function SalesProcessView() {
       normalizeStartPayload({
         ...pendingPayload,
         merge_strategy: "overwrite",
-      })
+      }),
     );
   };
 
@@ -607,7 +607,7 @@ export default function SalesProcessView() {
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
                           !formData.zweitgespraechDate &&
-                            "text-muted-foreground"
+                            "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -720,8 +720,8 @@ export default function SalesProcessView() {
                       formData.zweitgespraechResult === true
                         ? "erschienen"
                         : formData.zweitgespraechResult === false
-                        ? "nicht_erschienen"
-                        : "ausstehend"
+                          ? "nicht_erschienen"
+                          : "ausstehend"
                     }
                     onValueChange={(value) => {
                       setFormData({
@@ -730,8 +730,8 @@ export default function SalesProcessView() {
                           value === "erschienen"
                             ? true
                             : value === "nicht_erschienen"
-                            ? false
-                            : null,
+                              ? false
+                              : null,
                       });
                     }}
                   >
@@ -786,8 +786,8 @@ export default function SalesProcessView() {
                       {formData.abschluss === true
                         ? "Ja, Vertrag abgeschlossen"
                         : formData.abschluss === false
-                        ? "Nein, kein Abschluss"
-                        : "Bitte auswählen"}
+                          ? "Nein, kein Abschluss"
+                          : "Bitte auswählen"}
                     </span>
                   </div>
                 </div>
@@ -835,7 +835,8 @@ export default function SalesProcessView() {
                             variant="outline"
                             className={cn(
                               "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.contractStart && "text-muted-foreground"
+                              !formData.contractStart &&
+                                "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -900,7 +901,7 @@ export default function SalesProcessView() {
                             variant="outline"
                             className={cn(
                               "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.completedAt && "text-muted-foreground"
+                              !formData.completedAt && "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
@@ -1138,7 +1139,7 @@ export default function SalesProcessView() {
               {filteredEntries.map((e) => {
                 const linkedStage =
                   typeof e.stage_id === "number"
-                    ? stages.find((s) => s.id === e.stage_id)?.name ?? null
+                    ? (stages.find((s) => s.id === e.stage_id)?.name ?? null)
                     : null;
                 return (
                   <TableRow key={e.id}>
@@ -1155,7 +1156,7 @@ export default function SalesProcessView() {
                             ? format(
                                 parseDateSafe(e.follow_up_date)!,
                                 "dd.MM.yyyy",
-                                { locale: de }
+                                { locale: de },
                               )
                             : "–"}
                         </span>
@@ -1202,7 +1203,7 @@ export default function SalesProcessView() {
                                       payload: {
                                         follow_up_date: format(
                                           newDate,
-                                          "yyyy-MM-dd"
+                                          "yyyy-MM-dd",
                                         ),
                                       } as SalesProcessUpdateRequest,
                                     });
@@ -1212,7 +1213,7 @@ export default function SalesProcessView() {
                                   } catch (err) {
                                     alert(
                                       "Fehler beim Speichern: " +
-                                        extractErrorMessage(err)
+                                        extractErrorMessage(err),
                                     );
                                   } finally {
                                     setSavingId(null);
@@ -1263,7 +1264,7 @@ export default function SalesProcessView() {
                                 setFormStep(2);
 
                                 const followUpDate = parseDateSafe(
-                                  e.follow_up_date
+                                  e.follow_up_date,
                                 );
                                 const now = new Date();
 
@@ -1273,7 +1274,7 @@ export default function SalesProcessView() {
                                 const defaultResult =
                                   followUpDate && followUpDate > now
                                     ? null
-                                    : e.follow_up_result ?? null;
+                                    : (e.follow_up_result ?? null);
 
                                 setFormData((prev) => ({
                                   ...prev,
@@ -1305,7 +1306,7 @@ export default function SalesProcessView() {
                                   zweitgespraechResult: true,
                                   abschluss: null,
                                   zweitgespraechDate: parseDateSafe(
-                                    e.follow_up_date
+                                    e.follow_up_date,
                                   ),
                                 }));
                               }}
@@ -1320,7 +1321,7 @@ export default function SalesProcessView() {
                             variant="outline"
                             onClick={() =>
                               navigate(
-                                `/contracts?client=${e.client_id}&open=1`
+                                `/contracts?client=${e.client_id}&open=1&sales_process=${e.id}`,
                               )
                             }
                           >
