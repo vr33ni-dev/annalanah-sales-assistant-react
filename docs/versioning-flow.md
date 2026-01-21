@@ -26,27 +26,29 @@ These snippets mirror the steps the GitHub Actions workflows run (for debugging 
 
 Snippets (copy/paste)
 
-Apply bump (PR branch)
+Release handling in this repository uses `auto shipit` as the single source
+of truth for version bumps, tags, and GitHub Releases. We follow a "pure-auto"
+policy: PR checks compute and display the candidate version, but do not mutate
+the PR branch. The `release-with-auto.yml` workflow performs the atomic
+bump+tag+publish operation via `auto shipit` on `main`.
+
+Local / debugging snippets
+
+Compute candidate for a PR (dry-run):
 
 ```bash
-# compute & apply on PR branch (same-repo)
-.github/scripts/bump-version.sh package.json auto --apply
-npm install --package-lock-only
-git add package.json package-lock.json
-git commit -m "chore: bump to vX.Y.Z" || true
-git push
+# run from the PR branch or an environment that mirrors the merged tree
+npx auto shipit --dry-run 2>&1 | tee auto-shipit-dry-run.log
 ```
 
-Autobump (main)
+Create the release (run on `main`, use a token with push/release permissions):
 
 ```bash
-# run on main (after merge)
-git checkout main
-.github/scripts/bump-version.sh package.json auto --apply
-# if files changed
-git add package.json package-lock.json
-git commit -m "chore: ensure main bumped to vX.Y.Z" || true
+# ensure you are on the commit you want to release
+npx auto shipit
+# after a successful run, reconcile lockfiles if required
+npm ci
+git add package-lock.json pnpm-lock.yaml yarn.lock || true
+git commit -m "chore(release): update lockfile(s) after release [skip ci]" || true
 git push
-git tag -a vX.Y.Z -m "release vX.Y.Z"
-git push origin vX.Y.Z
 ```

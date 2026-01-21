@@ -146,6 +146,36 @@ jobs:
 
           echo "Computed candidate tag: $TAG_NAME"
 
+          # --- Pre-release checks: tag / Release existence ---
+          # Use the chosen token for API checks
+          AUTH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+
+          # Check if the tag already exists on the remote
+          if git ls-remote --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag ${TAG_NAME} already exists on origin"
+            TAG_EXISTS=1
+          else
+            TAG_EXISTS=0
+          fi
+
+          # Check if a GitHub Release for this tag already exists
+          RELEASE_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${AUTH_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" || true)
+          if [ "${RELEASE_HTTP_CODE}" = "200" ]; then
+            echo "GitHub Release for ${TAG_NAME} already exists"
+            RELEASE_EXISTS=1
+          else
+            RELEASE_EXISTS=0
+          fi
+
+          if [ "${TAG_EXISTS}" -eq 1 ] && [ "${RELEASE_EXISTS}" -eq 1 ]; then
+            echo "Tag and release already exist for ${TAG_NAME}; nothing to do. Exiting."
+            exit 0
+          fi
+
+          if [ "${TAG_EXISTS}" -eq 1 ] && [ "${RELEASE_EXISTS}" -eq 0 ]; then
+            echo "Warning: Tag ${TAG_NAME} exists but Release is missing. Will attempt to run 'auto shipit' to create the release."
+          fi
+
           # We no longer perform a manual package.json bump in CI. Let `auto`
           # perform the version bump and publish atomically via `auto shipit`.
           echo "Skipping manual package.json bump; letting 'auto shipit' perform the bump & publish."
@@ -169,6 +199,20 @@ jobs:
             echo "auto shipit failed; aborting release step" >&2
             exit 1
           }
+
+          # --- Post-release verification: ensure the GitHub Release exists before committing lockfiles ---
+          # Give GitHub a moment to settle (tags/releases may be briefly eventual-consistent)
+          SLEEP_SECS=3
+          echo "Waiting ${SLEEP_SECS}s for GitHub to register the release..."
+          sleep ${SLEEP_SECS}
+
+          # Re-check release existence via API using the same AUTH_TOKEN
+          POST_RELEASE_HTTP_CODE=$(curl -s -o /tmp/post_release_check -w "%{http_code}" -H "Authorization: token ${AUTH_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG_NAME}" || true)
+          if [ "${POST_RELEASE_HTTP_CODE}" != "200" ]; then
+            echo "Release for ${TAG_NAME} not found after auto shipit; aborting lockfile commit and failing the job." >&2
+            echo "GitHub API response (body):" && cat /tmp/post_release_check || true
+            exit 1
+          fi
 
           # After auto shipit runs, update lockfiles if needed and push a dedicated commit
           echo "Checking for lockfile changes after auto shipit..."
