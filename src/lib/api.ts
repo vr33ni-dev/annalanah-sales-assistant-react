@@ -185,6 +185,7 @@ export const getSalesProcessById = async (
 // Narrow the update payload to only fields the backend accepts on PATCH
 export type SalesProcessUpdateRequest = {
   follow_up_result?: boolean | null;
+  follow_up_date?: string;
   closed?: boolean | null;
   revenue?: number | null;
   contract_duration_months?: number;
@@ -210,6 +211,7 @@ export type StartSalesProcessRequest = {
   follow_up_date: string;
   lead_id?: number | null;
   merge_strategy?: "keep_existing" | "overwrite";
+  stage?: string;
 };
 
 export interface StartSalesProcessResponse {

@@ -72,6 +72,7 @@ const stageBadgeClass: Record<
   (typeof SALES_STAGE)[keyof typeof SALES_STAGE],
   string
 > = {
+  [SALES_STAGE.ERSTGESPRAECH]: "bg-primary/10 text-primary border border-primary/20",
   [SALES_STAGE.FOLLOW_UP]: "bg-warning text-warning-foreground",
   [SALES_STAGE.CLOSED]: "bg-success text-success-foreground",
   [SALES_STAGE.LOST]: "bg-destructive text-destructive-foreground",
@@ -137,6 +138,7 @@ export default function SalesProcessView() {
 
   type StatusFilter =
     | "all"
+    | "erstgespräch"
     | "zweitgespräch geplant"
     | "zweitgespräch abgeschlossen"
     | "abgeschlossen"
@@ -283,14 +285,19 @@ export default function SalesProcessView() {
 
     if (activeStatusFilters.length > 0) {
       result = result.filter((e) => {
-        const label =
-          e.stage === SALES_STAGE.FOLLOW_UP
-            ? (e.follow_up_result ?? null) == null
+        let label: string;
+        if (e.stage === SALES_STAGE.ERSTGESPRAECH) {
+          label = "erstgespräch";
+        } else if (e.stage === SALES_STAGE.FOLLOW_UP) {
+          label =
+            (e.follow_up_result ?? null) == null
               ? "zweitgespräch geplant"
-              : "zweitgespräch abgeschlossen"
-            : e.stage === SALES_STAGE.CLOSED
-              ? "abgeschlossen"
-              : "verloren";
+              : "zweitgespräch abgeschlossen";
+        } else if (e.stage === SALES_STAGE.CLOSED) {
+          label = "abgeschlossen";
+        } else {
+          label = "verloren";
+        }
         return activeStatusFilters.includes(label);
       });
     }
@@ -324,7 +331,7 @@ export default function SalesProcessView() {
   ) {
     if (errorSales)
       return (
-        <div className="p-6 text-red-500">Fehler beim Laden der Pipeline.</div>
+        <div className="p-6 text-destructive">Fehler beim Laden der Pipeline.</div>
       );
     return <div className="p-6">Lade Verkaufsdaten…</div>;
   }
@@ -365,48 +372,60 @@ export default function SalesProcessView() {
     });
   };
 
-  // Step 1: Erstgespräch — just collect personal info + source/stage, advance to step 2
-  const handleStep1 = () => {
+  // Step 1: Erstgespräch — save & close (creates lead + sales process with erstgespraech stage)
+  const handleStep1 = async () => {
     if (!formData.name || !formData.source) return;
-    setFormStep(2);
+
+    let resolvedLeadId: number | undefined = formData.leadId;
+
+    if (!formData.clientId && !resolvedLeadId) {
+      try {
+        const lead = await createLead({
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          source: formData.source,
+          source_stage_id:
+            formData.source === "paid" ? (formData.stageId ?? null) : null,
+        });
+        resolvedLeadId = lead.id;
+      } catch (err: unknown) {
+        alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
+        return;
+      }
+    }
+
+    const payload = {
+      name: formData.name,
+      email: formData.email ?? "",
+      phone: formData.phone ?? "",
+      source: formData.source,
+      source_stage_id:
+        formData.source === "paid" ? (formData.stageId ?? null) : null,
+      lead_id: resolvedLeadId,
+      // Use erstgespraechDate as the follow_up_date for this stage
+      follow_up_date: formData.erstgespraechDate
+        ? format(formData.erstgespraechDate, "yyyy-MM-dd")
+        : format(new Date(), "yyyy-MM-dd"),
+      stage: SALES_STAGE.ERSTGESPRAECH,
+    };
+
+    await mStart.mutateAsync({ ...payload });
   };
 
   const handleSubmit = async () => {
-    // Step 2: Zweitgespräch planen — create lead + sales process
+    // Step 2: Zweitgespräch planen — update existing sales process with zweitgespräch date
     if (formStep === 2) {
-      if (!formData.name || !formData.zweitgespraechDate) return;
+      if (!formData.salesProcessId || !formData.zweitgespraechDate) return;
 
-      let resolvedLeadId: number | undefined = formData.leadId;
+      await mPatch.mutateAsync({
+        id: formData.salesProcessId,
+        payload: {
+          follow_up_date: format(formData.zweitgespraechDate, "yyyy-MM-dd"),
+        } as SalesProcessUpdateRequest,
+      });
 
-      if (!formData.clientId && !resolvedLeadId) {
-        try {
-          const lead = await createLead({
-            name: formData.name,
-            email: formData.email || undefined,
-            phone: formData.phone || undefined,
-            source: formData.source,
-            source_stage_id:
-              formData.source === "paid" ? (formData.stageId ?? null) : null,
-          });
-          resolvedLeadId = lead.id;
-        } catch (err: unknown) {
-          alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
-          return;
-        }
-      }
-
-      const payload = {
-        name: formData.name,
-        email: formData.email ?? "",
-        phone: formData.phone ?? "",
-        source: formData.source,
-        source_stage_id:
-          formData.source === "paid" ? (formData.stageId ?? null) : null,
-        lead_id: resolvedLeadId,
-        follow_up_date: format(formData.zweitgespraechDate!, "yyyy-MM-dd"),
-      };
-
-      await mStart.mutateAsync({ ...payload });
+      resetAll();
       return;
     }
 
@@ -654,9 +673,9 @@ export default function SalesProcessView() {
                 <div className="col-span-full flex gap-3">
                   <Button
                     onClick={handleStep1}
-                    disabled={!formData.name || !formData.source}
+                    disabled={!formData.name || !formData.source || mStart.isPending}
                   >
-                    Weiter
+                    {mStart.isPending ? "Speichern…" : "Speichern"}
                   </Button>
                   <Button variant="outline" onClick={() => setShowForm(false)}>
                     Abbrechen
@@ -665,60 +684,18 @@ export default function SalesProcessView() {
               </div>
             )}
 
-            {/* Step 2: Zweitgespräch planen */}
+            {/* Step 2: Zweitgespräch planen (opened from table actions) */}
             {formStep === 2 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-full p-3 bg-muted/30 rounded-lg">
                   <p className="text-sm text-muted-foreground">
+                    Zweitgespräch planen für{" "}
                     <span className="font-medium text-foreground">{formData.name}</span>
-                    {formData.source && (
-                      <> · {formData.source === "paid" ? "Bezahlt" : "Organisch"}</>
-                    )}
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="name2">Name (Vor- und Nachname)</Label>
-                  <Input
-                    id="name2"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="Max Mustermann"
-                    className="bg-success/5 border-success/30 focus:border-success"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email2">Email</Label>
-                  <Input
-                    id="email2"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="max@example.com"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone2">Telefon</Label>
-                  <Input
-                    id="phone2"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="+49 123 456789"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Datum des Zweitgesprächs</Label>
+                <div className="space-y-2 col-span-full md:col-span-1">
+                  <Label>Datum des Zweitgesprächs *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -755,16 +732,11 @@ export default function SalesProcessView() {
                 </div>
 
                 <div className="col-span-full flex gap-3">
-                  <Button variant="outline" onClick={() => setFormStep(1)}>
-                    Zurück
-                  </Button>
                   <Button
                     onClick={handleSubmit}
-                    disabled={
-                      !formData.name || !formData.zweitgespraechDate
-                    }
+                    disabled={!formData.zweitgespraechDate || mPatch.isPending}
                   >
-                    Speichern
+                    {mPatch.isPending ? "Speichern…" : "Speichern"}
                   </Button>
                   <Button variant="ghost" onClick={() => setShowForm(false)}>
                     Abbrechen
@@ -1048,6 +1020,7 @@ export default function SalesProcessView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle Status</SelectItem>
+                <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
                 <SelectItem value="zweitgespräch geplant">
                   Zweitgespräch geplant
                 </SelectItem>
@@ -1092,6 +1065,7 @@ export default function SalesProcessView() {
 
                         {/* Individual statuses */}
                         {[
+                          "erstgespräch",
                           "zweitgespräch geplant",
                           "zweitgespräch abgeschlossen",
                           "abgeschlossen",
@@ -1124,6 +1098,7 @@ export default function SalesProcessView() {
                     </PopoverContent>
                   </Popover>
                 </TableHead>
+                <TableHead>Erstgespräch</TableHead>
                 <TableHead>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -1225,10 +1200,21 @@ export default function SalesProcessView() {
                         {STAGE_LABELS[e.stage]}
                       </Badge>
                     </TableCell>
+
+                    {/* Erstgespräch date — shown when stage is erstgespraech, otherwise "–" */}
+                    <TableCell>
+                      <span className="text-sm">
+                        {e.stage === SALES_STAGE.ERSTGESPRAECH && e.follow_up_date
+                          ? format(parseDateSafe(e.follow_up_date)!, "dd.MM.yyyy", { locale: de })
+                          : "–"}
+                      </span>
+                    </TableCell>
+
+                    {/* Zweitgespräch date — shown for follow_up/closed/lost stages */}
                     <TableCell>
                       <div className="flex items-center gap-2 relative">
                         <span className="text-sm">
-                          {e.follow_up_date
+                          {e.stage !== SALES_STAGE.ERSTGESPRAECH && e.follow_up_date
                             ? format(
                                 parseDateSafe(e.follow_up_date)!,
                                 "dd.MM.yyyy",
@@ -1237,17 +1223,19 @@ export default function SalesProcessView() {
                             : "–"}
                         </span>
 
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={savingId === e.id}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            setEditingId(e.id);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </Button>
+                        {e.stage !== SALES_STAGE.ERSTGESPRAECH && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={savingId === e.id}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setEditingId(e.id);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        )}
 
                         {editingId === e.id && (
                           <Popover open onOpenChange={() => setEditingId(null)}>
@@ -1305,9 +1293,13 @@ export default function SalesProcessView() {
                     </TableCell>
 
                     <TableCell>
-                      {e.follow_up_result === true && "Erschienen"}
-                      {e.follow_up_result === false && "Nicht erschienen"}
-                      {e.follow_up_result === null && "Ausstehend"}
+                      {e.stage === SALES_STAGE.ERSTGESPRAECH
+                        ? "–"
+                        : e.follow_up_result === true
+                          ? "Erschienen"
+                          : e.follow_up_result === false
+                            ? "Nicht erschienen"
+                            : "Ausstehend"}
                     </TableCell>
                     <TableCell>
                       {e.client_source
@@ -1321,15 +1313,37 @@ export default function SalesProcessView() {
                       {e.revenue ? `€${e.revenue.toLocaleString()}` : "-"}
                     </TableCell>
 
-                    {/* NEW: Actions column */}
+                    {/* Actions column */}
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <CommentsDialog
                           entityType="salesprocess"
                           entityId={e.id}
                           entityName={e.client_name}
                         />
 
+                        {/* Zweitgespräch planen — only for erstgespraech stage */}
+                        {e.stage === SALES_STAGE.ERSTGESPRAECH && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setShowForm(true);
+                              setFormStep(2);
+                              setFormData((prev) => ({
+                                ...prev,
+                                name: e.client_name,
+                                salesProcessId: e.id,
+                                clientId: e.client_id,
+                                zweitgespraechDate: null,
+                              }));
+                            }}
+                          >
+                            Zweitgespräch planen
+                          </Button>
+                        )}
+
+                        {/* Ergebnis eintragen — only for follow_up with no result yet */}
                         {e.stage === SALES_STAGE.FOLLOW_UP &&
                           e.follow_up_result == null && (
                             <Button
