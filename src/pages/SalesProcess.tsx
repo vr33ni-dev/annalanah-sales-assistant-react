@@ -122,7 +122,7 @@ export default function SalesProcessView() {
 
   // Form state
   const [showForm, setShowForm] = useState(false);
-  const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+  const [formStep, setFormStep] = useState<1 | 2 | 3 | 4>(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
@@ -150,6 +150,7 @@ export default function SalesProcessView() {
     phone: "",
     source: "" as "" | "organic" | "paid",
     stageId: null as number | null,
+    erstgespraechDate: null as Date | null,
     zweitgespraechDate: null as Date | null,
     salesProcessId: undefined as number | undefined,
     zweitgespraechResult: null as boolean | null,
@@ -349,6 +350,7 @@ export default function SalesProcessView() {
       phone: "",
       source: "",
       stageId: null,
+      erstgespraechDate: null,
       zweitgespraechDate: null,
       salesProcessId: undefined,
       zweitgespraechResult: null,
@@ -363,15 +365,19 @@ export default function SalesProcessView() {
     });
   };
 
+  // Step 1: Erstgespräch — just collect personal info + source/stage, advance to step 2
+  const handleStep1 = () => {
+    if (!formData.name || !formData.source) return;
+    setFormStep(2);
+  };
+
   const handleSubmit = async () => {
-    if (formStep === 1) {
-      // Step 1: schedule zweitgespräch
-      if (!formData.name || !formData.zweitgespraechDate || !formData.source)
-        return;
+    // Step 2: Zweitgespräch planen — create lead + sales process
+    if (formStep === 2) {
+      if (!formData.name || !formData.zweitgespraechDate) return;
 
       let resolvedLeadId: number | undefined = formData.leadId;
 
-      // Create or reuse lead if we don’t already have one
       if (!formData.clientId && !resolvedLeadId) {
         try {
           const lead = await createLead({
@@ -382,8 +388,7 @@ export default function SalesProcessView() {
             source_stage_id:
               formData.source === "paid" ? (formData.stageId ?? null) : null,
           });
-
-          resolvedLeadId = lead.id; // IMPORTANT: local, synchronous
+          resolvedLeadId = lead.id;
         } catch (err: unknown) {
           alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
           return;
@@ -397,19 +402,16 @@ export default function SalesProcessView() {
         source: formData.source,
         source_stage_id:
           formData.source === "paid" ? (formData.stageId ?? null) : null,
-        lead_id: resolvedLeadId, // ← always correct
+        lead_id: resolvedLeadId,
         follow_up_date: format(formData.zweitgespraechDate!, "yyyy-MM-dd"),
       };
 
-      await mStart.mutateAsync({
-        ...payload,
-      });
-
+      await mStart.mutateAsync({ ...payload });
       return;
     }
 
-    // Step 2 unchanged
-    if (formStep === 2) {
+    // Step 3: Zweitgespräch Ergebnis
+    if (formStep === 3) {
       if (!formData.salesProcessId) return;
 
       await mPatch.mutateAsync({
@@ -421,8 +423,8 @@ export default function SalesProcessView() {
       return;
     }
 
-    // Step 3 unchanged
-    if (formStep === 3) {
+    // Step 4: Abschluss
+    if (formStep === 4) {
       if (!formData.salesProcessId) return;
 
       const revenueNum =
@@ -508,7 +510,7 @@ export default function SalesProcessView() {
           }}
         >
           <CalendarPlus className="w-4 h-4 mr-2" />
-          Zweitgespräch planen
+          Erstgespräch planen
         </Button>
       </div>
 
@@ -518,48 +520,18 @@ export default function SalesProcessView() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              {formStep === 1 && "Schritt 1: Zweitgespräch planen"}
-              {formStep === 2 && "Schritt 2: Zweitgespräch Ergebnis"}
-              {formStep === 3 && "Schritt 3: Abschluss"}
+              {formStep === 1 && "Schritt 1: Erstgespräch planen"}
+              {formStep === 2 && "Schritt 2: Zweitgespräch planen"}
+              {formStep === 3 && "Schritt 3: Zweitgespräch Ergebnis"}
+              {formStep === 4 && "Schritt 4: Abschluss"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Step 1 */}
+            {/* Step 1: Erstgespräch planen */}
             {formStep === 1 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Lead Search */}
-                <div className="col-span-full space-y-2">
-                  <Label>Bestehenden Lead auswählen (optional)</Label>
-                  <LeadSearch
-                    selectedLeadId={formData.leadId}
-                    onSelectLead={(lead: Lead | null) => {
-                      if (lead) {
-                        setFormData({
-                          ...formData,
-                          leadId: lead.id,
-                          name: lead.name,
-                          email: lead.email ?? "",
-                          phone: lead.phone ?? "",
-                          source: (lead.source as "organic" | "paid") ?? "",
-                          stageId: lead.source_stage_id ?? null,
-                        });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          leadId: undefined,
-                          name: "",
-                          email: "",
-                          phone: "",
-                          source: "",
-                          stageId: null,
-                        });
-                      }
-                    }}
-                  />
-                </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name (Vor- und Nachname)</Label>
+                  <Label htmlFor="name">Name (Vor- und Nachname) *</Label>
                   <Input
                     id="name"
                     value={formData.name}
@@ -589,6 +561,153 @@ export default function SalesProcessView() {
                   <Label htmlFor="phone">Telefon</Label>
                   <Input
                     id="phone"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    placeholder="+49 123 456789"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Datum des Erstgesprächs</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
+                          !formData.erstgespraechDate && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.erstgespraechDate
+                          ? format(formData.erstgespraechDate, "PPP", {
+                              locale: de,
+                            })
+                          : "Datum auswählen"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={formData.erstgespraechDate ?? undefined}
+                        onSelect={(date) =>
+                          setFormData({
+                            ...formData,
+                            erstgespraechDate: date ?? null,
+                          })
+                        }
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Quelle *</Label>
+                  <Select
+                    value={formData.source ?? ""}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        source: value as "organic" | "paid",
+                        stageId: value !== "paid" ? null : formData.stageId,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                      <SelectValue placeholder="Quelle auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="organic">Organisch</SelectItem>
+                      <SelectItem value="paid">Bezahlt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.source === "paid" && (
+                  <div className="space-y-2">
+                    <Label>Bühne auswählen</Label>
+                    <Select
+                      value={String(formData.stageId ?? "")}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, stageId: Number(value) })
+                      }
+                    >
+                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                        <SelectValue placeholder="Bühne auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map((st) => (
+                          <SelectItem key={st.id} value={String(st.id)}>
+                            {st.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="col-span-full flex gap-3">
+                  <Button
+                    onClick={handleStep1}
+                    disabled={!formData.name || !formData.source}
+                  >
+                    Weiter
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Zweitgespräch planen */}
+            {formStep === 2 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-full p-3 bg-muted/30 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">{formData.name}</span>
+                    {formData.source && (
+                      <> · {formData.source === "paid" ? "Bezahlt" : "Organisch"}</>
+                    )}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="name2">Name (Vor- und Nachname)</Label>
+                  <Input
+                    id="name2"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder="Max Mustermann"
+                    className="bg-success/5 border-success/30 focus:border-success"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email2">Email</Label>
+                  <Input
+                    id="email2"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                    placeholder="max@example.com"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone2">Telefon</Label>
+                  <Input
+                    id="phone2"
                     value={formData.phone}
                     onChange={(e) =>
                       setFormData({ ...formData, phone: e.target.value })
@@ -635,70 +754,27 @@ export default function SalesProcessView() {
                   </Popover>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Quelle</Label>
-                  <Select
-                    value={formData.source ?? ""}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        source: value as "organic" | "paid",
-                      })
-                    }
-                  >
-                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                      <SelectValue placeholder="Quelle auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="organic">Organisch</SelectItem>
-                      <SelectItem value="paid">Bezahlt</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.source === "paid" && (
-                  <div className="space-y-2">
-                    <Label>Bühne auswählen</Label>
-                    <Select
-                      value={String(formData.stageId ?? "")}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, stageId: Number(value) })
-                      }
-                    >
-                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                        <SelectValue placeholder="Bühne auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stages.map((st) => (
-                          <SelectItem key={st.id} value={String(st.id)}>
-                            {st.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
                 <div className="col-span-full flex gap-3">
+                  <Button variant="outline" onClick={() => setFormStep(1)}>
+                    Zurück
+                  </Button>
                   <Button
                     onClick={handleSubmit}
                     disabled={
-                      !formData.name ||
-                      !formData.zweitgespraechDate ||
-                      !formData.source
+                      !formData.name || !formData.zweitgespraechDate
                     }
                   >
                     Speichern
                   </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                  <Button variant="ghost" onClick={() => setShowForm(false)}>
                     Abbrechen
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 2 */}
-            {formStep === 2 && (
+            {/* Step 3: Zweitgespräch Ergebnis */}
+            {formStep === 3 && (
               <div className="space-y-6">
                 <div className="p-4 bg-muted/30 rounded-lg">
                   <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
@@ -755,7 +831,7 @@ export default function SalesProcessView() {
                   )}
                 </div>
                 <div className="flex gap-3">
-                  <Button onClick={() => setFormStep(1)} variant="outline">
+                  <Button onClick={() => setFormStep(2)} variant="outline">
                     Zurück
                   </Button>
                   <Button onClick={handleSubmit}>Speichern</Button>
@@ -763,8 +839,8 @@ export default function SalesProcessView() {
               </div>
             )}
 
-            {/* Step 3 */}
-            {formStep === 3 && (
+            {/* Step 4: Abschluss */}
+            {formStep === 4 && (
               <div className="space-y-6">
                 <div className="p-4 bg-muted/30 rounded-lg">
                   <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
@@ -937,7 +1013,7 @@ export default function SalesProcessView() {
 
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => setFormStep(2)}
+                    onClick={() => setFormStep(3)}
                     variant="outline"
                     className="mt-4"
                   >
@@ -1261,16 +1337,13 @@ export default function SalesProcessView() {
                               variant="outline"
                               onClick={() => {
                                 setShowForm(true);
-                                setFormStep(2);
+                                setFormStep(3);
 
                                 const followUpDate = parseDateSafe(
                                   e.follow_up_date,
                                 );
                                 const now = new Date();
 
-                                // Decide default result:
-                                // - If date in future → ausstehend (null)
-                                // - If date passed → use stored result or ausstehend if none
                                 const defaultResult =
                                   followUpDate && followUpDate > now
                                     ? null
@@ -1297,7 +1370,7 @@ export default function SalesProcessView() {
                               variant="outline"
                               onClick={() => {
                                 setShowForm(true);
-                                setFormStep(3);
+                                setFormStep(4);
                                 setFormData((prev) => ({
                                   ...prev,
                                   name: e.client_name,
