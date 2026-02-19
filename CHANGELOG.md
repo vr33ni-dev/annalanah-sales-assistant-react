@@ -1,3 +1,16 @@
+# v0.3.4 (Thu Feb 19 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Add Erstgespräch flow ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.3.3 (Thu Feb 19 2026)
 
 #### ⚠️ Pushed to `main`
