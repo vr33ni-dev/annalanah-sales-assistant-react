@@ -153,7 +153,12 @@ export async function getSalesProcesses(): Promise<
   if (!res.ok)
     throw new Error(`Failed to fetch sales processes: ${res.status}`);
 
-  const data: unknown = await res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error("Invalid JSON response from server");
+  }
   if (!Array.isArray(data)) throw new Error("Invalid data format");
 
   return (data as Partial<SalesProcess>[]).map((sp) => {
@@ -236,7 +241,13 @@ export async function startSalesProcess(
     body: JSON.stringify(payload),
   });
 
-  const data = await res.json();
+  let data: unknown;
+  const contentType = res.headers.get("content-type") ?? "";
+  try {
+    data = contentType.includes("application/json") ? await res.json() : await res.text();
+  } catch {
+    data = null;
+  }
 
   if (!res.ok) {
     throw {
@@ -247,7 +258,7 @@ export async function startSalesProcess(
     };
   }
 
-  return data;
+  return data as StartSalesProcessResponse;
 }
 
 /* Upsells */
