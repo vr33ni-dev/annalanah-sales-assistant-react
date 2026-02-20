@@ -1,3 +1,15 @@
+# v0.4.5 (Fri Feb 20 2026)
+
+#### 🐛 Bug Fix
+
+- feat: recent activities cleaned up [#79](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/79) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.4 (Fri Feb 20 2026)
 
 #### 🐛 Bug Fix
