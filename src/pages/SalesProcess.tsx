@@ -72,7 +72,8 @@ const stageBadgeClass: Record<
   (typeof SALES_STAGE)[keyof typeof SALES_STAGE],
   string
 > = {
-  [SALES_STAGE.ERSTGESPRAECH]: "bg-primary/10 text-primary border border-primary/20",
+  [SALES_STAGE.INITIAL_CONTACT]:
+    "bg-primary/10 text-primary border border-primary/20",
   [SALES_STAGE.FOLLOW_UP]: "bg-warning text-warning-foreground",
   [SALES_STAGE.CLOSED]: "bg-success text-success-foreground",
   [SALES_STAGE.LOST]: "bg-destructive text-destructive-foreground",
@@ -139,6 +140,7 @@ export default function SalesProcessView() {
   type StatusFilter =
     | "all"
     | "erstgespräch"
+    | "erstgespräch abgeschlossen"
     | "zweitgespräch geplant"
     | "zweitgespräch abgeschlossen"
     | "abgeschlossen"
@@ -270,10 +272,10 @@ export default function SalesProcessView() {
   ): StartSalesProcessRequest {
     return {
       ...p,
-      follow_up_date:
-        typeof p.follow_up_date === "string"
-          ? p.follow_up_date.slice(0, 10) // force YYYY-MM-DD
-          : format(p.follow_up_date!, "yyyy-MM-dd"),
+      initial_contact_date:
+        typeof p.initial_contact_date === "string"
+          ? p.initial_contact_date.slice(0, 10) // force YYYY-MM-DD
+          : format(p.initial_contact_date!, "yyyy-MM-dd"),
     };
   }
 
@@ -286,13 +288,24 @@ export default function SalesProcessView() {
     if (activeStatusFilters.length > 0) {
       result = result.filter((e) => {
         let label: string;
-        if (e.stage === SALES_STAGE.ERSTGESPRAECH) {
-          label = "erstgespräch";
+        const now = new Date();
+        const erstDate = parseDateSafe(e.initial_contact_date);
+        const zweitDate = parseDateSafe(e.follow_up_date);
+
+        if (e.stage === SALES_STAGE.INITIAL_CONTACT) {
+          if (erstDate && erstDate > now) {
+            label = "erstgespräch"; // Erstgespräch geplant
+          } else if (erstDate && (!zweitDate || zweitDate > now)) {
+            label = "erstgespräch abgeschlossen"; // Erstgespräch vorbei, Zweitgespräch noch nicht geplant
+          } else {
+            label = "erstgespräch"; // fallback
+          }
         } else if (e.stage === SALES_STAGE.FOLLOW_UP) {
-          label =
-            (e.follow_up_result ?? null) == null
-              ? "zweitgespräch geplant"
-              : "zweitgespräch abgeschlossen";
+          if ((e.follow_up_result ?? null) == null) {
+            label = "zweitgespräch geplant";
+          } else {
+            label = "zweitgespräch abgeschlossen";
+          }
         } else if (e.stage === SALES_STAGE.CLOSED) {
           label = "abgeschlossen";
         } else {
@@ -331,7 +344,9 @@ export default function SalesProcessView() {
   ) {
     if (errorSales)
       return (
-        <div className="p-6 text-destructive">Fehler beim Laden der Pipeline.</div>
+        <div className="p-6 text-destructive">
+          Fehler beim Laden der Pipeline.
+        </div>
       );
     return <div className="p-6">Lade Verkaufsdaten…</div>;
   }
@@ -403,11 +418,11 @@ export default function SalesProcessView() {
       source_stage_id:
         formData.source === "paid" ? (formData.stageId ?? null) : null,
       lead_id: resolvedLeadId,
-      // Use erstgespraechDate as the follow_up_date for this stage
-      follow_up_date: formData.erstgespraechDate
-        ? format(formData.erstgespraechDate, "yyyy-MM-dd")
-        : format(new Date(), "yyyy-MM-dd"),
-      stage: SALES_STAGE.ERSTGESPRAECH,
+      initial_contact_date: format(formData.erstgespraechDate!, "yyyy-MM-dd"),
+      follow_up_date: formData.zweitgespraechDate
+        ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
+        : null,
+      stage: SALES_STAGE.INITIAL_CONTACT,
     };
 
     await mStart.mutateAsync({ ...payload });
@@ -597,7 +612,8 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.erstgespraechDate && "text-muted-foreground",
+                          !formData.erstgespraechDate &&
+                            "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -673,7 +689,9 @@ export default function SalesProcessView() {
                 <div className="col-span-full flex gap-3">
                   <Button
                     onClick={handleStep1}
-                    disabled={!formData.name || !formData.source || mStart.isPending}
+                    disabled={
+                      !formData.name || !formData.source || mStart.isPending
+                    }
                   >
                     {mStart.isPending ? "Speichern…" : "Speichern"}
                   </Button>
@@ -690,7 +708,9 @@ export default function SalesProcessView() {
                 <div className="col-span-full p-3 bg-muted/30 rounded-lg">
                   <p className="text-sm text-muted-foreground">
                     Zweitgespräch planen für{" "}
-                    <span className="font-medium text-foreground">{formData.name}</span>
+                    <span className="font-medium text-foreground">
+                      {formData.name}
+                    </span>
                   </p>
                 </div>
 
@@ -1020,7 +1040,12 @@ export default function SalesProcessView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle Status</SelectItem>
-                <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
+                <SelectItem value="erstgespräch geplant">
+                  Erstgespräch
+                </SelectItem>
+                <SelectItem value="erstgespräch abgeschlossen">
+                  Erstgespräch abgeschlossen
+                </SelectItem>
                 <SelectItem value="zweitgespräch geplant">
                   Zweitgespräch geplant
                 </SelectItem>
@@ -1066,6 +1091,7 @@ export default function SalesProcessView() {
                         {/* Individual statuses */}
                         {[
                           "erstgespräch",
+                          "erstgespräch abgeschlossen",
                           "zweitgespräch geplant",
                           "zweitgespräch abgeschlossen",
                           "abgeschlossen",
@@ -1201,11 +1227,15 @@ export default function SalesProcessView() {
                       </Badge>
                     </TableCell>
 
-                    {/* Erstgespräch date — shown when stage is erstgespraech, otherwise "–" */}
+                    {/* Erstgespräch date — shown when stage is initial_contact*/}
                     <TableCell>
                       <span className="text-sm">
-                        {e.stage === SALES_STAGE.ERSTGESPRAECH && e.follow_up_date
-                          ? format(parseDateSafe(e.follow_up_date)!, "dd.MM.yyyy", { locale: de })
+                        {e.initial_contact_date
+                          ? format(
+                              parseDateSafe(e.initial_contact_date)!,
+                              "dd.MM.yyyy",
+                              { locale: de },
+                            )
                           : "–"}
                       </span>
                     </TableCell>
@@ -1214,7 +1244,7 @@ export default function SalesProcessView() {
                     <TableCell>
                       <div className="flex items-center gap-2 relative">
                         <span className="text-sm">
-                          {e.stage !== SALES_STAGE.ERSTGESPRAECH && e.follow_up_date
+                          {e.follow_up_date
                             ? format(
                                 parseDateSafe(e.follow_up_date)!,
                                 "dd.MM.yyyy",
@@ -1222,8 +1252,7 @@ export default function SalesProcessView() {
                               )
                             : "–"}
                         </span>
-
-                        {e.stage !== SALES_STAGE.ERSTGESPRAECH && (
+                        {e.stage !== SALES_STAGE.INITIAL_CONTACT && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -1293,7 +1322,7 @@ export default function SalesProcessView() {
                     </TableCell>
 
                     <TableCell>
-                      {e.stage === SALES_STAGE.ERSTGESPRAECH
+                      {e.stage === SALES_STAGE.INITIAL_CONTACT
                         ? "–"
                         : e.follow_up_result === true
                           ? "Erschienen"
@@ -1323,7 +1352,7 @@ export default function SalesProcessView() {
                         />
 
                         {/* Zweitgespräch planen — only for erstgespraech stage */}
-                        {e.stage === SALES_STAGE.ERSTGESPRAECH && (
+                        {e.stage === SALES_STAGE.INITIAL_CONTACT && (
                           <Button
                             size="sm"
                             variant="outline"
