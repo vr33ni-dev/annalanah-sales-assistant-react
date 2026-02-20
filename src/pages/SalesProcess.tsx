@@ -64,6 +64,7 @@ import { MergeConflictDialog } from "@/components/MergeConflictDialog";
 import { LeadSearch } from "@/components/LeadSearch";
 import { Lead } from "@/lib/api";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
+import { useToast } from "@/hooks/use-toast";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -84,6 +85,7 @@ const stageBadgeClass: Record<
 type GespraechType = "erstgespraech" | "zweitgespraech";
 
 export default function SalesProcessView() {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const { useMockData } = useAuthEnabled();
   const navigate = useNavigate();
@@ -130,7 +132,8 @@ export default function SalesProcessView() {
   // formStep: 0 = type selection, 1 = Erstgespräch, 2 = Zweitgespräch (from Aktionen or old flow),
   //           3 = Ergebnis, 4 = Abschluss, 5 = old Zweitgespräch full flow step 1
   const [formStep, setFormStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
-  const [gespraechType, setGespraechType] = useState<GespraechType>("erstgespraech");
+  const [gespraechType, setGespraechType] =
+    useState<GespraechType>("erstgespraech");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
@@ -168,7 +171,13 @@ export default function SalesProcessView() {
     revenue: "",
     contractDuration: "",
     contractStart: null as Date | null,
-    contractFrequency: "" as "" | "monthly" | "bi-monthly" | "quarterly",
+    contractFrequency: "" as
+      | ""
+      | "monthly"
+      | "bi-monthly"
+      | "quarterly"
+      | "one-time"
+      | "bi-yearly",
     clientId: undefined as number | undefined,
     leadId: undefined as number | undefined,
     completedAt: null as string | null,
@@ -178,6 +187,27 @@ export default function SalesProcessView() {
     mutationFn: startSalesProcess,
 
     onSuccess: (data: StartSalesProcessResponse) => {
+      // immediately update sales cache so the new entry shows up without a full refresh
+      try {
+        const sp = data.sales_process;
+        if (sp) {
+          type SalesCacheItem = SalesProcess & { stage_label: string };
+          qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
+            const prev: SalesCacheItem[] = old ?? [];
+            const item: SalesCacheItem = {
+              ...sp,
+              stage_label: STAGE_LABELS[sp.stage] || sp.stage,
+            };
+            // prepend the new item if it's not already present
+            if (!prev.find((p) => p.id === item.id)) {
+              return [item, ...prev];
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // ignore cache update errors
+      }
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
       qc.invalidateQueries({ queryKey: ["contracts"] });
@@ -358,7 +388,9 @@ export default function SalesProcessView() {
     Number(formData.contractDuration) > 0 &&
     !!formData.contractStart &&
     !!formData.contractFrequency &&
-    ["monthly", "bi-monthly", "quarterly"].includes(formData.contractFrequency);
+    ["monthly", "bi-monthly", "quarterly", "bi-yearly"].includes(
+      formData.contractFrequency,
+    );
 
   const canSubmit = formData.abschluss !== true || isContractValid;
 
@@ -425,6 +457,9 @@ export default function SalesProcessView() {
       stage: SALES_STAGE.INITIAL_CONTACT,
     };
 
+    // log payload for debugging to confirm source and source_stage_id
+    // eslint-disable-next-line no-console
+    console.log("handleZweitgespraechStart payload:", payload);
     await mStart.mutateAsync(payload);
   };
 
@@ -456,28 +491,52 @@ export default function SalesProcessView() {
     // Step 2: Zweitgespräch planen (from table Aktionen)
     if (formStep === 2) {
       if (!formData.salesProcessId || !formData.zweitgespraechDate) return;
-
-      await mPatch.mutateAsync({
-        id: formData.salesProcessId,
-        payload: {
-          follow_up_date: format(formData.zweitgespraechDate, "yyyy-MM-dd"),
-        } as SalesProcessUpdateRequest,
-      });
-
-      resetAll();
+      try {
+        await mPatch.mutateAsync({
+          id: formData.salesProcessId,
+          payload: {
+            follow_up_date: format(formData.zweitgespraechDate, "yyyy-MM-dd"),
+          } as SalesProcessUpdateRequest,
+        });
+        toast({
+          title: "Zweitgespräch gespeichert",
+          description: "Das Zweitgespräch wurde erfolgreich geplant.",
+          variant: "default",
+          duration: 3500,
+        });
+        resetAll();
+      } catch (err) {
+        toast({
+          title: "Fehler beim Speichern",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      }
       return;
     }
 
     // Step 3: Zweitgespräch Ergebnis
     if (formStep === 3) {
       if (!formData.salesProcessId) return;
-
-      await mPatch.mutateAsync({
-        id: formData.salesProcessId,
-        payload: { follow_up_result: formData.zweitgespraechResult },
-      });
-
-      resetAll();
+      try {
+        await mPatch.mutateAsync({
+          id: formData.salesProcessId,
+          payload: { follow_up_result: formData.zweitgespraechResult },
+        });
+        toast({
+          title: "Ergebnis gespeichert",
+          description: "Das Ergebnis des Zweitgesprächs wurde gespeichert.",
+          variant: "default",
+          duration: 3500,
+        });
+        resetAll();
+      } catch (err) {
+        toast({
+          title: "Fehler beim Speichern",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      }
       return;
     }
 
@@ -507,11 +566,27 @@ export default function SalesProcessView() {
         payload.contract_frequency = formData.contractFrequency as
           | "monthly"
           | "bi-monthly"
-          | "quarterly";
+          | "quarterly"
+          | "one-time"
+          | "bi-yearly";
       }
 
-      await mPatch.mutateAsync({ id: formData.salesProcessId, payload });
-      resetAll();
+      try {
+        await mPatch.mutateAsync({ id: formData.salesProcessId, payload });
+        toast({
+          title: "Abschluss gespeichert",
+          description: "Der Abschluss wurde erfolgreich gespeichert.",
+          variant: "default",
+          duration: 3500,
+        });
+        resetAll();
+      } catch (err) {
+        toast({
+          title: "Fehler beim Speichern",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -594,32 +669,49 @@ export default function SalesProcessView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-
             {/* Step 0: Type selection */}
             {formStep === 0 && (
               <div className="space-y-6">
                 <div className="space-y-3">
-                  <Label className="text-base font-medium">Welche Art von Gespräch möchten Sie planen?</Label>
+                  <Label className="text-base font-medium">
+                    Welche Art von Gespräch möchten Sie planen?
+                  </Label>
                   <RadioGroup
                     value={gespraechType}
                     onValueChange={(v) => setGespraechType(v as GespraechType)}
                     className="flex flex-col gap-3"
                   >
                     <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
-                      <RadioGroupItem value="erstgespraech" id="type-erst" className="mt-0.5" />
-                      <label htmlFor="type-erst" className="cursor-pointer flex-1">
+                      <RadioGroupItem
+                        value="erstgespraech"
+                        id="type-erst"
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="type-erst"
+                        className="cursor-pointer flex-1"
+                      >
                         <div className="font-medium">Erstgespräch</div>
                         <div className="text-sm text-muted-foreground mt-0.5">
-                          Erster Kontakt mit einem neuen Interessenten. Ein Lead wird automatisch angelegt.
+                          Erster Kontakt mit einem neuen Interessenten. Ein Lead
+                          wird automatisch angelegt.
                         </div>
                       </label>
                     </div>
                     <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
-                      <RadioGroupItem value="zweitgespraech" id="type-zweit" className="mt-0.5" />
-                      <label htmlFor="type-zweit" className="cursor-pointer flex-1">
+                      <RadioGroupItem
+                        value="zweitgespraech"
+                        id="type-zweit"
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="type-zweit"
+                        className="cursor-pointer flex-1"
+                      >
                         <div className="font-medium">Zweitgespräch</div>
                         <div className="text-sm text-muted-foreground mt-0.5">
-                          Folgegespräch mit einem bestehenden Lead. Sie können einen vorhandenen Lead auswählen.
+                          Folgegespräch mit einem bestehenden Lead. Sie können
+                          einen vorhandenen Lead auswählen.
                         </div>
                       </label>
                     </div>
@@ -627,7 +719,9 @@ export default function SalesProcessView() {
                 </div>
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => setFormStep(gespraechType === "erstgespraech" ? 1 : 5)}
+                    onClick={() =>
+                      setFormStep(gespraechType === "erstgespraech" ? 1 : 5)
+                    }
                   >
                     Weiter
                   </Button>
@@ -689,12 +783,15 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.erstgespraechDate && "text-muted-foreground",
+                          !formData.erstgespraechDate &&
+                            "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {formData.erstgespraechDate
-                          ? format(formData.erstgespraechDate, "PPP", { locale: de })
+                          ? format(formData.erstgespraechDate, "PPP", {
+                              locale: de,
+                            })
                           : "Datum auswählen"}
                       </Button>
                     </PopoverTrigger>
@@ -703,7 +800,10 @@ export default function SalesProcessView() {
                         mode="single"
                         selected={formData.erstgespraechDate ?? undefined}
                         onSelect={(date) =>
-                          setFormData({ ...formData, erstgespraechDate: date ?? null })
+                          setFormData({
+                            ...formData,
+                            erstgespraechDate: date ?? null,
+                          })
                         }
                         initialFocus
                         className="pointer-events-auto"
@@ -763,7 +863,9 @@ export default function SalesProcessView() {
                   </Button>
                   <Button
                     onClick={handleErstgespraechSave}
-                    disabled={!formData.name || !formData.source || mStart.isPending}
+                    disabled={
+                      !formData.name || !formData.source || mStart.isPending
+                    }
                   >
                     {mStart.isPending ? "Speichern…" : "Speichern & Schließen"}
                   </Button>
@@ -794,12 +896,15 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.zweitgespraechDate && "text-muted-foreground",
+                          !formData.zweitgespraechDate &&
+                            "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {formData.zweitgespraechDate
-                          ? format(formData.zweitgespraechDate, "PPP", { locale: de })
+                          ? format(formData.zweitgespraechDate, "PPP", {
+                              locale: de,
+                            })
                           : "Datum auswählen"}
                       </Button>
                     </PopoverTrigger>
@@ -808,7 +913,10 @@ export default function SalesProcessView() {
                         mode="single"
                         selected={formData.zweitgespraechDate ?? undefined}
                         onSelect={(date) =>
-                          setFormData({ ...formData, zweitgespraechDate: date ?? null })
+                          setFormData({
+                            ...formData,
+                            zweitgespraechDate: date ?? null,
+                          })
                         }
                         initialFocus
                         className="pointer-events-auto"
@@ -839,7 +947,9 @@ export default function SalesProcessView() {
                   <p className="text-sm text-muted-foreground">
                     Zweitgespräch am:{" "}
                     {formData.zweitgespraechDate
-                      ? format(formData.zweitgespraechDate, "PPP", { locale: de })
+                      ? format(formData.zweitgespraechDate, "PPP", {
+                          locale: de,
+                        })
                       : "—"}
                   </p>
                 </div>
@@ -847,7 +957,6 @@ export default function SalesProcessView() {
                 <div className="space-y-2">
                   <Label>Ergebnis des Zweitgesprächs</Label>
                   <Select
-                    disabled={isFollowUpFuture}
                     value={
                       formData.zweitgespraechResult === true
                         ? "erschienen"
@@ -881,8 +990,8 @@ export default function SalesProcessView() {
 
                   {isFollowUpFuture && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Das Zweitgespräch liegt in der Zukunft. Ergebnis kann erst
-                      nach dem Termin eingetragen werden.
+                      Das Zweitgespräch liegt in der Zukunft. Wurde bereits
+                      vorzeitig ein Abschluss erzielt?
                     </p>
                   )}
                 </div>
@@ -967,12 +1076,15 @@ export default function SalesProcessView() {
                             variant="outline"
                             className={cn(
                               "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.contractStart && "text-muted-foreground",
+                              !formData.contractStart &&
+                                "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {formData.contractStart
-                              ? format(formData.contractStart, "PPP", { locale: de })
+                              ? format(formData.contractStart, "PPP", {
+                                  locale: de,
+                                })
                               : "Startdatum auswählen"}
                           </Button>
                         </PopoverTrigger>
@@ -981,7 +1093,10 @@ export default function SalesProcessView() {
                             mode="single"
                             selected={formData.contractStart ?? undefined}
                             onSelect={(date) =>
-                              setFormData({ ...formData, contractStart: date ?? null })
+                              setFormData({
+                                ...formData,
+                                contractStart: date ?? null,
+                              })
                             }
                             initialFocus
                             className="pointer-events-auto"
@@ -1000,7 +1115,9 @@ export default function SalesProcessView() {
                             contractFrequency: value as
                               | "monthly"
                               | "bi-monthly"
-                              | "quarterly",
+                              | "quarterly"
+                              | "one-time"
+                              | "bi-yearly",
                           })
                         }
                       >
@@ -1009,8 +1126,19 @@ export default function SalesProcessView() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="monthly">Monatlich</SelectItem>
-                          <SelectItem value="bi-monthly">Zweimonatlich</SelectItem>
-                          <SelectItem value="quarterly">Quartalsweise</SelectItem>
+                          <SelectItem value="bi-monthly">
+                            Zweimonatlich
+                          </SelectItem>
+                          <SelectItem value="quarterly">
+                            Quartalsweise
+                          </SelectItem>
+                          {(Number(formData.contractDuration) || 0) >= 12 ||
+                          formData.contractFrequency === "bi-yearly" ? (
+                            <SelectItem value="bi-yearly">
+                              Halbjährlich
+                            </SelectItem>
+                          ) : null}
+                          <SelectItem value="one-time">Einmalig</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1028,7 +1156,9 @@ export default function SalesProcessView() {
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {formData.completedAt
-                              ? format(formData.completedAt, "PPP", { locale: de })
+                              ? format(formData.completedAt, "PPP", {
+                                  locale: de,
+                                })
                               : "Datum auswählen"}
                           </Button>
                         </PopoverTrigger>
@@ -1063,7 +1193,11 @@ export default function SalesProcessView() {
                   >
                     Speichern & Abschließen
                   </Button>
-                  <Button variant="ghost" onClick={() => setShowForm(false)} className="mt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowForm(false)}
+                    className="mt-4"
+                  >
                     Abbrechen
                   </Button>
                 </div>
@@ -1147,12 +1281,15 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.zweitgespraechDate && "text-muted-foreground",
+                          !formData.zweitgespraechDate &&
+                            "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {formData.zweitgespraechDate
-                          ? format(formData.zweitgespraechDate, "PPP", { locale: de })
+                          ? format(formData.zweitgespraechDate, "PPP", {
+                              locale: de,
+                            })
                           : "Datum auswählen"}
                       </Button>
                     </PopoverTrigger>
@@ -1161,7 +1298,10 @@ export default function SalesProcessView() {
                         mode="single"
                         selected={formData.zweitgespraechDate ?? undefined}
                         onSelect={(date) =>
-                          setFormData({ ...formData, zweitgespraechDate: date ?? null })
+                          setFormData({
+                            ...formData,
+                            zweitgespraechDate: date ?? null,
+                          })
                         }
                         initialFocus
                         className="pointer-events-auto"
@@ -1290,7 +1430,10 @@ export default function SalesProcessView() {
                             checked={activeStatusFilters.length === 0}
                             onCheckedChange={() => setActiveStatusFilters([])}
                           />
-                          <label htmlFor="filter-all" className="text-sm font-medium">
+                          <label
+                            htmlFor="filter-all"
+                            className="text-sm font-medium"
+                          >
                             Alle
                           </label>
                         </div>
@@ -1306,13 +1449,21 @@ export default function SalesProcessView() {
                           const capitalized =
                             status.charAt(0).toUpperCase() + status.slice(1);
                           return (
-                            <div key={status} className="flex items-center space-x-2">
+                            <div
+                              key={status}
+                              className="flex items-center space-x-2"
+                            >
                               <Checkbox
                                 id={`filter-${status}`}
                                 checked={activeStatusFilters.includes(status)}
-                                onCheckedChange={() => toggleStatusFilter(status)}
+                                onCheckedChange={() =>
+                                  toggleStatusFilter(status)
+                                }
                               />
-                              <label htmlFor={`filter-${status}`} className="text-sm">
+                              <label
+                                htmlFor={`filter-${status}`}
+                                className="text-sm"
+                              >
                                 {capitalized}
                               </label>
                             </div>
@@ -1371,7 +1522,10 @@ export default function SalesProcessView() {
                             checked={activeSourceFilters.length === 0}
                             onCheckedChange={() => setActiveSourceFilters([])}
                           />
-                          <label htmlFor="filter-source-all" className="text-sm font-medium">
+                          <label
+                            htmlFor="filter-source-all"
+                            className="text-sm font-medium"
+                          >
                             Alle
                           </label>
                         </div>
@@ -1380,13 +1534,19 @@ export default function SalesProcessView() {
                           { value: "paid", label: "Bezahlt" },
                           { value: "organic", label: "Organisch" },
                         ].map(({ value, label }) => (
-                          <div key={value} className="flex items-center space-x-2">
+                          <div
+                            key={value}
+                            className="flex items-center space-x-2"
+                          >
                             <Checkbox
                               id={`filter-source-${value}`}
                               checked={activeSourceFilters.includes(value)}
                               onCheckedChange={() => toggleSourceFilter(value)}
                             />
-                            <label htmlFor={`filter-source-${value}`} className="text-sm">
+                            <label
+                              htmlFor={`filter-source-${value}`}
+                              className="text-sm"
+                            >
                               {label}
                             </label>
                           </div>
@@ -1436,7 +1596,8 @@ export default function SalesProcessView() {
                     <TableCell>
                       <div className="flex items-center gap-2 relative">
                         <span className="text-sm">
-                          {e.follow_up_date && e.stage !== SALES_STAGE.INITIAL_CONTACT
+                          {e.follow_up_date &&
+                          e.stage !== SALES_STAGE.INITIAL_CONTACT
                             ? format(
                                 parseDateSafe(e.follow_up_date)!,
                                 "dd.MM.yyyy",
@@ -1444,19 +1605,20 @@ export default function SalesProcessView() {
                               )
                             : "–"}
                         </span>
-                        {e.stage !== SALES_STAGE.INITIAL_CONTACT && e.follow_up_date && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={savingId === e.id}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setEditingId(e.id);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 text-muted-foreground" />
-                          </Button>
-                        )}
+                        {e.stage !== SALES_STAGE.INITIAL_CONTACT &&
+                          e.follow_up_date && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              disabled={savingId === e.id}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setEditingId(e.id);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                          )}
 
                         {editingId === e.id && (
                           <Popover open onOpenChange={() => setEditingId(null)}>
@@ -1576,7 +1738,9 @@ export default function SalesProcessView() {
                                 setShowForm(true);
                                 setFormStep(3);
 
-                                const followUpDate = parseDateSafe(e.follow_up_date);
+                                const followUpDate = parseDateSafe(
+                                  e.follow_up_date,
+                                );
                                 const now = new Date();
 
                                 const defaultResult =
@@ -1614,7 +1778,9 @@ export default function SalesProcessView() {
                                   clientId: e.client_id,
                                   zweitgespraechResult: true,
                                   abschluss: null,
-                                  zweitgespraechDate: parseDateSafe(e.follow_up_date),
+                                  zweitgespraechDate: parseDateSafe(
+                                    e.follow_up_date,
+                                  ),
                                 }));
                               }}
                             >

@@ -47,7 +47,7 @@ import { startOfMonth } from "date-fns";
 // small utility
 const euro = (n: number) =>
   new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
-    n
+    n,
   );
 
 export default function Dashboard() {
@@ -114,14 +114,17 @@ export default function Dashboard() {
   // -----------------------------
   function groupBy<T, K extends string | number>(
     list: readonly T[],
-    keyFn: (item: T) => K
+    keyFn: (item: T) => K,
   ): Record<K, T[]> {
-    return list.reduce((acc, item) => {
-      const key = keyFn(item);
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    }, {} as Record<K, T[]>);
+    return list.reduce(
+      (acc, item) => {
+        const key = keyFn(item);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(item);
+        return acc;
+      },
+      {} as Record<K, T[]>,
+    );
   }
 
   // -----------------------------
@@ -131,7 +134,7 @@ export default function Dashboard() {
 
   const totalRevenue = contractsInRange.reduce(
     (s, c) => s + (c.revenue_total ?? 0),
-    0
+    0,
   );
 
   // Group upsells per client
@@ -183,12 +186,12 @@ export default function Dashboard() {
 
   const newCustomerCalls = salesProcesses.filter(
     (sp) =>
-      sp.follow_up_date && inRange(sp.follow_up_date) && !isRenewalProcess(sp)
+      sp.follow_up_date && inRange(sp.follow_up_date) && !isRenewalProcess(sp),
   );
 
   // Appeared = customer showed up
   const appearedNew = newCustomerCalls.filter(
-    (sp) => sp.follow_up_result === true
+    (sp) => sp.follow_up_result === true,
   ).length;
 
   // Closed = deal won
@@ -260,10 +263,10 @@ export default function Dashboard() {
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
-      <MonthlyKPITable 
-        contracts={contracts} 
-        salesProcesses={salesProcesses} 
-        upsells={upsells} 
+      <MonthlyKPITable
+        contracts={contracts}
+        salesProcesses={salesProcesses}
+        upsells={upsells}
       />
 
       {/* SECONDARY SECTION */}
@@ -296,7 +299,7 @@ export default function Dashboard() {
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
                     <span>
-                      Vertrag #{c.id} — Client {c.client_id}
+                      Vertrag #{c.id} — Client {c.client_name}
                     </span>
                     <Badge className="bg-success text-success-foreground">
                       {euro(c.revenue_total ?? 0)}

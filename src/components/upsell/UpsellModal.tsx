@@ -20,15 +20,17 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const isEditing = !!upsell;
   const isExtension = result === "verlaengerung";
   const [contractStart, setContractStart] = useState(
-    toDateOnly(upsell?.contract_start_date)
+    toDateOnly(upsell?.contract_start_date),
   );
 
   const [contractDuration, setContractDuration] = useState(
-    upsell?.contract_duration_months ?? ""
+    upsell?.contract_duration_months ?? "",
   );
   const [contractFrequency, setContractFrequency] = useState(
-    upsell?.contract_frequency ?? "monthly"
+    upsell?.contract_frequency ?? "monthly",
   );
+
+  const contractDurationNum = Number(contractDuration) || 0;
 
   useEffect(() => {
     setDate(toDateOnly(upsell?.upsell_date));
@@ -133,6 +135,11 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
                   <option value="monthly">Monatlich</option>
                   <option value="bi-monthly">Zweimonatlich</option>
                   <option value="quarterly">Quartal</option>
+                  {(contractDurationNum >= 12 ||
+                    contractFrequency === "bi-yearly") && (
+                    <option value="bi-yearly">Halbjährlich</option>
+                  )}
+                  <option value="one-time">Einmalig</option>
                 </select>
               </div>
             </>

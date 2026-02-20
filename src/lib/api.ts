@@ -198,7 +198,12 @@ export type SalesProcessUpdateRequest = {
   revenue?: number | null;
   contract_duration_months?: number;
   contract_start_date?: string;
-  contract_frequency?: "monthly" | "bi-monthly" | "quarterly";
+  contract_frequency?:
+    | "monthly"
+    | "bi-monthly"
+    | "quarterly"
+    | "one-time"
+    | "bi-yearly";
   completed_at?: string;
 };
 
@@ -244,7 +249,9 @@ export async function startSalesProcess(
   let data: unknown;
   const contentType = res.headers.get("content-type") ?? "";
   try {
-    data = contentType.includes("application/json") ? await res.json() : await res.text();
+    data = contentType.includes("application/json")
+      ? await res.json()
+      : await res.text();
   } catch {
     data = null;
   }
@@ -278,7 +285,13 @@ export interface ContractUpsell {
   updated_at: string;
   contract_start_date: string | null;
   contract_duration_months: number | null;
-  contract_frequency: "monthly" | "bi-monthly" | "quarterly" | null;
+  contract_frequency:
+    | "monthly"
+    | "bi-monthly"
+    | "quarterly"
+    | "one-time"
+    | "bi-yearly"
+    | null;
 }
 
 // Data SENT to backend (request body)
@@ -289,7 +302,13 @@ export type CreateOrUpdateUpsellRequest = {
 
   contract_start_date?: string | null;
   contract_duration_months?: number | null;
-  contract_frequency?: "monthly" | "bi-monthly" | "quarterly" | null;
+  contract_frequency?:
+    | "monthly"
+    | "bi-monthly"
+    | "quarterly"
+    | "one-time"
+    | "bi-yearly"
+    | null;
 };
 
 export type UpsellAnalytics = {
