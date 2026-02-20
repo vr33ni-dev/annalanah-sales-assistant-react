@@ -1,3 +1,15 @@
+# v0.4.0 (Fri Feb 20 2026)
+
+#### 🚀 Enhancement
+
+- feat: erstgespräch feature [#76](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/76) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.3.4 (Thu Feb 19 2026)
 
 #### ⚠️ Pushed to `main`
