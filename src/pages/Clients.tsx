@@ -27,6 +27,7 @@ const sourceLabels = {
 } as const;
 
 const statusColors = {
+  initial_call_scheduled: "bg-info text-info-foreground",
   follow_up_scheduled: "bg-warning text-warning-foreground",
   awaiting_response: "bg-primary text-primary-foreground",
   active: "bg-success text-success-foreground",
@@ -35,6 +36,7 @@ const statusColors = {
 } as const;
 
 const statusLabels = {
+  initial_call_scheduled: "Erstgespräch geplant",
   follow_up_scheduled: "Zweitgespräch geplant",
   awaiting_response: "Antwort ausstehend",
   active: "Kunde",
@@ -219,9 +221,9 @@ export default function Clients() {
                         <option value="paid">Paid Ads</option>
                       </select>
                     ) : (
-                      sourceLabels[
+                      (sourceLabels[
                         client.source as keyof typeof sourceLabels
-                      ] ?? client.source
+                      ] ?? client.source)
                     )}
                   </TableCell>
 
@@ -333,7 +335,7 @@ export default function Clients() {
                           variant="destructive"
                           onClick={async () => {
                             const confirmed = window.confirm(
-                              "Kunde wirklich löschen?"
+                              "Kunde wirklich löschen?",
                             );
                             if (!confirmed) return;
 

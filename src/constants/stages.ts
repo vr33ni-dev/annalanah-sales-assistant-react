@@ -1,6 +1,6 @@
 // src/constants/stages.ts
 export const SALES_STAGE = {
-  ERSTGESPRAECH: "erstgespraech",
+  INITIAL_CONTACT: "initial_contact",
   FOLLOW_UP: "follow_up",
   CLOSED: "closed",
   LOST: "lost",
@@ -10,7 +10,7 @@ export type SalesStage = (typeof SALES_STAGE)[keyof typeof SALES_STAGE];
 
 // ✅ Add readable labels for UI display (used in getSalesProcesses)
 export const STAGE_LABELS: Record<SalesStage, string> = {
-  erstgespraech: "Erstgespräch",
+  initial_contact: "Erstgespräch",
   follow_up: "Follow-up",
   closed: "Abgeschlossen",
   lost: "Verloren",

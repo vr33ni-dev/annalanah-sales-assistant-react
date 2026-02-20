@@ -138,6 +138,7 @@ export interface SalesProcess {
   client_phone?: string | null;
   client_source?: "organic" | "paid" | null;
   stage: (typeof SALES_STAGE)[keyof typeof SALES_STAGE];
+  initial_contact_date?: string | null;
   follow_up_date?: string | null;
   follow_up_result?: boolean | null;
   closed?: boolean | null;
@@ -166,6 +167,7 @@ export async function getSalesProcesses(): Promise<
       client_source: sp.client_source ?? null,
       stage,
       stage_label: STAGE_LABELS[stage] || stage,
+      initial_contact_date: sp.initial_contact_date ?? null,
       follow_up_date: sp.follow_up_date ?? null,
       follow_up_result: sp.follow_up_result ?? null,
       closed: sp.closed ?? null,
@@ -184,8 +186,9 @@ export const getSalesProcessById = async (
 
 // Narrow the update payload to only fields the backend accepts on PATCH
 export type SalesProcessUpdateRequest = {
+  initial_contact_date?: string | null;
   follow_up_result?: boolean | null;
-  follow_up_date?: string;
+  follow_up_date?: string | null;
   closed?: boolean | null;
   revenue?: number | null;
   contract_duration_months?: number;
@@ -208,7 +211,8 @@ export type StartSalesProcessRequest = {
   phone: string;
   source: string;
   source_stage_id?: number | null;
-  follow_up_date: string;
+  initial_contact_date: string;
+  follow_up_date?: string | null;
   lead_id?: number | null;
   merge_strategy?: "keep_existing" | "overwrite";
   stage?: string;
