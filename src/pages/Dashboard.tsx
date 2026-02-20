@@ -43,6 +43,10 @@ import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { startOfMonth } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { STAGE_LABELS } from "@/constants/stages";
+import { formatDateOnly } from "@/helpers/date";
 
 // small utility
 const euro = (n: number) =>
@@ -51,6 +55,8 @@ const euro = (n: number) =>
   );
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+
   // -----------------------------
   // LOAD DATA
   // -----------------------------
@@ -298,9 +304,19 @@ export default function Dashboard() {
                     key={c.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>
-                      Vertrag #{c.id} — Client {c.client_name}
-                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const base = `/contracts?client=${c.client_id}&open=1`;
+                        const url = c.sales_process_id
+                          ? `${base}&sales_process=${c.sales_process_id}`
+                          : base;
+                        navigate(url);
+                      }}
+                    >
+                      Vertragsabschluss - {c.client_name}
+                    </Button>
                     <Badge className="bg-success text-success-foreground">
                       {euro(c.revenue_total ?? 0)}
                     </Badge>
@@ -312,10 +328,21 @@ export default function Dashboard() {
                     key={s.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <span>
-                      Salesprozess #{s.id} — {s.stage}
-                    </span>
-                    <Badge variant="outline">{s.follow_up_date ?? "—"}</Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const url = `/sales?sales_process=${s.id}`;
+                        navigate(url);
+                      }}
+                    >
+                      Verkaufsprozess: {STAGE_LABELS[s.stage] ?? s.stage} -{" "}
+                      {s.client_name}
+                    </Button>
+
+                    <div className="text-sm text-muted-foreground">
+                      {formatDateOnly(s.follow_up_date ?? null)}
+                    </div>
                   </div>
                 ))}
               </div>

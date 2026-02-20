@@ -1,6 +1,5 @@
 // src/lib/api.ts
-import { SALES_STAGE } from "@/constants/stages";
-import { STAGE_LABELS } from "@/constants/labels";
+import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import axios from "axios";
 
 /**

@@ -11,7 +11,7 @@ export type SalesStage = (typeof SALES_STAGE)[keyof typeof SALES_STAGE];
 // ✅ Add readable labels for UI display (used in getSalesProcesses)
 export const STAGE_LABELS: Record<SalesStage, string> = {
   initial_contact: "Erstgespräch",
-  follow_up: "Follow-up",
+  follow_up: "Zweitgespräch",
   closed: "Abgeschlossen",
   lost: "Verloren",
 };
