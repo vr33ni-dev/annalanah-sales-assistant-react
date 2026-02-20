@@ -1,3 +1,16 @@
+# v0.4.3 (Fri Feb 20 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Fix JSON handling in API calls ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.2 (Fri Feb 20 2026)
 
 #### ⚠️ Pushed to `main`
