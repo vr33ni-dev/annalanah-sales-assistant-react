@@ -1,3 +1,15 @@
+# v0.4.4 (Fri Feb 20 2026)
+
+#### 🐛 Bug Fix
+
+- fix: verkaufsprozess flow [#78](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/78) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.3 (Fri Feb 20 2026)
 
 #### ⚠️ Pushed to `main`
