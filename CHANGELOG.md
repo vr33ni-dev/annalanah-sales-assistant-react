@@ -1,3 +1,15 @@
+# v0.4.1 (Fri Feb 20 2026)
+
+#### 🐛 Bug Fix
+
+- fix: lovable mockdata [#77](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/77) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.0 (Fri Feb 20 2026)
 
 #### 🚀 Enhancement
