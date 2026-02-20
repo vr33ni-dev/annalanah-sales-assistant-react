@@ -1,13 +1,12 @@
 // src/pages/SalesProcess.tsx
-import { SALES_STAGE } from "@/constants/stages";
-import { STAGE_LABELS } from "@/constants/labels";
+import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockSalesProcesses, mockStages } from "@/lib/mockData";
 import { format } from "date-fns";
 import { extractErrorMessage } from "@/helpers/error";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { de } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Pencil, Save, X } from "lucide-react";
@@ -87,8 +86,9 @@ type GespraechType = "erstgespraech" | "zweitgespraech";
 export default function SalesProcessView() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { useMockData } = useAuthEnabled();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [highlightId, setHighlightId] = useState<number | null>(null);
 
   function isFutureDate(date?: Date | null) {
     if (!date) return false;
@@ -135,6 +135,7 @@ export default function SalesProcessView() {
   const [gespraechType, setGespraechType] =
     useState<GespraechType>("erstgespraech");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [popoverSide, setPopoverSide] = useState<"top" | "bottom">("bottom");
   const [savingId, setSavingId] = useState<number | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
   const [hasActiveContract, setHasActiveContract] = useState(false);
@@ -252,6 +253,23 @@ export default function SalesProcessView() {
       alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
     },
   });
+
+  // If navigated here with ?sales_process=<id>, scroll to and briefly highlight that row
+  useMemo(() => {
+    const spParam = searchParams.get("sales_process");
+    if (!spParam) return;
+    const spId = Number(spParam);
+    if (Number.isNaN(spId)) return;
+
+    // Wait until `sales` are present in the DOM
+    const el = document.getElementById(`sales-${spId}`);
+    if (el) {
+      // scroll into view and highlight
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightId(spId);
+      window.setTimeout(() => setHighlightId(null), 3000);
+    }
+  }, [sales, searchParams]);
 
   const mPatch = useMutation<
     Awaited<ReturnType<typeof updateSalesProcess>>,
@@ -1567,7 +1585,13 @@ export default function SalesProcessView() {
                     ? (stages.find((s) => s.id === e.stage_id)?.name ?? null)
                     : null;
                 return (
-                  <TableRow key={e.id}>
+                  <TableRow
+                    key={e.id}
+                    id={`sales-${e.id}`}
+                    className={
+                      highlightId === e.id ? "ring-2 ring-primary" : undefined
+                    }
+                  >
                     <TableCell>{e.client_name}</TableCell>
 
                     {/* Status badge */}
@@ -1613,6 +1637,12 @@ export default function SalesProcessView() {
                               disabled={savingId === e.id}
                               onClick={(ev) => {
                                 ev.stopPropagation();
+                                // Choose popover side based on click position so
+                                // the calendar opens upwards when near bottom
+                                const buffer = 320; // estimated popover height
+                                const preferTop =
+                                  ev.clientY > window.innerHeight - buffer;
+                                setPopoverSide(preferTop ? "top" : "bottom");
                                 setEditingId(e.id);
                               }}
                             >
@@ -1630,9 +1660,9 @@ export default function SalesProcessView() {
                               />
                             </PopoverTrigger>
                             <PopoverContent
-                              className="absolute left-0 mt-2 w-auto p-2 z-50 bg-background border rounded-md shadow-md"
+                              className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
                               align="start"
-                              side="bottom"
+                              side={popoverSide}
                               onOpenAutoFocus={(e) => e.preventDefault()}
                             >
                               <Calendar
@@ -1792,11 +1822,13 @@ export default function SalesProcessView() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() =>
-                              navigate(
-                                `/contracts?client=${e.client_id}&open=1&sales_process=${e.id}`,
-                              )
-                            }
+                            onClick={() => {
+                              const base = `/contracts?client=${e.client_id}&open=1`;
+                              const url = e?.id
+                                ? `${base}&sales_process=${e.id}`
+                                : base;
+                              navigate(url);
+                            }}
                           >
                             Vertrag anzeigen
                           </Button>
