@@ -22,6 +22,10 @@ function calcNextDueAmount(c: Contract): number {
       return c.monthly_amount * 2;
     case "quarterly":
       return c.monthly_amount * 3;
+    case "bi-yearly":
+      return c.monthly_amount * 6;
+    case "one-time":
+      return c.revenue_total;
     default:
       return c.monthly_amount;
   }

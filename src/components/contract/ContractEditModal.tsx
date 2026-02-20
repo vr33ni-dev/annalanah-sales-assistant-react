@@ -30,6 +30,8 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
     setRevenue(contract.revenue_total ?? "");
   }, [contract]);
 
+  const durationNum = Number(duration) || 0;
+
   const handleSubmit = async () => {
     if (!contract) return;
 
@@ -84,6 +86,10 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
               <option value="monthly">Monatlich</option>
               <option value="bi-monthly">Zweimonatlich</option>
               <option value="quarterly">Quartal</option>
+              {(durationNum >= 12 || frequency === "bi-yearly") && (
+                <option value="bi-yearly">Halbjährlich</option>
+              )}
+              <option value="one-time">Einmalig</option>
             </select>
           </div>
 
