@@ -1,3 +1,16 @@
+# v0.4.2 (Fri Feb 20 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Refactor Verkaufsgespräch flow ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.1 (Fri Feb 20 2026)
 
 #### 🐛 Bug Fix
