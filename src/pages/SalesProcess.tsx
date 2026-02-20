@@ -57,6 +57,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { MergeConflicts } from "@/types/merge";
 import { isFetchError, StartSalesProcessError } from "@/types/apiError";
 import { MergeConflictDialog } from "@/components/MergeConflictDialog";
@@ -73,11 +74,14 @@ const stageBadgeClass: Record<
   string
 > = {
   [SALES_STAGE.INITIAL_CONTACT]:
-    "bg-primary/10 text-primary border border-primary/20",
+    "bg-blue-100 text-blue-800 border border-blue-200",
   [SALES_STAGE.FOLLOW_UP]: "bg-warning text-warning-foreground",
   [SALES_STAGE.CLOSED]: "bg-success text-success-foreground",
   [SALES_STAGE.LOST]: "bg-destructive text-destructive-foreground",
 };
+
+// gespräch type: which flow the user chose
+type GespraechType = "erstgespraech" | "zweitgespraech";
 
 export default function SalesProcessView() {
   const qc = useQueryClient();
@@ -87,7 +91,6 @@ export default function SalesProcessView() {
   function isFutureDate(date?: Date | null) {
     if (!date) return false;
     const today = new Date();
-    // Normalize both to start of day to avoid time drift
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     return d > t;
@@ -124,7 +127,10 @@ export default function SalesProcessView() {
 
   // Form state
   const [showForm, setShowForm] = useState(false);
-  const [formStep, setFormStep] = useState<1 | 2 | 3 | 4>(1);
+  // formStep: 0 = type selection, 1 = Erstgespräch, 2 = Zweitgespräch (from Aktionen or old flow),
+  //           3 = Ergebnis, 4 = Abschluss, 5 = old Zweitgespräch full flow step 1
+  const [formStep, setFormStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
+  const [gespraechType, setGespraechType] = useState<GespraechType>("erstgespraech");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
@@ -197,16 +203,14 @@ export default function SalesProcessView() {
 
       const apiError = data as StartSalesProcessError;
 
-      // ACTIVE CONTRACT → overwrite BLOCKED
       if (apiError.error === "client_has_active_contract") {
         setHasActiveContract(true);
-        setMergeConflicts({}); // open dialog
-        setPendingPayload(null); // nothing to retry
+        setMergeConflicts({});
+        setPendingPayload(null);
         setExistingClientId(apiError.client_id);
         return;
       }
 
-      // Merge possible (NO active contract)
       if (apiError.error === "client_exists") {
         setExistingClientId(apiError.client_id);
         setHasActiveContract(apiError.has_active_contract ?? false);
@@ -227,7 +231,6 @@ export default function SalesProcessView() {
     mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
-      // refetch contracts if a deal was closed
       if (vars.payload.closed === true) {
         qc.invalidateQueries({ queryKey: ["contracts"] });
         qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
@@ -254,9 +257,7 @@ export default function SalesProcessView() {
   function parseDateSafe(input?: string | null): Date | null {
     if (!input) return null;
     try {
-      // Always normalize UTC midnight → local date
       const date = new Date(input);
-      // Shift to local midnight to neutralize UTC offset
       return new Date(
         date.getUTCFullYear(),
         date.getUTCMonth(),
@@ -274,7 +275,7 @@ export default function SalesProcessView() {
       ...p,
       initial_contact_date:
         typeof p.initial_contact_date === "string"
-          ? p.initial_contact_date.slice(0, 10) // force YYYY-MM-DD
+          ? p.initial_contact_date.slice(0, 10)
           : format(p.initial_contact_date!, "yyyy-MM-dd"),
     };
   }
@@ -294,11 +295,11 @@ export default function SalesProcessView() {
 
         if (e.stage === SALES_STAGE.INITIAL_CONTACT) {
           if (erstDate && erstDate > now) {
-            label = "erstgespräch"; // Erstgespräch geplant
+            label = "erstgespräch";
           } else if (erstDate && (!zweitDate || zweitDate > now)) {
-            label = "erstgespräch abgeschlossen"; // Erstgespräch vorbei, Zweitgespräch noch nicht geplant
+            label = "erstgespräch abgeschlossen";
           } else {
-            label = "erstgespräch"; // fallback
+            label = "erstgespräch";
           }
         } else if (e.stage === SALES_STAGE.FOLLOW_UP) {
           if ((e.follow_up_result ?? null) == null) {
@@ -326,7 +327,6 @@ export default function SalesProcessView() {
       result = result.filter((e) => {
         const d = parseDateSafe(e.follow_up_date);
         if (!d) return false;
-
         if (dateFilter === "past") return d < today;
         if (dateFilter === "upcoming") return d > today;
         if (dateFilter === "today")
@@ -351,7 +351,6 @@ export default function SalesProcessView() {
     return <div className="p-6">Lade Verkaufsdaten…</div>;
   }
 
-  // Validations
   const isContractValid =
     !!formData.revenue &&
     Number(formData.revenue) > 0 &&
@@ -365,7 +364,8 @@ export default function SalesProcessView() {
 
   const resetAll = () => {
     setShowForm(false);
-    setFormStep(1);
+    setFormStep(0);
+    setGespraechType("erstgespraech");
     setFormData({
       name: "",
       email: "",
@@ -387,13 +387,14 @@ export default function SalesProcessView() {
     });
   };
 
-  // Step 1: Erstgespräch — save & close (creates lead + sales process with erstgespraech stage)
-  const handleStep1 = async () => {
+  // ── Erstgespräch: Step 1 save & close ──────────────────────────────
+  const handleErstgespraechSave = async () => {
     if (!formData.name || !formData.source) return;
 
     let resolvedLeadId: number | undefined = formData.leadId;
 
-    if (!formData.clientId && !resolvedLeadId) {
+    // Always create a lead for Erstgespräch
+    if (!resolvedLeadId) {
       try {
         const lead = await createLead({
           name: formData.name,
@@ -410,7 +411,7 @@ export default function SalesProcessView() {
       }
     }
 
-    const payload = {
+    const payload: StartSalesProcessRequest = {
       name: formData.name,
       email: formData.email ?? "",
       phone: formData.phone ?? "",
@@ -418,18 +419,41 @@ export default function SalesProcessView() {
       source_stage_id:
         formData.source === "paid" ? (formData.stageId ?? null) : null,
       lead_id: resolvedLeadId,
-      initial_contact_date: format(formData.erstgespraechDate!, "yyyy-MM-dd"),
-      follow_up_date: formData.zweitgespraechDate
-        ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
-        : null,
+      initial_contact_date: formData.erstgespraechDate
+        ? format(formData.erstgespraechDate, "yyyy-MM-dd")
+        : format(new Date(), "yyyy-MM-dd"),
       stage: SALES_STAGE.INITIAL_CONTACT,
     };
 
-    await mStart.mutateAsync({ ...payload });
+    await mStart.mutateAsync(payload);
+  };
+
+  // ── Zweitgespräch (old flow, step 5): full start ───────────────────
+  const handleZweitgespraechStart = async () => {
+    if (!formData.name || !formData.source) return;
+
+    const payload: StartSalesProcessRequest = {
+      name: formData.name,
+      email: formData.email ?? "",
+      phone: formData.phone ?? "",
+      source: formData.source,
+      source_stage_id:
+        formData.source === "paid" ? (formData.stageId ?? null) : null,
+      lead_id: formData.leadId,
+      initial_contact_date: formData.zweitgespraechDate
+        ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
+        : format(new Date(), "yyyy-MM-dd"),
+      follow_up_date: formData.zweitgespraechDate
+        ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
+        : undefined,
+      stage: SALES_STAGE.FOLLOW_UP,
+    };
+
+    await mStart.mutateAsync(payload);
   };
 
   const handleSubmit = async () => {
-    // Step 2: Zweitgespräch planen — update existing sales process with zweitgespräch date
+    // Step 2: Zweitgespräch planen (from table Aktionen)
     if (formStep === 2) {
       if (!formData.salesProcessId || !formData.zweitgespraechDate) return;
 
@@ -492,6 +516,7 @@ export default function SalesProcessView() {
   };
 
   const isFollowUpFuture = isFutureDate(formData.zweitgespraechDate);
+
   const handleMergeKeepExisting = async () => {
     if (!pendingPayload) return;
     await mStart.mutateAsync({
@@ -510,6 +535,17 @@ export default function SalesProcessView() {
         merge_strategy: "overwrite",
       }),
     );
+  };
+
+  // Card title per step
+  const cardTitle = () => {
+    if (formStep === 0) return "Verkaufsgespräch planen";
+    if (formStep === 1) return "Schritt 1: Erstgespräch planen";
+    if (formStep === 2) return "Zweitgespräch planen";
+    if (formStep === 3) return "Schritt 3: Zweitgespräch Ergebnis";
+    if (formStep === 4) return "Schritt 4: Abschluss";
+    if (formStep === 5) return "Schritt 1: Zweitgespräch planen";
+    return "";
   };
 
   return (
@@ -540,11 +576,11 @@ export default function SalesProcessView() {
           variant="outline"
           onClick={() => {
             setShowForm(true);
-            setFormStep(1);
+            setFormStep(0);
           }}
         >
           <CalendarPlus className="w-4 h-4 mr-2" />
-          Erstgespräch planen
+          Verkaufsgespräch planen
         </Button>
       </div>
 
@@ -554,14 +590,55 @@ export default function SalesProcessView() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              {formStep === 1 && "Schritt 1: Erstgespräch planen"}
-              {formStep === 2 && "Schritt 2: Zweitgespräch planen"}
-              {formStep === 3 && "Schritt 3: Zweitgespräch Ergebnis"}
-              {formStep === 4 && "Schritt 4: Abschluss"}
+              {cardTitle()}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Step 1: Erstgespräch planen */}
+
+            {/* Step 0: Type selection */}
+            {formStep === 0 && (
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Welche Art von Gespräch möchten Sie planen?</Label>
+                  <RadioGroup
+                    value={gespraechType}
+                    onValueChange={(v) => setGespraechType(v as GespraechType)}
+                    className="flex flex-col gap-3"
+                  >
+                    <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
+                      <RadioGroupItem value="erstgespraech" id="type-erst" className="mt-0.5" />
+                      <label htmlFor="type-erst" className="cursor-pointer flex-1">
+                        <div className="font-medium">Erstgespräch</div>
+                        <div className="text-sm text-muted-foreground mt-0.5">
+                          Erster Kontakt mit einem neuen Interessenten. Ein Lead wird automatisch angelegt.
+                        </div>
+                      </label>
+                    </div>
+                    <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
+                      <RadioGroupItem value="zweitgespraech" id="type-zweit" className="mt-0.5" />
+                      <label htmlFor="type-zweit" className="cursor-pointer flex-1">
+                        <div className="font-medium">Zweitgespräch</div>
+                        <div className="text-sm text-muted-foreground mt-0.5">
+                          Folgegespräch mit einem bestehenden Lead. Sie können einen vorhandenen Lead auswählen.
+                        </div>
+                      </label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setFormStep(gespraechType === "erstgespraech" ? 1 : 5)}
+                  >
+                    Weiter
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1: Erstgespräch planen — saves & closes */}
             {formStep === 1 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -612,15 +689,12 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.erstgespraechDate &&
-                            "text-muted-foreground",
+                          !formData.erstgespraechDate && "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {formData.erstgespraechDate
-                          ? format(formData.erstgespraechDate, "PPP", {
-                              locale: de,
-                            })
+                          ? format(formData.erstgespraechDate, "PPP", { locale: de })
                           : "Datum auswählen"}
                       </Button>
                     </PopoverTrigger>
@@ -629,10 +703,7 @@ export default function SalesProcessView() {
                         mode="single"
                         selected={formData.erstgespraechDate ?? undefined}
                         onSelect={(date) =>
-                          setFormData({
-                            ...formData,
-                            erstgespraechDate: date ?? null,
-                          })
+                          setFormData({ ...formData, erstgespraechDate: date ?? null })
                         }
                         initialFocus
                         className="pointer-events-auto"
@@ -687,22 +758,23 @@ export default function SalesProcessView() {
                 )}
 
                 <div className="col-span-full flex gap-3">
-                  <Button
-                    onClick={handleStep1}
-                    disabled={
-                      !formData.name || !formData.source || mStart.isPending
-                    }
-                  >
-                    {mStart.isPending ? "Speichern…" : "Speichern"}
+                  <Button variant="outline" onClick={() => setFormStep(0)}>
+                    Zurück
                   </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
+                  <Button
+                    onClick={handleErstgespraechSave}
+                    disabled={!formData.name || !formData.source || mStart.isPending}
+                  >
+                    {mStart.isPending ? "Speichern…" : "Speichern & Schließen"}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowForm(false)}>
                     Abbrechen
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Zweitgespräch planen (opened from table actions) */}
+            {/* Step 2: Zweitgespräch planen (opened from table Aktionen) */}
             {formStep === 2 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="col-span-full p-3 bg-muted/30 rounded-lg">
@@ -722,15 +794,12 @@ export default function SalesProcessView() {
                         variant="outline"
                         className={cn(
                           "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.zweitgespraechDate &&
-                            "text-muted-foreground",
+                          !formData.zweitgespraechDate && "text-muted-foreground",
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {formData.zweitgespraechDate
-                          ? format(formData.zweitgespraechDate, "PPP", {
-                              locale: de,
-                            })
+                          ? format(formData.zweitgespraechDate, "PPP", { locale: de })
                           : "Datum auswählen"}
                       </Button>
                     </PopoverTrigger>
@@ -739,10 +808,7 @@ export default function SalesProcessView() {
                         mode="single"
                         selected={formData.zweitgespraechDate ?? undefined}
                         onSelect={(date) =>
-                          setFormData({
-                            ...formData,
-                            zweitgespraechDate: date ?? null,
-                          })
+                          setFormData({ ...formData, zweitgespraechDate: date ?? null })
                         }
                         initialFocus
                         className="pointer-events-auto"
@@ -773,9 +839,7 @@ export default function SalesProcessView() {
                   <p className="text-sm text-muted-foreground">
                     Zweitgespräch am:{" "}
                     {formData.zweitgespraechDate
-                      ? format(formData.zweitgespraechDate, "PPP", {
-                          locale: de,
-                        })
+                      ? format(formData.zweitgespraechDate, "PPP", { locale: de })
                       : "—"}
                   </p>
                 </div>
@@ -823,10 +887,10 @@ export default function SalesProcessView() {
                   )}
                 </div>
                 <div className="flex gap-3">
-                  <Button onClick={() => setFormStep(2)} variant="outline">
-                    Zurück
-                  </Button>
                   <Button onClick={handleSubmit}>Speichern</Button>
+                  <Button variant="ghost" onClick={() => setShowForm(false)}>
+                    Abbrechen
+                  </Button>
                 </div>
               </div>
             )}
@@ -903,15 +967,12 @@ export default function SalesProcessView() {
                             variant="outline"
                             className={cn(
                               "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.contractStart &&
-                                "text-muted-foreground",
+                              !formData.contractStart && "text-muted-foreground",
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {formData.contractStart
-                              ? format(formData.contractStart, "PPP", {
-                                  locale: de,
-                                })
+                              ? format(formData.contractStart, "PPP", { locale: de })
                               : "Startdatum auswählen"}
                           </Button>
                         </PopoverTrigger>
@@ -920,10 +981,7 @@ export default function SalesProcessView() {
                             mode="single"
                             selected={formData.contractStart ?? undefined}
                             onSelect={(date) =>
-                              setFormData({
-                                ...formData,
-                                contractStart: date ?? null,
-                              })
+                              setFormData({ ...formData, contractStart: date ?? null })
                             }
                             initialFocus
                             className="pointer-events-auto"
@@ -951,12 +1009,8 @@ export default function SalesProcessView() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="monthly">Monatlich</SelectItem>
-                          <SelectItem value="bi-monthly">
-                            Zweimonatlich
-                          </SelectItem>
-                          <SelectItem value="quarterly">
-                            Quartalsweise
-                          </SelectItem>
+                          <SelectItem value="bi-monthly">Zweimonatlich</SelectItem>
+                          <SelectItem value="quarterly">Quartalsweise</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -974,9 +1028,7 @@ export default function SalesProcessView() {
                           >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {formData.completedAt
-                              ? format(formData.completedAt, "PPP", {
-                                  locale: de,
-                                })
+                              ? format(formData.completedAt, "PPP", { locale: de })
                               : "Datum auswählen"}
                           </Button>
                         </PopoverTrigger>
@@ -1005,20 +1057,181 @@ export default function SalesProcessView() {
 
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => setFormStep(3)}
-                    variant="outline"
+                    onClick={handleSubmit}
+                    disabled={!canSubmit}
                     className="mt-4"
                   >
+                    Speichern & Abschließen
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowForm(false)} className="mt-4">
+                    Abbrechen
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Zweitgespräch — full new entry (old first-step flow) */}
+            {formStep === 5 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Lead search */}
+                <div className="col-span-full space-y-2">
+                  <Label>Bestehenden Lead auswählen (optional)</Label>
+                  <LeadSearch
+                    selectedLeadId={formData.leadId ?? null}
+                    onSelectLead={(lead: Lead | null) => {
+                      if (lead) {
+                        setFormData((prev) => ({
+                          ...prev,
+                          leadId: lead.id,
+                          name: lead.name,
+                          email: lead.email ?? "",
+                          phone: lead.phone ?? "",
+                          source: (lead.source as "organic" | "paid") ?? "",
+                          stageId: lead.source_stage_id ?? null,
+                        }));
+                      } else {
+                        setFormData((prev) => ({
+                          ...prev,
+                          leadId: undefined,
+                        }));
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="name-zweit">Name (Vor- und Nachname) *</Label>
+                  <Input
+                    id="name-zweit"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder="Max Mustermann"
+                    className="bg-success/5 border-success/30 focus:border-success"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email-zweit">Email</Label>
+                  <Input
+                    id="email-zweit"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) =>
+                      setFormData({ ...formData, email: e.target.value })
+                    }
+                    placeholder="max@example.com"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone-zweit">Telefon</Label>
+                  <Input
+                    id="phone-zweit"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    placeholder="+49 123 456789"
+                    className="bg-success/5 border-success/30"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Datum des Zweitgesprächs *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
+                          !formData.zweitgespraechDate && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.zweitgespraechDate
+                          ? format(formData.zweitgespraechDate, "PPP", { locale: de })
+                          : "Datum auswählen"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={formData.zweitgespraechDate ?? undefined}
+                        onSelect={(date) =>
+                          setFormData({ ...formData, zweitgespraechDate: date ?? null })
+                        }
+                        initialFocus
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Quelle *</Label>
+                  <Select
+                    value={formData.source ?? ""}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        source: value as "organic" | "paid",
+                        stageId: value !== "paid" ? null : formData.stageId,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                      <SelectValue placeholder="Quelle auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="organic">Organisch</SelectItem>
+                      <SelectItem value="paid">Bezahlt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.source === "paid" && (
+                  <div className="space-y-2">
+                    <Label>Bühne auswählen</Label>
+                    <Select
+                      value={String(formData.stageId ?? "")}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, stageId: Number(value) })
+                      }
+                    >
+                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
+                        <SelectValue placeholder="Bühne auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map((st) => (
+                          <SelectItem key={st.id} value={String(st.id)}>
+                            {st.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="col-span-full flex gap-3">
+                  <Button variant="outline" onClick={() => setFormStep(0)}>
                     Zurück
                   </Button>
                   <Button
-                    onClick={handleSubmit}
-                    disabled={!canSubmit}
-                    className={`mt-4 ${
-                      !canSubmit ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    onClick={handleZweitgespraechStart}
+                    disabled={
+                      !formData.name ||
+                      !formData.source ||
+                      !formData.zweitgespraechDate ||
+                      mStart.isPending
+                    }
                   >
-                    Speichern & Abschließen
+                    {mStart.isPending ? "Speichern…" : "Speichern"}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setShowForm(false)}>
+                    Abbrechen
                   </Button>
                 </div>
               </div>
@@ -1035,14 +1248,12 @@ export default function SalesProcessView() {
               value={statusFilter}
               onValueChange={(v: StatusFilter) => setStatusFilter(v)}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-56">
                 <SelectValue placeholder="Status filtern" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle Status</SelectItem>
-                <SelectItem value="erstgespräch geplant">
-                  Erstgespräch
-                </SelectItem>
+                <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
                 <SelectItem value="erstgespräch abgeschlossen">
                   Erstgespräch abgeschlossen
                 </SelectItem>
@@ -1073,22 +1284,17 @@ export default function SalesProcessView() {
                     </PopoverTrigger>
                     <PopoverContent className="w-52">
                       <div className="space-y-2">
-                        {/* "Alle" (All) option */}
                         <div className="flex items-center space-x-2 border-b pb-2 mb-2">
                           <Checkbox
                             id="filter-all"
                             checked={activeStatusFilters.length === 0}
                             onCheckedChange={() => setActiveStatusFilters([])}
                           />
-                          <label
-                            htmlFor="filter-all"
-                            className="text-sm font-medium"
-                          >
+                          <label htmlFor="filter-all" className="text-sm font-medium">
                             Alle
                           </label>
                         </div>
 
-                        {/* Individual statuses */}
                         {[
                           "erstgespräch",
                           "erstgespräch abgeschlossen",
@@ -1100,21 +1306,13 @@ export default function SalesProcessView() {
                           const capitalized =
                             status.charAt(0).toUpperCase() + status.slice(1);
                           return (
-                            <div
-                              key={status}
-                              className="flex items-center space-x-2"
-                            >
+                            <div key={status} className="flex items-center space-x-2">
                               <Checkbox
                                 id={`filter-${status}`}
                                 checked={activeStatusFilters.includes(status)}
-                                onCheckedChange={() =>
-                                  toggleStatusFilter(status)
-                                }
+                                onCheckedChange={() => toggleStatusFilter(status)}
                               />
-                              <label
-                                htmlFor={`filter-${status}`}
-                                className="text-sm"
-                              >
+                              <label htmlFor={`filter-${status}`} className="text-sm">
                                 {capitalized}
                               </label>
                             </div>
@@ -1167,17 +1365,13 @@ export default function SalesProcessView() {
                     </PopoverTrigger>
                     <PopoverContent className="w-52">
                       <div className="space-y-2">
-                        {/* "Alle" (All) option */}
                         <div className="flex items-center space-x-2 border-b pb-2 mb-2">
                           <Checkbox
-                            id="filter-all"
+                            id="filter-source-all"
                             checked={activeSourceFilters.length === 0}
                             onCheckedChange={() => setActiveSourceFilters([])}
                           />
-                          <label
-                            htmlFor="filter-all"
-                            className="text-sm font-medium"
-                          >
+                          <label htmlFor="filter-source-all" className="text-sm font-medium">
                             Alle
                           </label>
                         </div>
@@ -1186,19 +1380,13 @@ export default function SalesProcessView() {
                           { value: "paid", label: "Bezahlt" },
                           { value: "organic", label: "Organisch" },
                         ].map(({ value, label }) => (
-                          <div
-                            key={value}
-                            className="flex items-center space-x-2"
-                          >
+                          <div key={value} className="flex items-center space-x-2">
                             <Checkbox
                               id={`filter-source-${value}`}
                               checked={activeSourceFilters.includes(value)}
                               onCheckedChange={() => toggleSourceFilter(value)}
                             />
-                            <label
-                              htmlFor={`filter-source-${value}`}
-                              className="text-sm"
-                            >
+                            <label htmlFor={`filter-source-${value}`} className="text-sm">
                               {label}
                             </label>
                           </div>
@@ -1221,13 +1409,17 @@ export default function SalesProcessView() {
                 return (
                   <TableRow key={e.id}>
                     <TableCell>{e.client_name}</TableCell>
+
+                    {/* Status badge */}
                     <TableCell>
                       <Badge className={stageBadgeClass[e.stage]}>
-                        {STAGE_LABELS[e.stage]}
+                        {e.stage === SALES_STAGE.INITIAL_CONTACT
+                          ? "Erstgespräch"
+                          : STAGE_LABELS[e.stage]}
                       </Badge>
                     </TableCell>
 
-                    {/* Erstgespräch date — shown when stage is initial_contact*/}
+                    {/* Erstgespräch date */}
                     <TableCell>
                       <span className="text-sm">
                         {e.initial_contact_date
@@ -1240,11 +1432,11 @@ export default function SalesProcessView() {
                       </span>
                     </TableCell>
 
-                    {/* Zweitgespräch date — shown for follow_up/closed/lost stages */}
+                    {/* Zweitgespräch date with inline edit */}
                     <TableCell>
                       <div className="flex items-center gap-2 relative">
                         <span className="text-sm">
-                          {e.follow_up_date
+                          {e.follow_up_date && e.stage !== SALES_STAGE.INITIAL_CONTACT
                             ? format(
                                 parseDateSafe(e.follow_up_date)!,
                                 "dd.MM.yyyy",
@@ -1252,7 +1444,7 @@ export default function SalesProcessView() {
                               )
                             : "–"}
                         </span>
-                        {e.stage !== SALES_STAGE.INITIAL_CONTACT && (
+                        {e.stage !== SALES_STAGE.INITIAL_CONTACT && e.follow_up_date && (
                           <Button
                             size="icon"
                             variant="ghost"
@@ -1321,6 +1513,7 @@ export default function SalesProcessView() {
                       </div>
                     </TableCell>
 
+                    {/* Result */}
                     <TableCell>
                       {e.stage === SALES_STAGE.INITIAL_CONTACT
                         ? "–"
@@ -1330,6 +1523,7 @@ export default function SalesProcessView() {
                             ? "Nicht erschienen"
                             : "Ausstehend"}
                     </TableCell>
+
                     <TableCell>
                       {e.client_source
                         ? e.client_source === "paid"
@@ -1351,7 +1545,7 @@ export default function SalesProcessView() {
                           entityName={e.client_name}
                         />
 
-                        {/* Zweitgespräch planen — only for erstgespraech stage */}
+                        {/* Zweitgespräch planen — only for Erstgespräch stage */}
                         {e.stage === SALES_STAGE.INITIAL_CONTACT && (
                           <Button
                             size="sm"
@@ -1382,9 +1576,7 @@ export default function SalesProcessView() {
                                 setShowForm(true);
                                 setFormStep(3);
 
-                                const followUpDate = parseDateSafe(
-                                  e.follow_up_date,
-                                );
+                                const followUpDate = parseDateSafe(e.follow_up_date);
                                 const now = new Date();
 
                                 const defaultResult =
@@ -1406,6 +1598,7 @@ export default function SalesProcessView() {
                             </Button>
                           )}
 
+                        {/* Abschluss eingeben */}
                         {e.stage === SALES_STAGE.FOLLOW_UP &&
                           e.follow_up_result === true && (
                             <Button
@@ -1421,9 +1614,7 @@ export default function SalesProcessView() {
                                   clientId: e.client_id,
                                   zweitgespraechResult: true,
                                   abschluss: null,
-                                  zweitgespraechDate: parseDateSafe(
-                                    e.follow_up_date,
-                                  ),
+                                  zweitgespraechDate: parseDateSafe(e.follow_up_date),
                                 }));
                               }}
                             >
