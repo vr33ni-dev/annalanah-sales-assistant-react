@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
 import api from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -26,14 +27,16 @@ const updateSetting = async (key: string, value: number) => {
 export default function Settings() {
   const qc = useQueryClient();
 
-  const { data: monthsSetting, isLoading: lMonths } = useQuery({
+  const { data: monthsSetting, isLoading: lMonths } = useMockableQuery({
     queryKey: ["settings", "potential_months"],
     queryFn: () => fetchSetting("potential_months"),
+    mockData: { key: "potential_months", value_numeric: 6, value_text: null } as Setting,
   });
 
-  const { data: flatSetting, isLoading: lFlat } = useQuery({
+  const { data: flatSetting, isLoading: lFlat } = useMockableQuery({
     queryKey: ["settings", "potential_flat_eur"],
     queryFn: () => fetchSetting("potential_flat_eur"),
+    mockData: { key: "potential_flat_eur", value_numeric: 900, value_text: null } as Setting,
   });
 
   const [months, setMonths] = useState("");
