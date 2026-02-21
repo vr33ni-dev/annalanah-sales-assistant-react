@@ -13,3 +13,14 @@ export function formatDateOnly(iso: string | null | undefined): string {
 export function toDateOnly(iso) {
   return iso ? iso.split("T")[0] : "";
 }
+
+// Parse YYYY-MM-DD or full ISO string to a local Date (no timezone shift)
+export function parseIsoToLocal(iso?: string | null): Date | null {
+  if (!iso) return null;
+  const datePart = String(iso).split("T")[0];
+  const parts = datePart.split("-").map((v) => Number(v));
+  if (parts.length < 3) return null;
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}

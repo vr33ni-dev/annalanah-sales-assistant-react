@@ -28,14 +28,30 @@ interface MonthlyData {
 }
 
 const euro = (n: number) =>
-  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
+  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
+    n,
+  );
 
 const MONTH_NAMES = [
-  "Januar", "Februar", "März", "April", "Mai", "Juni",
-  "Juli", "August", "September", "Oktober", "November", "Dezember"
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember",
 ];
 
-export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyKPITableProps) {
+export function MonthlyKPITable({
+  contracts,
+  salesProcesses,
+  upsells,
+}: MonthlyKPITableProps) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
 
@@ -63,15 +79,29 @@ export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyK
     const monthStart = new Date(currentYear, m, 1);
     const monthEnd = new Date(currentYear, m + 1, 0);
 
+    // Parse YYYY-MM-DD or full ISO to a local Date (avoid timezone shifts)
+    const parseIsoToLocal = (dateStr?: string | null): Date | null => {
+      if (!dateStr) return null;
+      const datePart = String(dateStr).split("T")[0];
+      const parts = datePart.split("-").map((v) => Number(v));
+      if (parts.length < 3) return null;
+      const [y, mm, dd] = parts;
+      if (!y || !mm || !dd) return null;
+      return new Date(y, mm - 1, dd);
+    };
+
     const inMonth = (dateStr?: string | null) => {
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
+      const d = parseIsoToLocal(dateStr);
+      if (!d) return false;
       return d >= monthStart && d <= monthEnd;
     };
 
     // Contracts started in this month
     const monthContracts = contracts.filter((c) => inMonth(c.start_date));
-    const revenue = monthContracts.reduce((s, c) => s + (c.revenue_total ?? 0), 0);
+    const revenue = monthContracts.reduce(
+      (s, c) => s + (c.revenue_total ?? 0),
+      0,
+    );
 
     // New customer revenue
     const newCustomerRevenue = monthContracts
@@ -89,11 +119,17 @@ export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyK
 
     // Sales processes with follow-up in this month
     const monthCalls = salesProcesses.filter(
-      (sp) => sp.follow_up_date && inMonth(sp.follow_up_date) && !isRenewalProcess(sp)
+      (sp) =>
+        sp.follow_up_date &&
+        inMonth(sp.follow_up_date) &&
+        !isRenewalProcess(sp),
     );
-    const appeared = monthCalls.filter((sp) => sp.follow_up_result === true).length;
+    const appeared = monthCalls.filter(
+      (sp) => sp.follow_up_result === true,
+    ).length;
     const closedDeals = monthCalls.filter((sp) => sp.closed === true).length;
-    const closingRate = appeared > 0 ? Math.round((closedDeals / appeared) * 100) : null;
+    const closingRate =
+      appeared > 0 ? Math.round((closedDeals / appeared) * 100) : null;
 
     monthlyData.push({
       month: MONTH_NAMES[m],
@@ -114,7 +150,8 @@ export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyK
   };
 
   const TrendIndicator = ({ value }: { value: number | null }) => {
-    if (value === null) return <Minus className="w-3 h-3 text-muted-foreground" />;
+    if (value === null)
+      return <Minus className="w-3 h-3 text-muted-foreground" />;
     if (value > 0) return <TrendingUp className="w-3 h-3 text-success" />;
     if (value < 0) return <TrendingDown className="w-3 h-3 text-destructive" />;
     return <Minus className="w-3 h-3 text-muted-foreground" />;
@@ -141,12 +178,12 @@ export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyK
             {monthlyData.map((data, idx) => {
               const prev = monthlyData[idx - 1];
               const revenueTrend = getTrend(data.revenue, prev?.revenue);
-              
+
               return (
-                <TableRow 
+                <TableRow
                   key={data.monthNum}
                   className={cn(
-                    data.monthNum === currentMonth && "bg-accent/30"
+                    data.monthNum === currentMonth && "bg-accent/30",
                   )}
                 >
                   <TableCell className="font-medium">{data.month}</TableCell>
@@ -156,9 +193,15 @@ export function MonthlyKPITable({ contracts, salesProcesses, upsells }: MonthlyK
                       <TrendIndicator value={revenueTrend} />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">{euro(data.newCustomerRevenue)}</TableCell>
-                  <TableCell className="text-right">{euro(data.renewalRevenue)}</TableCell>
-                  <TableCell className="text-right">{data.closedDeals}</TableCell>
+                  <TableCell className="text-right">
+                    {euro(data.newCustomerRevenue)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {euro(data.renewalRevenue)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {data.closedDeals}
+                  </TableCell>
                   <TableCell className="text-right">
                     {data.closingRate !== null ? `${data.closingRate}%` : "—"}
                   </TableCell>

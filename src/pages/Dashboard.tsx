@@ -46,13 +46,21 @@ import { startOfMonth } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
-import { formatDateOnly } from "@/helpers/date";
+import { parseIsoToLocal } from "@/helpers/date";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // small utility
 const euro = (n: number) =>
   new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
     n,
   );
+
+const formatLocalDate = (d?: Date | null) =>
+  d ? d.toLocaleDateString("de-DE") : "–";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -111,7 +119,8 @@ export default function Dashboard() {
 
   const inRange = (dateStr?: string | null) => {
     if (!dateStr || !range.from || !range.to) return false;
-    const d = new Date(dateStr);
+    const d = parseIsoToLocal(dateStr);
+    if (!d) return false;
     return d >= range.from && d <= range.to;
   };
 
@@ -153,11 +162,14 @@ export default function Dashboard() {
     const clientUpsells = upsellByClient[sp.client_id] ?? [];
     if (!sp.follow_up_date) return false;
 
-    const f = new Date(sp.follow_up_date);
+    const f = parseIsoToLocal(sp.follow_up_date);
+    if (!f) return false;
 
     return clientUpsells.some((u) => {
       if (!u.upsell_date) return false; // ignore nulls
-      return new Date(u.upsell_date) < f; // upsell happened BEFORE call
+      const uDate = parseIsoToLocal(u.upsell_date);
+      if (!uDate) return false;
+      return uDate < f; // upsell happened BEFORE call
     });
   }
 
@@ -177,8 +189,8 @@ export default function Dashboard() {
   // -----------------------------
   const today = new Date();
   const activeContracts = contracts.filter((c) => {
-    const start = new Date(c.start_date);
-    const end = new Date(c.end_date_computed ?? c.start_date);
+    const start = parseIsoToLocal(c.start_date) || new Date(0);
+    const end = parseIsoToLocal(c.end_date_computed ?? c.start_date) || start;
     return start <= today && end >= today;
   }).length;
 
@@ -215,6 +227,56 @@ export default function Dashboard() {
       : "—";
 
   // -----------------------------
+  // RECENT ACTIVITIES (combine contracts + sales and sort by date)
+  // -----------------------------
+  type RecentItem = {
+    id: string;
+    kind: "contract" | "sales";
+    date: Date | null;
+    label: string;
+    revenue?: number | null;
+    url: string;
+  };
+
+  const recentItems: RecentItem[] = [
+    ...contracts.map((c) => ({
+      id: `contract-${c.id}`,
+      kind: "contract" as const,
+      date: parseIsoToLocal(c.created_at),
+      label: `Vertragsabschluss - ${c.client_name}`,
+      revenue: c.revenue_total ?? 0,
+      url: c.sales_process_id
+        ? `/contracts?client=${c.client_id}&open=1&sales_process=${c.sales_process_id}`
+        : `/contracts?client=${c.client_id}&open=1`,
+    })),
+    ...salesProcesses.map((s) => ({
+      id: `sales-${s.id}`,
+      kind: "sales" as const,
+      date: parseIsoToLocal(s.created_at),
+      label: `Verkaufsprozess: ${STAGE_LABELS[s.stage] ?? s.stage} - ${s.client_name}`,
+      revenue: null,
+      url: `/sales?sales_process=${s.id}`,
+    })),
+  ];
+
+  recentItems.sort((a, b) => {
+    const ta = a.date ? a.date.getTime() : 0;
+    const tb = b.date ? b.date.getTime() : 0;
+    return tb - ta;
+  });
+
+  const recent = recentItems.slice(0, 5);
+
+  // debug: show which recent items parsed to a Date
+  if (typeof window !== "undefined") {
+    // eslint-disable-next-line no-console
+    console.debug(
+      "[Dashboard] recent items:",
+      recent.map((r) => ({ id: r.id, kind: r.kind, date: r.date })),
+    );
+  }
+
+  // -----------------------------
   // UI
   // -----------------------------
   return (
@@ -226,9 +288,17 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="flex justify-between items-center mb-4">
-        <DateRangePicker value={range} onChange={setRange} />
-      </div>
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Zeitraum KPIs</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-4">
+          <DateRangePicker value={range} onChange={setRange} />
+          <p className="text-sm text-muted-foreground">
+            Filter für die folgende KPI-Übersicht
+          </p>
+        </CardContent>
+      </Card>
 
       {/* KPI GRID 1 — Revenue */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -259,11 +329,23 @@ export default function Dashboard() {
 
       {/* KPI GRID 2 — Performance */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
-          title="Abschlussquote Neukunden"
-          value={closingRateNew}
-          icon={Target}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Abschlussquote Neukunden"
+                value={closingRateNew}
+                icon={Target}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-sm">
+              Anteil der Neukunden, die zum Zweitgespräch erschienen und danach
+              einen Vertrag abgeschlossen haben.
+            </p>
+          </TooltipContent> 
+        </Tooltip>
 
         <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />
       </div>
@@ -299,50 +381,28 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-2">
-                {contracts.slice(0, 3).map((c) => (
+                {recent.map((item) => (
                   <div
-                    key={c.id}
+                    key={item.id}
                     className="flex items-center justify-between p-2 bg-accent/30 rounded"
                   >
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const base = `/contracts?client=${c.client_id}&open=1`;
-                        const url = c.sales_process_id
-                          ? `${base}&sales_process=${c.sales_process_id}`
-                          : base;
-                        navigate(url);
-                      }}
-                    >
-                      Vertragsabschluss - {c.client_name}
-                    </Button>
-                    <Badge className="bg-success text-success-foreground">
-                      {euro(c.revenue_total ?? 0)}
-                    </Badge>
-                  </div>
-                ))}
-
-                {salesProcesses.slice(0, 2).map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between p-2 bg-accent/30 rounded"
-                  >
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const url = `/sales?sales_process=${s.id}`;
-                        navigate(url);
-                      }}
-                    >
-                      Verkaufsprozess: {STAGE_LABELS[s.stage] ?? s.stage} -{" "}
-                      {s.client_name}
-                    </Button>
-
-                    <div className="text-sm text-muted-foreground">
-                      {formatDateOnly(s.follow_up_date ?? null)}
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm text-muted-foreground min-w-[110px]">
+                        {formatLocalDate(item.date)}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(item.url)}
+                      >
+                        {item.label}
+                      </Button>
                     </div>
+                    {item.kind === "contract" ? (
+                      <Badge className="bg-success text-success-foreground">
+                        {euro(item.revenue ?? 0)}
+                      </Badge>
+                    ) : null}
                   </div>
                 ))}
               </div>

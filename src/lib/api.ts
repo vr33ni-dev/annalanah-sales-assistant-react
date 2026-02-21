@@ -143,6 +143,7 @@ export interface SalesProcess {
   closed?: boolean | null;
   revenue?: number | null;
   stage_id?: number | null;
+  created_at?: string | null;
 }
 
 export async function getSalesProcesses(): Promise<
@@ -177,6 +178,7 @@ export async function getSalesProcesses(): Promise<
       closed: sp.closed ?? null,
       revenue: sp.revenue ?? null,
       stage_id: sp.stage_id ?? null,
+      created_at: sp.created_at ?? null,
     };
   });
 }
@@ -324,6 +326,7 @@ export interface Contract {
   client_id: number;
   client_name: string;
   sales_process_id: number;
+  created_at: string;
   start_date: string;
   end_date_computed?: string | null;
   duration_months: number;
