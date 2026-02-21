@@ -1,3 +1,16 @@
+# v0.4.9 (Sat Feb 21 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Dynamic cashflow months setting ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.8 (Sat Feb 21 2026)
 
 #### ⚠️ Pushed to `main`
