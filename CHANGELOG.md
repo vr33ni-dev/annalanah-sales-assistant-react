@@ -1,3 +1,15 @@
+# v0.4.6 (Sat Feb 21 2026)
+
+#### 🐛 Bug Fix
+
+- improved dashboard view and salesprocess flows [#80](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/80) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.5 (Fri Feb 20 2026)
 
 #### 🐛 Bug Fix
