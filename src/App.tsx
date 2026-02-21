@@ -24,6 +24,7 @@ import { useEffect } from "react";
 import { onAuthMessage } from "@/auth/useAuth"; // cross-tab logout listener
 import { useMe } from "@/auth/useAuth"; // <-- add this
 import NLQConsole from "./pages/NLQConsole";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -104,6 +105,7 @@ const App = () => {
               <Route path="/stages" element={<Stages />} />
               {/* 🧠 Natural Language Query Console */}
               <Route path="/nlq" element={<NLQConsole />} />
+              <Route path="/settings" element={<Settings />} />
               {/* Protected 404 fallback */}
               <Route path="*" element={<NotFound />} />
             </Route>
