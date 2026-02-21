@@ -1,6 +1,6 @@
 // src/pages/SalesProcess.tsx
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockSalesProcesses, mockStages } from "@/lib/mockData";
@@ -135,6 +135,7 @@ export default function SalesProcessView() {
   const [gespraechType, setGespraechType] =
     useState<GespraechType>("erstgespraech");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingInitialId, setEditingInitialId] = useState<number | null>(null);
   const [popoverSide, setPopoverSide] = useState<"top" | "bottom">("bottom");
   const [savingId, setSavingId] = useState<number | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
@@ -255,7 +256,7 @@ export default function SalesProcessView() {
   });
 
   // If navigated here with ?sales_process=<id>, scroll to and briefly highlight that row
-  useMemo(() => {
+  useEffect(() => {
     const spParam = searchParams.get("sales_process");
     if (!spParam) return;
     const spId = Number(spParam);
@@ -277,8 +278,41 @@ export default function SalesProcessView() {
     { id: number; payload: SalesProcessUpdateRequest }
   >({
     mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["sales"] });
+    onSuccess: (data, vars) => {
+      try {
+        // Debug: inspect server response and existing cache item
+        console.debug("mPatch.onSuccess - response:", data);
+
+        type SalesCacheItem = SalesProcess & { stage_label: string };
+        qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
+          const prev: SalesCacheItem[] = (old as SalesCacheItem[]) ?? [];
+          const updated = prev.map((item) => {
+            if (item.id !== data.id) return item;
+            const resolvedStage = data.stage ?? item.stage;
+            const merged: SalesCacheItem = {
+              ...item,
+              ...data,
+              stage: resolvedStage,
+              stage_label: STAGE_LABELS[resolvedStage] ?? resolvedStage,
+            } as SalesCacheItem;
+            console.debug("mPatch.onSuccess - merging item", {
+              before: item,
+              response: data,
+              after: merged,
+            });
+            return merged;
+          });
+          return updated;
+        });
+      } catch (err) {
+        // fall back to full refetch if cache update fails
+        console.debug(
+          "mPatch.onSuccess - cache update failed, invalidating",
+          err,
+        );
+        qc.invalidateQueries({ queryKey: ["sales"] });
+      }
+
       if (vars.payload.closed === true) {
         qc.invalidateQueries({ queryKey: ["contracts"] });
         qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
@@ -476,7 +510,6 @@ export default function SalesProcessView() {
     };
 
     // log payload for debugging to confirm source and source_stage_id
-    // eslint-disable-next-line no-console
     console.log("handleZweitgespraechStart payload:", payload);
     await mStart.mutateAsync(payload);
   };
@@ -1603,17 +1636,92 @@ export default function SalesProcessView() {
                       </Badge>
                     </TableCell>
 
-                    {/* Erstgespräch date */}
+                    {/* Erstgespräch date (inline editable) */}
                     <TableCell>
-                      <span className="text-sm">
-                        {e.initial_contact_date
-                          ? format(
-                              parseDateSafe(e.initial_contact_date)!,
-                              "dd.MM.yyyy",
-                              { locale: de },
-                            )
-                          : "–"}
-                      </span>
+                      <div className="flex items-center gap-2 relative">
+                        <span className="text-sm">
+                          {e.initial_contact_date
+                            ? format(
+                                parseDateSafe(e.initial_contact_date)!,
+                                "dd.MM.yyyy",
+                                { locale: de },
+                              )
+                            : "–"}
+                        </span>
+
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={savingId === e.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            const buffer = 320;
+                            const preferTop =
+                              ev.clientY > window.innerHeight - buffer;
+                            setPopoverSide(preferTop ? "top" : "bottom");
+                            setEditingInitialId(e.id);
+                          }}
+                        >
+                          <Pencil className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+
+                        {editingInitialId === e.id && (
+                          <Popover
+                            open
+                            onOpenChange={() => setEditingInitialId(null)}
+                          >
+                            <PopoverTrigger asChild>
+                              <button
+                                className="absolute inset-0"
+                                style={{ pointerEvents: "none" }}
+                                aria-hidden="true"
+                              />
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
+                              align="start"
+                              side={popoverSide}
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <Calendar
+                                mode="single"
+                                selected={
+                                  parseDateSafe(
+                                    e.initial_contact_date ?? null,
+                                  ) ?? undefined
+                                }
+                                onSelect={async (newDate) => {
+                                  if (!newDate) return;
+                                  try {
+                                    setSavingId(e.id);
+                                    await mPatch.mutateAsync({
+                                      id: e.id,
+                                      payload: {
+                                        initial_contact_date: format(
+                                          newDate,
+                                          "yyyy-MM-dd",
+                                        ),
+                                      } as SalesProcessUpdateRequest,
+                                    });
+                                    await qc.invalidateQueries({
+                                      queryKey: ["sales"],
+                                    });
+                                  } catch (err) {
+                                    alert(
+                                      "Fehler beim Speichern: " +
+                                        extractErrorMessage(err),
+                                    );
+                                  } finally {
+                                    setSavingId(null);
+                                    setEditingInitialId(null);
+                                  }
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
                     </TableCell>
 
                     {/* Zweitgespräch date with inline edit */}
