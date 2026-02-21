@@ -1,3 +1,16 @@
+# v0.4.7 (Sat Feb 21 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Add settings page ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.6 (Sat Feb 21 2026)
 
 #### 🐛 Bug Fix
