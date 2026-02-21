@@ -2,8 +2,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getCashflowForecast, type CashflowRow } from "@/lib/api";
+import { getCashflowForecast, getNumericSetting, type CashflowRow } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { asArray } from "@/lib/safe";
 
 function labelFromYm(ym: string) {
@@ -16,6 +17,12 @@ function labelFromYm(ym: string) {
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
+
+  const { data: forecastMonths = 6 } = useMockableQuery<number>({
+    queryKey: ["settings", "potential_months_value"],
+    queryFn: () => getNumericSetting("potential_months", 6),
+    mockData: 6,
+  });
 
   const {
     data: forecast = [],
@@ -39,8 +46,8 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
           {contractId
-            ? "Cashflow Prognose (dieser Vertrag – nächste 6 Monate)"
-            : "Cashflow Prognose (alle Verträge – nächste 6 Monate)"}
+            ? `Cashflow Prognose (dieser Vertrag – nächste ${forecastMonths} Monate)`
+            : `Cashflow Prognose (alle Verträge – nächste ${forecastMonths} Monate)`}
         </CardTitle>
       </CardHeader>
       <CardContent>

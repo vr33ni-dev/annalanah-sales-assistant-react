@@ -71,7 +71,7 @@ export default function Settings() {
     },
   });
 
-  const loading = lMonths || lFlat;
+  const saving = saveMutation.isPending;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -94,10 +94,10 @@ export default function Settings() {
               id="potential_months"
               type="number"
               min={1}
-              placeholder={loading ? "Laden…" : "z.B. 6"}
+              placeholder="z.B. 6"
               value={months}
               onChange={(e) => setMonths(e.target.value)}
-              disabled={loading}
+              disabled={saving}
             />
             <p className="text-xs text-muted-foreground">
               Anzahl der Monate, die in die Cashflow-Prognose einfließen.
@@ -110,10 +110,10 @@ export default function Settings() {
               id="potential_flat_eur"
               type="number"
               min={0}
-              placeholder={loading ? "Laden…" : "z.B. 900"}
+              placeholder="z.B. 900"
               value={flatEur}
               onChange={(e) => setFlatEur(e.target.value)}
-              disabled={loading}
+              disabled={saving}
             />
             <p className="text-xs text-muted-foreground">
               Pauschaler EUR-Betrag pro Monat für potenzielle Einnahmen.
@@ -122,11 +122,11 @@ export default function Settings() {
 
           <Button
             onClick={() => saveMutation.mutate()}
-            disabled={loading || saveMutation.isPending}
+            disabled={saving}
             className="gap-2"
           >
             <Save className="w-4 h-4" />
-            {saveMutation.isPending ? "Speichern…" : "Speichern"}
+            {saving ? "Speichern…" : "Speichern"}
           </Button>
         </CardContent>
       </Card>
