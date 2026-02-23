@@ -25,6 +25,7 @@ import {
   Users,
   Calendar,
   Info,
+  X,
 } from "lucide-react";
 
 import { UpsellModal } from "@/components/upsell/UpsellModal";
@@ -544,6 +545,22 @@ export default function Contracts() {
                 className="border rounded px-2 py-1 text-sm"
                 placeholder="Ende"
               />
+              <button
+                type="button"
+                title="Filter zurücksetzen – alle Verträge anzeigen"
+                onClick={() => {
+                  const earliest = contracts.reduce<string | null>((min, c) => {
+                    if (!c.start_date) return min;
+                    const sd = c.start_date.split("T")[0];
+                    return !min || sd < min ? sd : min;
+                  }, null);
+                  setDateStart(earliest ?? "");
+                  setDateEnd(new Date().toISOString().split("T")[0]);
+                }}
+                className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </CardHeader>
