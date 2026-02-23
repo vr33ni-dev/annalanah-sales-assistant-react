@@ -1,3 +1,15 @@
+# v0.4.11 (Mon Feb 23 2026)
+
+#### 🐛 Bug Fix
+
+- lovable mockdata updated to new fields from backend [#81](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/81) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.10 (Mon Feb 23 2026)
 
 #### ⚠️ Pushed to `main`
