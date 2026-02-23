@@ -8,9 +8,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Calendar } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Contract, getContracts } from "@/lib/api";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import { useState } from "react";
 
@@ -32,19 +32,17 @@ function calcNextDueAmount(c: Contract): number {
 }
 
 export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
-  const { enabled } = useAuthEnabled();
-
   const {
     data = [],
     isFetching,
     isError,
-  } = useQuery<Contract[]>({
+  } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
-    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
+    mockData: mockContracts,
   });
 
   type RangeFilter = "all" | "30" | "90" | "365";
