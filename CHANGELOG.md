@@ -1,3 +1,17 @@
+# v0.4.13 (Mon Feb 23 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Use mockable cashflow history ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add contracts date filter reset ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.12 (Mon Feb 23 2026)
 
 #### ⚠️ Pushed to `main`
