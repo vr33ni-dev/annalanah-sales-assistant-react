@@ -38,13 +38,19 @@ import {
   getCashflowMetrics,
   type CashflowRow,
   type CashflowMetrics,
+  getSalesProcesses,
+  type SalesProcess,
   CreateOrUpdateUpsellRequest,
   ContractUpsell,
   getUpsellForSalesProcess,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockContracts, mockCashflowForecast } from "@/lib/mockData";
+import {
+  mockContracts,
+  mockCashflowForecast,
+  mockSalesProcesses,
+} from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
   Sheet,
@@ -194,6 +200,16 @@ export default function Contracts() {
       select: (d) => d ?? null,
       mockData: null,
     });
+
+  // Sales processes (used to compute earliest contact date for reset)
+  const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
+    queryKey: ["sales-processes"],
+    queryFn: getSalesProcesses,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<SalesProcess>,
+    mockData: mockSalesProcesses,
+  });
 
   /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */
   const now = new Date();
@@ -361,6 +377,36 @@ export default function Contracts() {
   useEffect(() => {
     setPage(1);
   }, [dateStart, dateEnd, clientFilter]);
+
+  // Ensure the dateEnd filter at least reaches the latest contract end date,
+  // but only when the end date is not set (empty). We intentionally avoid
+  // touching the default (today) so the default timeframe remains 01.01.–today.
+  useEffect(() => {
+    if (!contracts || contracts.length === 0) return;
+
+    // Only auto-expand when `dateEnd` is empty (i.e. user hasn't chosen an end)
+    if (dateEnd) return;
+
+    let maxDate: Date | null = null;
+    for (const c of contracts) {
+      // prefer server-provided computed end date
+      const endFromServer = (c as Contract).end_date_computed ?? null;
+      let e: Date | null = null;
+      if (endFromServer) e = toDateStartOfDay(endFromServer);
+      else if (c.start_date && typeof c.duration_months === "number")
+        e = toDateStartOfDay(addMonthsIso(c.start_date, c.duration_months));
+
+      if (!e) continue;
+      if (!maxDate || e > maxDate) maxDate = e;
+    }
+
+    if (maxDate) {
+      const currentEnd = toDateStartOfDay(dateEnd ?? null);
+      if (!currentEnd || maxDate > currentEnd) {
+        setDateEnd(maxDate.toISOString().split("T")[0]);
+      }
+    }
+  }, [contracts, dateEnd]);
 
   if (loadingContracts && contracts.length === 0) {
     return <div className="p-6">Lade Verträge…</div>;
@@ -549,13 +595,57 @@ export default function Contracts() {
                 type="button"
                 title="Filter zurücksetzen – alle Verträge anzeigen"
                 onClick={() => {
-                  const earliest = contracts.reduce<string | null>((min, c) => {
-                    if (!c.start_date) return min;
-                    const sd = c.start_date.split("T")[0];
-                    return !min || sd < min ? sd : min;
-                  }, null);
-                  setDateStart(earliest ?? "");
-                  setDateEnd(new Date().toISOString().split("T")[0]);
+                  // Reset to range: from first contact → most recent contract start.
+                  // Fallback to defaults (start of year → today) when no data.
+                  const defaultStart = startOfYear.toISOString().split("T")[0];
+                  const defaultEnd = new Date().toISOString().split("T")[0];
+
+                  // earliest initial_contact_date from sales processes
+                  let earliestContact: string | null = null;
+                  for (const sp of salesProcesses) {
+                    if (!sp.initial_contact_date) continue;
+                    const d = sp.initial_contact_date.split("T")[0];
+                    earliestContact =
+                      !earliestContact || d < earliestContact
+                        ? d
+                        : earliestContact;
+                  }
+
+                  // fallback to earliest contract start_date
+                  if (!earliestContact) {
+                    earliestContact = contracts.reduce<string | null>(
+                      (min, c) => {
+                        if (!c.start_date) return min;
+                        const sd = c.start_date.split("T")[0];
+                        return !min || sd < min ? sd : min;
+                      },
+                      null,
+                    );
+                  }
+
+                  // latest contract end_date (prefer server-computed end_date_computed,
+                  // otherwise derive from start_date + duration_months)
+                  const latestContractEnd = contracts.reduce<string | null>(
+                    (max, c) => {
+                      let ed: string | null = null;
+                      if (c.end_date_computed)
+                        ed = (c.end_date_computed as string).split("T")[0];
+                      else if (
+                        c.start_date &&
+                        typeof c.duration_months === "number"
+                      )
+                        ed = addMonthsIso(
+                          c.start_date,
+                          c.duration_months,
+                        ).split("T")[0];
+                      if (!ed) return max;
+                      return !max || ed > max ? ed : max;
+                    },
+                    null,
+                  );
+
+                  setDateStart(earliestContact ?? defaultStart);
+                  setDateEnd(latestContractEnd ?? defaultEnd);
                 }}
                 className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
