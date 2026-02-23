@@ -1,3 +1,15 @@
+# v0.4.10 (Mon Feb 23 2026)
+
+#### ⚠️ Pushed to `main`
+
+- updated retrieval of cashflow metrics ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.9 (Sat Feb 21 2026)
 
 #### ⚠️ Pushed to `main`
