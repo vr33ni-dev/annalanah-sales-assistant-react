@@ -34,7 +34,9 @@ import {
   Contract,
   getContracts,
   getCashflowForecast,
+  getCashflowMetrics,
   type CashflowRow,
+  type CashflowMetrics,
   CreateOrUpdateUpsellRequest,
   ContractUpsell,
   getUpsellForSalesProcess,
@@ -181,6 +183,17 @@ export default function Contracts() {
     mockData: mockCashflowForecast as CashflowRow[],
   });
 
+  // NEW: Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
+  const { data: metrics, isFetching: loadingMetrics } =
+    useMockableQuery<CashflowMetrics | null>({
+      queryKey: ["cashflow-metrics"],
+      queryFn: () => getCashflowMetrics(),
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+      select: (d) => d ?? null,
+      mockData: null,
+    });
+
   /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
@@ -188,31 +201,34 @@ export default function Contracts() {
   /* ---------------- KPIs from contracts ---------------- */
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
   const monthlyRecurring = contracts.reduce(
-    (sum, c) => sum + c.monthly_amount,
+    (sum, c) => sum + c.base_monthly_amount,
     0,
   );
   const activeContracts = contracts.length;
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
 
-  /* ---- YTD average monthly cashflow (1.1. bis jetzt), REALIZED by paid_months ---- */
+  /* ---- YTD average monthly cashflow (1.1. bis jetzt) — use metrics if available ---- */
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
 
-  let ytdCashIn = 0;
-
+  // keep a client-side fallback calculation (was previous behaviour) — used only if server metrics missing
+  let ytdCashInComputed = 0;
   for (const c of contracts) {
-    // contract active range
     const start = parseIso(c.start_date);
     const end = parseIso(addMonthsIso(c.start_date, c.duration_months)); // exclusive
-    // overlap with current year
     const monthsActiveThisYear = monthsOverlap(start, end, startOfYear, now);
     if (monthsActiveThisYear <= 0) continue;
-    // realized: use paid_months bounded by active months this year
-    const paidInThisYear = Math.min(c.paid_months, monthsActiveThisYear);
-    ytdCashIn += paidInThisYear * c.monthly_amount;
+    // gracefully access paid_months if backend provides it, otherwise 0
+    const paidInThisYear = Math.min(
+      (c as Contract & { paid_months?: number }).paid_months ?? 0,
+      monthsActiveThisYear,
+    );
+    ytdCashInComputed += paidInThisYear * c.base_monthly_amount;
   }
+  const avgMonthlyYtdComputed =
+    monthsElapsedYtd > 0 ? Math.round(ytdCashInComputed / monthsElapsedYtd) : 0;
 
-  const avgMonthlyYtd =
-    monthsElapsedYtd > 0 ? Math.round(ytdCashIn / monthsElapsedYtd) : 0;
+  // Final KPI: prefer server metric when present, else fallback to computed value
+  const avgMonthlyYtd = metrics?.avg_monthly_ytd ?? avgMonthlyYtdComputed;
 
   /* ---- Filtered Contracts for Active Contracts table ---- */
   const [dateStart, setDateStart] = useState<string>(
@@ -290,23 +306,17 @@ export default function Contracts() {
     const openParam = searchParams.get("open");
     const salesProcessParam = searchParams.get("sales_process");
 
-    // If a sales_process param is provided, prefer opening the contract
-    // that references that sales_process_id. If the contract is currently
-    // filtered out by the date window, widen the date window to include
-    // the contract's start..end range so it becomes visible.
     if (salesProcessParam) {
       const spId = Number(salesProcessParam);
       if (!Number.isNaN(spId)) {
         const match = contracts.find((c) => c.sales_process_id === spId);
         if (match) {
-          // compute contract visible window
           const cStart = toDateStartOfDay(match.start_date as string | null);
           const cEndFromServer = match.end_date_computed ?? undefined;
           const cEnd = cEndFromServer
             ? toDateStartOfDay(cEndFromServer)
             : addMonthsDate(cStart ?? new Date(), match.duration_months ?? 0);
 
-          // If contract not currently within date range, adjust filters
           const viewStart = toDateStartOfDay(dateStart ?? null);
           const viewEnd = toDateStartOfDay(dateEnd ?? null);
 
@@ -321,25 +331,20 @@ export default function Contracts() {
             if (cEnd) setDateEnd(cEnd.toISOString().split("T")[0]);
           }
 
-          // Make sure the client filter is set so the table shows the matching client
           if (String(match.client_id) !== clientFilter) {
-            // navigate to the same route but with client param set (this also updates searchParams)
             const params = new URLSearchParams(
               Array.from(searchParams.entries()),
             );
             params.set("client", String(match.client_id));
             params.set("open", "1");
             params.set("sales_process", String(spId));
-            // replace history so it's seamless
             navigate(
               { pathname: "/contracts", search: params.toString() },
               { replace: true },
             );
-            // selectedContract will be set by the effect below after filters recompute
             return;
           }
 
-          // If client filter matches or was already correct, open the contract after filters run
           setSelectedContract(match);
           return;
         }
@@ -347,7 +352,6 @@ export default function Contracts() {
     }
 
     if (openParam && filteredContracts.length > 0) {
-      // automatically open the first contract for that client
       setSelectedContract(filteredContracts[0]);
     }
   }, [searchParams, filteredContracts]);
@@ -372,32 +376,44 @@ export default function Contracts() {
     "0",
   )}`;
 
-  const futureMonths = (forecast ?? [])
+  // If server metrics available, prefer them; else compute from `forecast`
+  const next3FromMetrics =
+    metrics?.confirmed_next3?.map((m) => ({
+      month: m.month,
+      confirmed: Math.round(m.confirmed ?? 0),
+      potential: 0,
+    })) ?? null;
+
+  const next3FromForecast = (forecast ?? [])
     .filter((r) => r.month >= nowYm) // keep current & future months
-    .sort((a, b) => a.month.localeCompare(b.month));
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .slice(0, 3)
+    .map((r) => ({
+      month: r.month,
+      confirmed: Math.round(r.confirmed ?? 0),
+      potential: Math.round(r.potential ?? 0),
+    }));
 
-  const next3 = futureMonths.slice(0, 3);
+  const next3Data = next3FromMetrics ?? next3FromForecast;
 
-  const next3Display = next3.map((r) => {
-    const confirmed = Math.round(r.confirmed ?? 0);
-    // Cashflow KPI should use confirmed only (no pipeline)
-    const total = confirmed;
-
+  const next3Display = next3Data.map((r) => {
+    const total = r.confirmed; // confirmed-only KPI
     return {
       ym: r.month,
       label: labelFromYm(r.month),
-      confirmed,
-      potential: Math.round(r.potential ?? 0), // kept for popover breakdown if desired
+      confirmed: r.confirmed,
+      potential: r.potential,
       total,
     };
   });
 
   const avgNext3 =
-    next3Display.length > 0
+    metrics?.avg_confirmed_next3 ??
+    (next3Display.length > 0
       ? Math.round(
           next3Display.reduce((s, r) => s + r.total, 0) / next3Display.length,
         )
-      : 0;
+      : 0);
 
   /* ----------------- Render ----------------- */
 
@@ -424,9 +440,7 @@ export default function Contracts() {
           label="Gesamter Vertragswert"
           popover={
             `Summe der revenue_total über alle aktiven Verträge\n` +
-            `= ${
-              contracts.map((c) => euro(c.revenue_total)).join(" + ") || "0"
-            }\n` +
+            `= ${contracts.map((c) => euro(c.revenue_total)).join(" + ") || "0"}\n` +
             `= ${euro(totalRevenue)}`
           }
         />
@@ -457,35 +471,32 @@ export default function Contracts() {
           value={euro(avgMonthlyYtd)}
           label="Ø monatlicher Cashflow YTD"
           popover={
-            `Zeitraum: 01.01.–heute (${monthsElapsedYtd} Monate)\n` +
-            `YTD Cash-In (realisiert) ≈ Σ(min(paid_months, Monate aktiv in ${now.getFullYear()}) × monthly_amount)\n` +
-            `= ${
-              contracts.length
-                ? contracts
-                    .map((c) => {
-                      const start = parseIso(c.start_date);
-                      const end = parseIso(
-                        addMonthsIso(c.start_date, c.duration_months),
-                      );
-                      const monthsActiveThisYear = monthsOverlap(
-                        start,
-                        end,
-                        new Date(now.getFullYear(), 0, 1),
-                        now,
-                      );
-                      const paidInThisYear = Math.min(
-                        c.paid_months,
-                        monthsActiveThisYear,
-                      );
-                      return `${paidInThisYear}×${euro(c.monthly_amount)}`;
-                    })
-                    .join(" + ")
-                : "0"
-            }\n` +
-            `= ${euro(ytdCashIn)}\n` +
-            `Ø/Monat YTD = ${euro(ytdCashIn)} / ${monthsElapsedYtd} = ${euro(
-              avgMonthlyYtd,
-            )}`
+            metrics
+              ? `YTD: ${euro(metrics.ytd_paid_amount)} über ${metrics.months_elapsed_ytd} Monate\nØ/Monat = ${euro(metrics.avg_monthly_ytd)}`
+              : `Zeitraum: 01.01.–heute (${monthsElapsedYtd} Monate)\nYTD Cash-In (realisiert) ≈ Σ(min(paid_months, Monate aktiv) × monthly_amount)\n= ${
+                  contracts.length
+                    ? contracts
+                        .map((c) => {
+                          const start = parseIso(c.start_date);
+                          const end = parseIso(
+                            addMonthsIso(c.start_date, c.duration_months),
+                          );
+                          const monthsActiveThisYear = monthsOverlap(
+                            start,
+                            end,
+                            new Date(now.getFullYear(), 0, 1),
+                            now,
+                          );
+                          const paidInThisYear = Math.min(
+                            (c as Contract & { paid_months?: number })
+                              .paid_months ?? 0,
+                            monthsActiveThisYear,
+                          );
+                          return `${paidInThisYear}×${euro(c.base_monthly_amount)}`;
+                        })
+                        .join(" + ")
+                    : "0"
+                }\n= ${euro(ytdCashInComputed)}\nØ/Monat YTD = ${euro(ytdCashInComputed)} / ${monthsElapsedYtd} = ${euro(avgMonthlyYtdComputed)}`
           }
         />
 
@@ -552,8 +563,14 @@ export default function Contracts() {
             </TableHeader>
             <TableBody>
               {paginatedContracts.map((contract) => {
+                // Use safe access to `paid_months` (backend may or may not provide it)
+                const paidMonths =
+                  (contract as Contract & { paid_months?: number })
+                    .paid_months ?? 0;
                 const progressPercent =
-                  (contract.paid_months / contract.duration_months) * 100;
+                  contract.duration_months > 0
+                    ? (paidMonths / contract.duration_months) * 100
+                    : 0;
                 return (
                   <TableRow key={contract.id}>
                     <TableCell className="font-medium">
@@ -577,8 +594,7 @@ export default function Contracts() {
                       <div className="space-y-1">
                         <Progress value={progressPercent} className="h-2" />
                         <p className="text-xs text-muted-foreground">
-                          {contract.paid_months}/{contract.duration_months}{" "}
-                          Monate
+                          {paidMonths}/{contract.duration_months} Monate
                           {contract.next_due_date
                             ? ` • Nächste: ${formatDateOnly(
                                 contract.next_due_date,
@@ -631,6 +647,7 @@ export default function Contracts() {
         <CashflowHistoryTable />
         <CashflowUpcomingTable />
       </div>
+
       {/* ✅ Contract Detail Drawer */}
       <Sheet
         open={!!selectedContract}
@@ -827,6 +844,7 @@ export default function Contracts() {
 
             queryClient.invalidateQueries({ queryKey: ["cashflow-history"] });
             queryClient.invalidateQueries({ queryKey: ["cashflow-forecast"] });
+            queryClient.invalidateQueries({ queryKey: ["cashflow-metrics"] });
           }}
         />
       )}

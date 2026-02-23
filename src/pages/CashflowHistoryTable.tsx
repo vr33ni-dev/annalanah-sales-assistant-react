@@ -17,17 +17,17 @@ import { useState } from "react";
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {
     case "monthly":
-      return c.monthly_amount;
+      return c.base_monthly_amount;
     case "bi-monthly":
-      return c.monthly_amount * 2;
+      return c.base_monthly_amount * 2;
     case "quarterly":
-      return c.monthly_amount * 3;
+      return c.base_monthly_amount * 3;
     case "bi-yearly":
-      return c.monthly_amount * 6;
+      return c.base_monthly_amount * 6;
     case "one-time":
       return c.revenue_total;
     default:
-      return c.monthly_amount;
+      return c.base_monthly_amount;
   }
 }
 

@@ -2,9 +2,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getCashflowForecast, getNumericSetting, type CashflowRow } from "@/lib/api";
+import {
+  getCashflowForecast,
+  getNumericSetting,
+  type CashflowRow,
+} from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { asArray } from "@/lib/safe";
 
 function labelFromYm(ym: string) {
@@ -17,12 +20,6 @@ function labelFromYm(ym: string) {
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
-
-  const { data: forecastMonths = 6 } = useMockableQuery<number>({
-    queryKey: ["settings", "potential_months_value"],
-    queryFn: () => getNumericSetting("potential_months", 6),
-    mockData: 6,
-  });
 
   const {
     data: forecast = [],
@@ -38,6 +35,20 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     select: asArray<CashflowRow>,
   });
 
+  const { data: potentialMonths = 6 } = useQuery<number>({
+    queryKey: ["setting", "potential_months"],
+    queryFn: () => getNumericSetting("potential_months", 6),
+    enabled,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const { data: avgRevenue = 250 } = useQuery<number>({
+    queryKey: ["setting", "avg_revenue_per_participant"],
+    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    enabled,
+    staleTime: 10 * 60 * 1000,
+  });
+
   const showPotential = !contractId; // only show potential if all contracts view
 
   return (
@@ -46,9 +57,22 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
         <CardTitle className="flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
           {contractId
-            ? `Cashflow Prognose (dieser Vertrag – nächste ${forecastMonths} Monate)`
-            : `Cashflow Prognose (alle Verträge – nächste ${forecastMonths} Monate)`}
+            ? `Cashflow Prognose (dieser Vertrag – nächste ${potentialMonths} Monate)`
+            : `Cashflow Prognose (alle Verträge – nächste ${potentialMonths} Monate)`}
         </CardTitle>
+        <div className="mt-2 text-sm text-muted-foreground space-y-1">
+          <div>
+            <strong>Bestätigt:</strong> Verbindliche Zahlungen der nächsten{" "}
+            {potentialMonths} Monate aus bestehenden Verträgen.
+          </div>
+          {showPotential && (
+            <div>
+              <strong>Potenziell:</strong> Erwartetes Umsatzpotenzial aus
+              offenen Deals (verteilt über {potentialMonths} Monate, aktuell
+              berechnet mit Ø €{avgRevenue} pro Teilnehmer)
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {isFetching && forecast.length === 0 ? (
@@ -59,7 +83,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
           <div className="text-muted-foreground">Keine Prognosedaten.</div>
         ) : (
           <div className="space-y-4">
-            {forecast.map((row) => {
+            {forecast.slice(0, potentialMonths).map((row) => {
               const total = showPotential
                 ? Math.round((row.confirmed ?? 0) + (row.potential ?? 0))
                 : Math.round(row.confirmed ?? 0);

@@ -332,9 +332,7 @@ export interface Contract {
   duration_months: number;
   revenue_total: number;
   payment_frequency: string;
-  monthly_amount: number;
-  paid_months: number;
-  paid_amount_total: number;
+  base_monthly_amount: number;
   next_due_date?: string | null;
 }
 
@@ -628,6 +626,20 @@ export const getCashflowForecast = async (
     ...r,
     expected: (r.confirmed ?? 0) + (r.potential ?? 0),
   }));
+};
+
+export type CashflowMetricMonth = { month: string; confirmed: number };
+export type CashflowMetrics = {
+  avg_monthly_ytd: number;
+  months_elapsed_ytd: number;
+  ytd_paid_amount: number;
+  confirmed_next3: CashflowMetricMonth[];
+  avg_confirmed_next3: number;
+};
+
+export const getCashflowMetrics = async (): Promise<CashflowMetrics> => {
+  const { data } = await api.get("/cashflow/metrics");
+  return data as CashflowMetrics;
 };
 
 /* Natural Language Querying */
