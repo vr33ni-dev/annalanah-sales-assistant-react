@@ -15,6 +15,10 @@ type Setting = {
   value_text?: string | null;
 };
 
+// Stable mock data references (defined outside component to avoid re-render loops)
+const MOCK_MONTHS: Setting = { key: "potential_months", value_numeric: 6, value_text: null };
+const MOCK_FLAT: Setting = { key: "potential_flat_eur", value_numeric: 900, value_text: null };
+
 const fetchSetting = async (key: string): Promise<Setting> => {
   const { data } = await api.get(`/settings/${key}`);
   return data;
@@ -30,13 +34,13 @@ export default function Settings() {
   const { data: monthsSetting, isLoading: lMonths } = useMockableQuery({
     queryKey: ["settings", "potential_months"],
     queryFn: () => fetchSetting("potential_months"),
-    mockData: { key: "potential_months", value_numeric: 6, value_text: null } as Setting,
+    mockData: MOCK_MONTHS,
   });
 
   const { data: flatSetting, isLoading: lFlat } = useMockableQuery({
     queryKey: ["settings", "potential_flat_eur"],
     queryFn: () => fetchSetting("potential_flat_eur"),
-    mockData: { key: "potential_flat_eur", value_numeric: 900, value_text: null } as Setting,
+    mockData: MOCK_FLAT,
   });
 
   const [months, setMonths] = useState("");
