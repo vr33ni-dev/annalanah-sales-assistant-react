@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import api from "@/lib/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -16,8 +22,16 @@ type Setting = {
 };
 
 // Stable mock data references (defined outside component to avoid re-render loops)
-const MOCK_MONTHS: Setting = { key: "potential_months", value_numeric: 6, value_text: null };
-const MOCK_FLAT: Setting = { key: "potential_flat_eur", value_numeric: 900, value_text: null };
+const MOCK_MONTHS: Setting = {
+  key: "potential_months",
+  value_numeric: 6,
+  value_text: null,
+};
+const MOCK_FLAT: Setting = {
+  key: "potential_flat_eur",
+  value_numeric: 900,
+  value_text: null,
+};
 
 const fetchSetting = async (key: string): Promise<Setting> => {
   const { data } = await api.get(`/settings/${key}`);
@@ -47,11 +61,13 @@ export default function Settings() {
   const [flatEur, setFlatEur] = useState("");
 
   useEffect(() => {
-    if (monthsSetting?.value_numeric != null) setMonths(String(monthsSetting.value_numeric));
+    if (monthsSetting?.value_numeric != null)
+      setMonths(String(monthsSetting.value_numeric));
   }, [monthsSetting]);
 
   useEffect(() => {
-    if (flatSetting?.value_numeric != null) setFlatEur(String(flatSetting.value_numeric));
+    if (flatSetting?.value_numeric != null)
+      setFlatEur(String(flatSetting.value_numeric));
   }, [flatSetting]);
 
   const saveMutation = useMutation({
@@ -59,8 +75,10 @@ export default function Settings() {
       const promises: Promise<void>[] = [];
       const mVal = Number(months);
       const fVal = Number(flatEur);
-      if (!Number.isFinite(mVal) || mVal <= 0) throw new Error("Monate muss eine positive Zahl sein");
-      if (!Number.isFinite(fVal) || fVal < 0) throw new Error("EUR-Betrag muss ≥ 0 sein");
+      if (!Number.isFinite(mVal) || mVal <= 0)
+        throw new Error("Monate muss eine positive Zahl sein");
+      if (!Number.isFinite(fVal) || fVal < 0)
+        throw new Error("EUR-Betrag muss ≥ 0 sein");
       promises.push(updateSetting("potential_months", mVal));
       promises.push(updateSetting("potential_flat_eur", fVal));
       await Promise.all(promises);
@@ -71,7 +89,11 @@ export default function Settings() {
       toast({ title: "Einstellungen gespeichert" });
     },
     onError: (e: Error) => {
-      toast({ title: "Fehler", description: e.message, variant: "destructive" });
+      toast({
+        title: "Fehler",
+        description: e.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -86,9 +108,11 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Cashflow-Prognose</CardTitle>
+          <CardTitle>Parameter</CardTitle>
           <CardDescription>
-            Parameter für die Berechnung der Cashflow-Prognose
+            Parameter für die Berechnung der Cashflow-Prognose, sowie der
+            Bühnen-Performance. Änderungen wirken sich auf die Prognose und
+            Performance-Berechnung aller Stufen aus.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -120,7 +144,8 @@ export default function Settings() {
               disabled={saving}
             />
             <p className="text-xs text-muted-foreground">
-              Pauschaler EUR-Betrag pro Monat für potenzielle Einnahmen.
+              Pauschaler EUR-Umsatz pro Vertrag und Monat für potenzielle
+              Einnahmen.
             </p>
           </div>
 
