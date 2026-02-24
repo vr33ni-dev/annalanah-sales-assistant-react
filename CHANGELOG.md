@@ -1,16 +1,3 @@
-# v0.5.0 (Tue Feb 24 2026)
-
-#### 🚀 Enhancement
-
-- Main backup before overwrite [#85](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/85) ([@vr33ni](https://github.com/vr33ni) [@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
-
-#### Authors: 2
-
-- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
-- [@vr33ni](https://github.com/vr33ni)
-
----
-
 # v0.4.17 (Tue Feb 24 2026)
 
 #### ⚠️ Pushed to `main`
