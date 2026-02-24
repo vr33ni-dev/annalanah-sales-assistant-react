@@ -1,3 +1,15 @@
+# v0.4.16 (Tue Feb 24 2026)
+
+#### 🐛 Bug Fix
+
+- feat: label renaming in settings [#84](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/84) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.15 (Tue Feb 24 2026)
 
 #### 🐛 Bug Fix
