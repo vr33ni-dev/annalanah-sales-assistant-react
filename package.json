@@ -1,7 +1,7 @@
 {
   "name": "annalanah-sales-assistant-react",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.4.17",
   "type": "module",
   "scripts": {
     "dev": "vite",
