@@ -1,8 +1,6 @@
 // src/pages/Stages.tsx
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockStages, mockAppSettings } from "@/lib/mockData";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -647,19 +645,17 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 export default function Stages() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data, isLoading, isError, error, refetch } = useMockableQuery<Stage[]>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
     staleTime: 60_000,
-    mockData: mockStages,
   });
 
   // Average revenue per participant (used to estimate Umsatz)
-  const { data: avgRev, isLoading: avgRevLoading } = useMockableQuery<number>({
+  const { data: avgRev, isLoading: avgRevLoading } = useQuery({
     queryKey: ["avg_revenue_per_participant"],
     queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
     staleTime: 5 * 60_000,
-    mockData: mockAppSettings.avg_revenue_per_participant,
   });
 
   // Treat non-positive average as "not ready"

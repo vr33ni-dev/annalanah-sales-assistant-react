@@ -32,11 +32,6 @@ const MOCK_FLAT: Setting = {
   value_numeric: 900,
   value_text: null,
 };
-const MOCK_AVG_REV: Setting = {
-  key: "avg_revenue_per_participant",
-  value_numeric: 250,
-  value_text: null,
-};
 
 const fetchSetting = async (key: string): Promise<Setting> => {
   const { data } = await api.get(`/settings/${key}`);
@@ -62,15 +57,8 @@ export default function Settings() {
     mockData: MOCK_FLAT,
   });
 
-  const { data: avgRevSetting, isLoading: lAvgRev } = useMockableQuery({
-    queryKey: ["settings", "avg_revenue_per_participant"],
-    queryFn: () => fetchSetting("avg_revenue_per_participant"),
-    mockData: MOCK_AVG_REV,
-  });
-
   const [months, setMonths] = useState("");
   const [flatEur, setFlatEur] = useState("");
-  const [avgRev, setAvgRev] = useState("");
 
   useEffect(() => {
     if (monthsSetting?.value_numeric != null)
@@ -82,26 +70,17 @@ export default function Settings() {
       setFlatEur(String(flatSetting.value_numeric));
   }, [flatSetting]);
 
-  useEffect(() => {
-    if (avgRevSetting?.value_numeric != null)
-      setAvgRev(String(avgRevSetting.value_numeric));
-  }, [avgRevSetting]);
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       const promises: Promise<void>[] = [];
       const mVal = Number(months);
       const fVal = Number(flatEur);
-      const aVal = Number(avgRev);
       if (!Number.isFinite(mVal) || mVal <= 0)
         throw new Error("Monate muss eine positive Zahl sein");
       if (!Number.isFinite(fVal) || fVal < 0)
         throw new Error("EUR-Betrag muss ≥ 0 sein");
-      if (!Number.isFinite(aVal) || aVal <= 0)
-        throw new Error("Durchschn. Umsatz muss eine positive Zahl sein");
       promises.push(updateSetting("potential_months", mVal));
       promises.push(updateSetting("potential_flat_eur", fVal));
-      promises.push(updateSetting("avg_revenue_per_participant", aVal));
       await Promise.all(promises);
     },
     onSuccess: () => {
@@ -167,22 +146,6 @@ export default function Settings() {
             <p className="text-xs text-muted-foreground">
               Pauschaler EUR-Umsatz pro Vertrag und Monat für potenzielle
               Einnahmen.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="avg_revenue_per_participant">Durchschn. Umsatz pro Teilnehmer (EUR)</Label>
-            <Input
-              id="avg_revenue_per_participant"
-              type="number"
-              min={1}
-              placeholder="z.B. 250"
-              value={avgRev}
-              onChange={(e) => setAvgRev(e.target.value)}
-              disabled={saving}
-            />
-            <p className="text-xs text-muted-foreground">
-              Durchschnittlicher Umsatz pro Teilnehmer für die Bühnen-Performance und ROI-Berechnung.
             </p>
           </div>
 

@@ -1,13 +1,13 @@
 // src/components/CashflowUpcomingTable.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   getCashflowForecast,
   getNumericSetting,
   type CashflowRow,
 } from "@/lib/api";
-import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockCashflowForecast, mockAppSettings } from "@/lib/mockData";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 
 function labelFromYm(ym: string) {
@@ -19,31 +19,34 @@ function labelFromYm(ym: string) {
 }
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
+  const { enabled } = useAuthEnabled();
+
   const {
     data: forecast = [],
     isFetching,
     isError,
-  } = useMockableQuery<CashflowRow[]>({
-    queryKey: ["cashflow-forecast", String(contractId ?? "all")],
-    queryFn: () => getCashflowForecast(contractId),
+  } = useQuery<CashflowRow[]>({
+    queryKey: ["cashflow-forecast", contractId],
+    queryFn: ({ queryKey }) =>
+      getCashflowForecast(queryKey[1] as number | undefined),
+    enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
-    mockData: mockCashflowForecast as CashflowRow[],
   });
 
-  const { data: potentialMonths = 6 } = useMockableQuery<number>({
+  const { data: potentialMonths = 6 } = useQuery<number>({
     queryKey: ["setting", "potential_months"],
     queryFn: () => getNumericSetting("potential_months", 6),
+    enabled,
     staleTime: 10 * 60 * 1000,
-    mockData: mockAppSettings.potential_months,
   });
 
-  const { data: avgRevenue = 250 } = useMockableQuery<number>({
+  const { data: avgRevenue = 250 } = useQuery<number>({
     queryKey: ["setting", "avg_revenue_per_participant"],
     queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    enabled,
     staleTime: 10 * 60 * 1000,
-    mockData: mockAppSettings.avg_revenue_per_participant,
   });
 
   const showPotential = !contractId; // only show potential if all contracts view
