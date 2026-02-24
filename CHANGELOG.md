@@ -1,15 +1,3 @@
-# v0.4.15 (Tue Feb 24 2026)
-
-#### 🐛 Bug Fix
-
-- fix: ROI calculation in Stages.tsx [#83](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/83) ([@vr33ni](https://github.com/vr33ni))
-
-#### Authors: 1
-
-- [@vr33ni](https://github.com/vr33ni)
-
----
-
 # v0.4.14 (Mon Feb 23 2026)
 
 #### 🐛 Bug Fix
