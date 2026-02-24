@@ -1,3 +1,16 @@
+# v0.4.17 (Tue Feb 24 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Fix mockdata and Settings ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
 # v0.4.16 (Tue Feb 24 2026)
 
 #### 🐛 Bug Fix
