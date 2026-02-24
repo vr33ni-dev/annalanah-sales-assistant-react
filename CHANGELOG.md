@@ -1,15 +1,3 @@
-# v0.4.14 (Mon Feb 23 2026)
-
-#### 🐛 Bug Fix
-
-- feat: added show all/clear filter option to contracts table [#82](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/82) ([@vr33ni](https://github.com/vr33ni))
-
-#### Authors: 1
-
-- [@vr33ni](https://github.com/vr33ni)
-
----
-
 # v0.4.13 (Mon Feb 23 2026)
 
 #### ⚠️ Pushed to `main`
