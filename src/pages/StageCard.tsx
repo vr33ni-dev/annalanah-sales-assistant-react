@@ -1,9 +1,8 @@
 // stageCard.tsx
-import { useQuery } from "@tanstack/react-query";
 import { getStages, Stage, getNumericSetting } from "@/lib/api";
 import { CardContent } from "@/components/ui/card";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { mockStages } from "@/lib/mockData";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockStages, mockAppSettings } from "@/lib/mockData";
 
 type Row = {
   id: number;
@@ -26,26 +25,21 @@ function toStatus(s: Stage): Row["status"] {
 }
 
 export default function StageCard() {
-  const { useMockData } = useAuthEnabled();
-  
-  const { data: stages, isLoading: stagesLoading } = useQuery({
+  const { data: effectiveStages, isLoading: stagesLoading } = useMockableQuery<Stage[]>({
     queryKey: ["stages"],
     queryFn: getStages,
     staleTime: 60_000,
-    enabled: !useMockData,
+    mockData: mockStages,
   });
 
-  // Assumption: average revenue per participant (EUR/USD). Configure in /api/settings/avg_revenue_per_participant
-  const { data: avgRev, isLoading: settingLoading } = useQuery({
+  const { data: effectiveAvgRev, isLoading: settingLoading } = useMockableQuery<number>({
     queryKey: ["avg_revenue_per_participant"],
     queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
     staleTime: 5 * 60_000,
-    enabled: !useMockData,
+    mockData: mockAppSettings.avg_revenue_per_participant,
   });
 
-  const effectiveStages = useMockData ? mockStages : stages;
-  const effectiveAvgRev = useMockData ? 250 : avgRev;
-  const isLoading = useMockData ? false : (stagesLoading || settingLoading);
+  const isLoading = stagesLoading || settingLoading;
 
   if (isLoading)
     return <CardContent>Loading…</CardContent>;
