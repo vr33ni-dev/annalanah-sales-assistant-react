@@ -1,3 +1,52 @@
+# v0.4.17 (Tue Feb 24 2026)
+
+#### ⚠️ Pushed to `main`
+
+- Fix mockdata and Settings ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 1
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+
+---
+
+# v0.4.16 (Tue Feb 24 2026)
+
+#### 🐛 Bug Fix
+
+- feat: label renaming in settings [#84](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/84) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
+# v0.4.15 (Tue Feb 24 2026)
+
+#### 🐛 Bug Fix
+
+- fix: ROI calculation in Stages.tsx [#83](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/83) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
+# v0.4.14 (Mon Feb 23 2026)
+
+#### 🐛 Bug Fix
+
+- feat: added show all/clear filter option to contracts table [#82](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/82) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.13 (Mon Feb 23 2026)
 
 #### ⚠️ Pushed to `main`
