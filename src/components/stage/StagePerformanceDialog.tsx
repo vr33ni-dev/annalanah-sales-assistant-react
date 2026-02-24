@@ -13,7 +13,7 @@ import { Stage } from "@/lib/api";
 interface Props {
   stage: Stage;
   estimatedRevenue: number | null;
-  roiPct: number | null;
+  roiVal: number | null;
   closingRate: number | null;
 }
 
@@ -25,7 +25,7 @@ const fmtPct = (v: number | null) => (typeof v === "number" ? `${v}%` : "–");
 export function StagePerformanceDialog({
   stage,
   estimatedRevenue,
-  roiPct,
+  roiVal,
   closingRate,
 }: Props) {
   return (
@@ -62,7 +62,7 @@ export function StagePerformanceDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="rounded-md border p-3">
               <p className="text-muted-foreground text-xs">ROI</p>
-              <p className="text-lg font-medium">{fmtPct(roiPct)}</p>
+              <p className="text-lg font-medium">{roiVal}</p>
               <p className="text-xs text-muted-foreground">Umsatz / Budget</p>
             </div>
 
@@ -100,7 +100,7 @@ export function StagePerformanceDialog({
             {closingRate != null && closingRate < 40 && (
               <p>⚠️ Niedrige Closing-Rate – Teilnahme-Reminder prüfen.</p>
             )}
-            {roiPct != null && roiPct >= 100 && (
+            {roiVal != null && roiVal >= 1 && (
               <p>✅ Positiver ROI – Event rechnet sich.</p>
             )}
             {stage.recorded_contacts === 0 && (

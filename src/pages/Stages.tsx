@@ -122,7 +122,7 @@ const euro = (n: number) => `€${n.toLocaleString()}`;
 const closingText = (
   participants: number,
   registrations: number,
-  closing?: number | null
+  closing?: number | null,
 ) => {
   if (!(registrations > 0)) return "Closing-Rate: nicht genug Daten.";
   const val = typeof closing === "number" ? pct(closing) : "–";
@@ -134,13 +134,13 @@ const closingText = (
 const roiText = (
   revenue?: number | null,
   budget?: number | null,
-  roi?: number | null
+  roi?: number | null,
 ) => {
   if (!(budget && budget > 0) || revenue == null)
     return "ROI: nicht genug Daten.";
-  const val = typeof roi === "number" ? `${roi}%` : "–";
-  return `ROI = (Umsatz / Budget) × 100
-= (${euro(revenue)} / ${euro(budget)}) × 100 = ${val}`;
+  const val = typeof roi === "number" ? `${roi}` : "–";
+  return `ROI = (Umsatz / Budget)
+= (${euro(revenue)} / ${euro(budget)}) = ${val}`;
 };
 
 /* ------------------------- Create Dialog ------------------------- */
@@ -171,7 +171,7 @@ function CreateStageDialog() {
         (p) =>
           p.name.trim().length > 0 ||
           p.email.trim().length > 0 ||
-          p.phone.trim().length > 0
+          p.phone.trim().length > 0,
       );
 
       for (const p of validParticipants) {
@@ -188,7 +188,7 @@ function CreateStageDialog() {
         if (!p.name.trim()) {
           console.debug(
             "[stages] participant has no name, using fallbackName",
-            fallbackName
+            fallbackName,
           );
         }
 
@@ -211,7 +211,7 @@ function CreateStageDialog() {
         try {
           await addStageParticipant(
             newStage.id,
-            payload as AddStageParticipantRequest
+            payload as AddStageParticipantRequest,
           );
         } catch (err) {
           // Log axios error details if available
@@ -221,7 +221,7 @@ function CreateStageDialog() {
             "[stages] addStageParticipant (create) failed",
             e?.response?.status,
             e?.response?.data,
-            e
+            e,
           );
           throw err; // rethrow so mutation behaves as before
         }
@@ -341,17 +341,17 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 
   // Existing state
   const [registrations, setRegistrations] = useState(
-    stage.registrations != null ? String(stage.registrations) : ""
+    stage.registrations != null ? String(stage.registrations) : "",
   );
   const [participants, setParticipants] = useState(
-    stage.participants != null ? String(stage.participants) : ""
+    stage.participants != null ? String(stage.participants) : "",
   );
 
   // ✅ new state for basic info
   const [name, setName] = useState(stage.name ?? "");
   const [date, setDate] = useState(formatDateForInput(stage.date));
   const [adBudget, setAdBudget] = useState(
-    stage.ad_budget != null ? String(stage.ad_budget) : ""
+    stage.ad_budget != null ? String(stage.ad_budget) : "",
   );
 
   // Participants list for adding new participants
@@ -396,7 +396,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         "[stages] mutate called for stage (edit)",
         stage.id,
         "participantsToAdd",
-        participantsToAdd
+        participantsToAdd,
       );
 
       // Add new participants (only create as lead if checkbox is checked)
@@ -404,13 +404,13 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         (p) =>
           p.name.trim().length > 0 ||
           p.email.trim().length > 0 ||
-          p.phone.trim().length > 0
+          p.phone.trim().length > 0,
       );
 
       console.debug(
         "[stages] validParticipants (edit)",
         stage.id,
-        validParticipants
+        validParticipants,
       );
 
       for (const p of validParticipants) {
@@ -426,7 +426,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         if (!p.name.trim()) {
           console.debug(
             "[stages] participant has no name, using fallbackName",
-            fallbackName
+            fallbackName,
           );
         }
 
@@ -446,7 +446,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
         try {
           await addStageParticipant(
             stage.id,
-            payload as AddStageParticipantRequest
+            payload as AddStageParticipantRequest,
           );
         } catch (err) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -455,7 +455,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
             "[stages] addStageParticipant (edit) failed",
             e?.response?.status,
             e?.response?.data,
-            e
+            e,
           );
           throw err;
         }
@@ -479,8 +479,8 @@ function EditStageDialog({ stage }: { stage: Stage }) {
                     registrations: toNumberOrNull(registrations),
                     participants: toNumberOrNull(participants),
                   }
-                : s
-            ) ?? []
+                : s,
+            ) ?? [],
         );
       }
 
@@ -683,7 +683,7 @@ export default function Stages() {
         if (isAvgReady) agg.revenue += parts * (effectiveAvgRev as number);
         return agg;
       },
-      { budget: 0, registrations: 0, participants: 0, revenue: 0 }
+      { budget: 0, registrations: 0, participants: 0, revenue: 0 },
     );
 
     const closingRate =
@@ -691,13 +691,13 @@ export default function Stages() {
         ? Math.round((acc.participants / acc.registrations) * 100)
         : null;
 
-    // "ROI" as Umsatz/Budget × 100 (ROAS math)
-    const roiPct =
+    // "ROI" as Umsatz/Budget (ROAS math)
+    const roiVal =
       isAvgReady && acc.budget > 0
-        ? Math.round((acc.revenue / acc.budget) * 100)
+        ? Math.round((acc.revenue / acc.budget) * 100) / 100
         : null;
 
-    return { ...acc, closingRate, roiPct };
+    return { ...acc, closingRate, roiVal };
   }, [stages, isAvgReady, effectiveAvgRev]);
 
   return (
@@ -763,7 +763,7 @@ export default function Stages() {
             closingText(
               totals.participants,
               totals.registrations,
-              totals.closingRate ?? undefined
+              totals.closingRate ?? undefined,
             )
           }
         />
@@ -771,12 +771,12 @@ export default function Stages() {
         <MetricChip
           icon={<TrendingUp className="w-4 h-4" />}
           iconBg="bg-accent/20 text-accent-foreground"
-          value={fmtPct(totals.roiPct)}
+          value={totals.roiVal}
           label="ROI gesamt"
           popover={roiText(
             isAvgReady ? totals.revenue : null,
             totals.budget,
-            totals.roiPct ?? undefined
+            totals.roiVal ?? undefined,
           )}
         />
       </div>
@@ -822,20 +822,20 @@ export default function Stages() {
                   : null;
 
                 // "ROI" per row = Umsatz/Budget × 100
-                const roiPct =
+                const roiVal =
                   isAvgReady && budget > 0 && revenue != null
-                    ? Math.round((revenue / budget) * 100)
+                    ? Math.round((revenue / budget) * 100) / 100
                     : null;
 
                 const closingRate =
                   regs > 0 ? Math.round((parts / regs) * 100) : null;
 
                 const roiClass =
-                  roiPct == null
+                  roiVal == null
                     ? ""
-                    : roiPct >= 100
-                    ? "text-success"
-                    : "text-destructive";
+                    : roiVal >= 1
+                      ? "text-success"
+                      : "text-destructive";
 
                 return (
                   <TableRow key={stage.id} className="h-10">
@@ -873,11 +873,11 @@ export default function Stages() {
                               type="button"
                               className={`px-1.5 py-0.5 rounded bg-accent/40 ${roiClass} cursor-pointer`}
                             >
-                              ROI: {fmtPct(roiPct ?? undefined)}
+                              ROI: {roiVal ?? undefined}
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="whitespace-pre-line text-xs">
-                            {roiText(revenue, budget, roiPct ?? undefined)}
+                            {roiText(revenue, budget, roiVal ?? undefined)}
                           </PopoverContent>
                         </Popover>
 
@@ -909,7 +909,7 @@ export default function Stages() {
                         <StagePerformanceDialog
                           stage={stage}
                           estimatedRevenue={revenue}
-                          roiPct={roiPct}
+                          roiVal={roiVal}
                           closingRate={closingRate}
                         />
 
