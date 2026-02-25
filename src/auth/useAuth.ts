@@ -21,6 +21,8 @@ export type Me = { email: string; name: string; exp?: string };
 async function fetchMe(): Promise<Me | null> {
   try {
     const { data } = await api.get<Me>("/me");
+    // Guard: if the API returns HTML (e.g. SPA fallback), treat as unauthenticated
+    if (!data || typeof data !== "object" || !("email" in data)) return null;
     return data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 401) return null;
