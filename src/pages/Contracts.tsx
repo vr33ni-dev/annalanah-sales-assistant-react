@@ -217,8 +217,26 @@ export default function Contracts() {
 
   /* ---------------- KPIs from contracts ---------------- */
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
-  const activeContracts = contracts.length;
-  const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
+
+  // "Active" = contract whose date range includes today
+  const activeContracts = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return contracts.filter((c) => {
+      const cStart = toDateStartOfDay(c.start_date as string | null);
+      if (!cStart) return false;
+      const endRaw = c.end_date ?? undefined;
+      let cEnd = endRaw ? toDateStartOfDay(endRaw) : null;
+      if (!cEnd && typeof c.duration_months === "number") {
+        cEnd = addMonthsDate(cStart, c.duration_months);
+      }
+      if (!cEnd) return true; // open-ended → active
+      return cStart <= today && today <= cEnd;
+    });
+  }, [contracts]);
+
+  const activeCount = activeContracts.length;
+  const avgContractValue = activeCount ? totalRevenue / activeCount : 0;
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt) — use metrics if available ---- */
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
@@ -491,9 +509,9 @@ export default function Contracts() {
         <MetricChip
           icon={<FileText className="w-4 h-4" />}
           iconBg="bg-warning/10 text-warning"
-          value={String(activeContracts)}
+          value={String(activeCount)}
           label="Aktive Verträge"
-          popover={`Anzahl aktiver Verträge = ${activeContracts}`}
+          popover={`Anzahl heute aktiver Verträge = ${activeCount}`}
         />
 
         <MetricChip
@@ -503,7 +521,7 @@ export default function Contracts() {
           label="Ø Vertragswert"
           popover={
             `Ø Vertragswert = Gesamt-Vertragswert / Anzahl Verträge\n` +
-            `= ${euro(totalRevenue)} / ${activeContracts || 1}\n` +
+            `= ${euro(totalRevenue)} / ${activeCount || 1}\n` +
             `= ${euro(Math.round(avgContractValue))}`
           }
         />
