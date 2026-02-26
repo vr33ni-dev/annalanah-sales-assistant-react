@@ -231,6 +231,8 @@ export default function Contracts() {
       if (!cEnd && typeof c.duration_months === "number") {
         cEnd = addMonthsDate(cStart, c.duration_months);
       }
+      // Future-start contracts are considered active (no confirmation required)
+
       if (!cEnd) return true; // open-ended → active
       return cEnd >= today; // not yet ended (includes future starts)
     });
@@ -278,8 +280,10 @@ export default function Contracts() {
       list = list.filter((c) => String(c.client_id) === clientFilter);
     }
 
-    // date range filter: show only contracts whose start AND end fall
-    // fully within the selected date range
+    // date range filter: show contracts whose END date falls within the
+    // selected range (inclusive). This lets a contract count as active for
+    // the view if its end date is inside the window. Open-ended contracts
+    // are excluded when a bounded `viewEnd` is set.
     if (dateStart || dateEnd) {
       const viewStart = toDateStartOfDay(dateStart ?? null);
       const viewEnd = toDateStartOfDay(dateEnd ?? null);
@@ -294,18 +298,37 @@ export default function Contracts() {
         if (!cEnd) {
           if (typeof c.duration_months === "number") {
             cEnd = addMonthsDate(cStart, c.duration_months);
-            cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
+            cEnd = new Date(
+              cEnd.getFullYear(),
+              cEnd.getMonth(),
+              cEnd.getDate(),
+            );
           } else {
             cEnd = null; // open-ended
           }
         }
 
-        // start must be >= viewStart (if set)
-        if (viewStart && cStart < viewStart) return false;
-        // end must be <= viewEnd (if set); open-ended contracts only shown if no viewEnd
-        if (viewEnd) {
-          if (!cEnd) return false; // open-ended doesn't fit in a bounded range
-          if (cEnd > viewEnd) return false;
+        // New rule: include a contract when its end date falls inside the
+        // selected window. Behavior by inputs:
+        // - viewStart & viewEnd: require cEnd exists and viewStart <= cEnd <= viewEnd
+        // - viewStart only: include if cEnd is null (open-ended) OR cEnd >= viewStart
+        // - viewEnd only: include only if cEnd exists and cEnd <= viewEnd
+        if (viewStart && viewEnd) {
+          if (!cEnd) return false;
+          if (cEnd < viewStart || cEnd > viewEnd) return false;
+          return true;
+        }
+
+        if (viewStart && !viewEnd) {
+          // show contracts that end on/after viewStart (open-ended included)
+          if (!cEnd) return true;
+          return cEnd >= viewStart;
+        }
+
+        if (!viewStart && viewEnd) {
+          // only contracts that end on/before viewEnd; open-ended excluded
+          if (!cEnd) return false;
+          return cEnd <= viewEnd;
         }
 
         return true;

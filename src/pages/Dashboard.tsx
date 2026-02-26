@@ -188,10 +188,56 @@ export default function Dashboard() {
   // KPI: ACTIVE CONTRACTS
   // -----------------------------
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function addMonthsDate(d: Date, months: number) {
+    const dt = new Date(d.getTime());
+    dt.setMonth(dt.getMonth() + months);
+    return dt;
+  }
+
+  // Active contracts for the Dashboard KPI: respect the selected date range
+  // and match the Contracts table semantics — a contract is counted when its
+  // END date falls inside the selected range (inclusive). For future-start
+  // contracts we include them only when they were confirmed (created_at <= today).
+  const viewStart = range.from
+    ? new Date(
+        range.from.getFullYear(),
+        range.from.getMonth(),
+        range.from.getDate(),
+      )
+    : null;
+  const viewEnd = range.to
+    ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate())
+    : null;
+
   const activeContracts = contracts.filter((c) => {
-    const start = parseIsoToLocal(c.start_date) || new Date(0);
-    const end = parseIsoToLocal(c.end_date ?? c.start_date) || start;
-    return start <= today && end >= today;
+    const cStart = parseIsoToLocal(c.start_date) || new Date(0);
+
+    const endRaw = c.end_date ?? undefined;
+    let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
+    if (!cEnd && typeof c.duration_months === "number") {
+      cEnd = addMonthsDate(cStart, c.duration_months);
+      cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
+    }
+
+    // require an end date (open-ended contracts do not match a bounded range)
+    if (!cEnd) return false;
+
+    // check end within view range
+    if (viewStart && viewEnd) {
+      if (cEnd < viewStart || cEnd > viewEnd) return false;
+    } else if (viewStart && !viewEnd) {
+      if (cEnd < viewStart) return false;
+    } else if (!viewStart && viewEnd) {
+      if (cEnd > viewEnd) return false;
+    }
+
+    // future-start contracts: include only if confirmed (created_at <= today)
+    const created = parseIsoToLocal(c.created_at) || new Date(0);
+    if (cStart > today && created > today) return false;
+
+    return true;
   }).length;
 
   // -----------------------------
