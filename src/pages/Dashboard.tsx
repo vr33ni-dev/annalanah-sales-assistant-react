@@ -344,7 +344,7 @@ export default function Dashboard() {
               Anteil der Neukunden, die zum Zweitgespräch erschienen und danach
               einen Vertrag abgeschlossen haben.
             </p>
-          </TooltipContent> 
+          </TooltipContent>
         </Tooltip>
 
         <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />

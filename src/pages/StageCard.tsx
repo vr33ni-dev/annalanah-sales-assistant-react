@@ -25,25 +25,28 @@ function toStatus(s: Stage): Row["status"] {
 }
 
 export default function StageCard() {
-  const { data: effectiveStages, isLoading: stagesLoading } = useMockableQuery<Stage[]>({
+  const { data: effectiveStages, isLoading: stagesLoading } = useMockableQuery<
+    Stage[]
+  >({
     queryKey: ["stages"],
     queryFn: getStages,
     staleTime: 60_000,
     mockData: mockStages,
   });
 
-  const { data: effectiveAvgRev, isLoading: settingLoading } = useMockableQuery<number>({
-    queryKey: ["avg_revenue_per_participant"],
-    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
-    staleTime: 5 * 60_000,
-    mockData: mockAppSettings.avg_revenue_per_participant,
-  });
+  const { data: effectiveAvgRev, isLoading: settingLoading } =
+    useMockableQuery<number>({
+      queryKey: ["avg_revenue_per_contract"],
+      queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
+      staleTime: 5 * 60_000,
+      mockData: mockAppSettings.avg_revenue_per_contract,
+    });
 
   const isLoading = stagesLoading || settingLoading;
 
-  if (isLoading)
-    return <CardContent>Loading…</CardContent>;
-  if (!effectiveStages?.length) return <CardContent>Keine Bühnen geplant.</CardContent>;
+  if (isLoading) return <CardContent>Loading…</CardContent>;
+  if (!effectiveStages?.length)
+    return <CardContent>Keine Bühnen geplant.</CardContent>;
 
   const rows: Row[] = effectiveStages.map((s) => {
     const adBudget = Number(s.ad_budget ?? 0);
@@ -93,8 +96,8 @@ export default function StageCard() {
       row.status === "done"
         ? "bg-success/10"
         : row.status === "pending"
-        ? "bg-warning/10"
-        : "bg-primary/10"
+          ? "bg-warning/10"
+          : "bg-primary/10"
     }`;
 
   return (

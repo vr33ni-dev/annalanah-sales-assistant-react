@@ -217,10 +217,6 @@ export default function Contracts() {
 
   /* ---------------- KPIs from contracts ---------------- */
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
-  const monthlyRecurring = contracts.reduce(
-    (sum, c) => sum + c.base_monthly_amount,
-    0,
-  );
   const activeContracts = contracts.length;
   const avgContractValue = activeContracts ? totalRevenue / activeContracts : 0;
 

@@ -563,8 +563,7 @@ export const mockCashflowForecast = [
 // Mock application settings (app_settings table)
 export const mockAppSettings = {
   potential_months: 6,
-  potential_flat_eur: 600,
-  avg_revenue_per_participant: 250,
+  avg_revenue_per_contract: 600,
 };
 
 // Mock comments data

@@ -647,7 +647,9 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 export default function Stages() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data, isLoading, isError, error, refetch } = useMockableQuery<Stage[]>({
+  const { data, isLoading, isError, error, refetch } = useMockableQuery<
+    Stage[]
+  >({
     queryKey: ["stages"],
     queryFn: getStages,
     staleTime: 60_000,
@@ -656,10 +658,10 @@ export default function Stages() {
 
   // Average revenue per participant (used to estimate Umsatz)
   const { data: avgRev, isLoading: avgRevLoading } = useMockableQuery<number>({
-    queryKey: ["avg_revenue_per_participant"],
-    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    queryKey: ["avg_revenue_per_contract"],
+    queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     staleTime: 5 * 60_000,
-    mockData: mockAppSettings.avg_revenue_per_participant,
+    mockData: mockAppSettings.avg_revenue_per_contract,
   });
 
   // Treat non-positive average as "not ready"
