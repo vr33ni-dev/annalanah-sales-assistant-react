@@ -218,7 +218,8 @@ export default function Contracts() {
   /* ---------------- KPIs from contracts ---------------- */
   const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
 
-  // "Active" = contract whose date range includes today
+  // "Active" = contract that has not yet ended (end >= today),
+  // including future contracts that have already been confirmed
   const activeContracts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -231,7 +232,7 @@ export default function Contracts() {
         cEnd = addMonthsDate(cStart, c.duration_months);
       }
       if (!cEnd) return true; // open-ended → active
-      return cStart <= today && today <= cEnd;
+      return cEnd >= today; // not yet ended (includes future starts)
     });
   }, [contracts]);
 
@@ -277,44 +278,37 @@ export default function Contracts() {
       list = list.filter((c) => String(c.client_id) === clientFilter);
     }
 
-    // date range filter: include contracts that are active at any point
-    // within the selected window (inclusive). We parse contract start and
-    // end (computed by backend when available) robustly and test for
-    // range overlap.
+    // date range filter: show only contracts whose start AND end fall
+    // fully within the selected date range
     if (dateStart || dateEnd) {
       const viewStart = toDateStartOfDay(dateStart ?? null);
       const viewEnd = toDateStartOfDay(dateEnd ?? null);
 
       list = list.filter((c) => {
         const cStart = toDateStartOfDay(c.start_date as string | null);
-        // prefer server-provided computed end date if present
         const endFromServer = c.end_date ?? undefined;
         let cEnd = endFromServer ? toDateStartOfDay(endFromServer) : null;
 
-        if (!cStart) return false; // contract without start - skip
+        if (!cStart) return false;
 
         if (!cEnd) {
-          // derive end from duration_months if server didn't provide an end
           if (typeof c.duration_months === "number") {
             cEnd = addMonthsDate(cStart, c.duration_months);
-            // normalize derived end to start-of-day as well
-            cEnd = new Date(
-              cEnd.getFullYear(),
-              cEnd.getMonth(),
-              cEnd.getDate(),
-            );
+            cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
           } else {
-            // no end information -> treat as open-ended (far future)
-            cEnd = new Date(8640000000000000);
+            cEnd = null; // open-ended
           }
         }
 
-        // If either view boundary is missing, treat the missing one as
-        // - start missing -> very old; end missing -> very far future.
-        const vs = viewStart ?? new Date(-8640000000000000);
-        const ve = viewEnd ?? new Date(8640000000000000);
+        // start must be >= viewStart (if set)
+        if (viewStart && cStart < viewStart) return false;
+        // end must be <= viewEnd (if set); open-ended contracts only shown if no viewEnd
+        if (viewEnd) {
+          if (!cEnd) return false; // open-ended doesn't fit in a bounded range
+          if (cEnd > viewEnd) return false;
+        }
 
-        return rangesOverlap(cStart, cEnd, vs, ve);
+        return true;
       });
     }
 
