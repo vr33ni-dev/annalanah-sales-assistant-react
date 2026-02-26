@@ -653,8 +653,8 @@ export default function Stages() {
 
   // Average revenue per participant (used to estimate Umsatz)
   const { data: avgRev, isLoading: avgRevLoading } = useQuery({
-    queryKey: ["avg_revenue_per_participant"],
-    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    queryKey: ["avg_revenue_per_contract"],
+    queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     staleTime: 5 * 60_000,
   });
 

@@ -274,7 +274,7 @@ export default function Contracts() {
       list = list.filter((c) => {
         const cStart = toDateStartOfDay(c.start_date as string | null);
         // prefer server-provided computed end date if present
-        const endFromServer = c.end_date_computed ?? undefined;
+        const endFromServer = c.end_date ?? undefined;
         let cEnd = endFromServer ? toDateStartOfDay(endFromServer) : null;
 
         if (!cStart) return false; // contract without start - skip
@@ -329,7 +329,7 @@ export default function Contracts() {
         const match = contracts.find((c) => c.sales_process_id === spId);
         if (match) {
           const cStart = toDateStartOfDay(match.start_date as string | null);
-          const cEndFromServer = match.end_date_computed ?? undefined;
+          const cEndFromServer = match.end_date ?? undefined;
           const cEnd = cEndFromServer
             ? toDateStartOfDay(cEndFromServer)
             : addMonthsDate(cStart ?? new Date(), match.duration_months ?? 0);
@@ -390,7 +390,7 @@ export default function Contracts() {
     let maxDate: Date | null = null;
     for (const c of contracts) {
       // prefer server-provided computed end date
-      const endFromServer = (c as Contract).end_date_computed ?? null;
+      const endFromServer = (c as Contract).end_date ?? null;
       let e: Date | null = null;
       if (endFromServer) e = toDateStartOfDay(endFromServer);
       else if (c.start_date && typeof c.duration_months === "number")
@@ -623,13 +623,12 @@ export default function Contracts() {
                     );
                   }
 
-                  // latest contract end_date (prefer server-computed end_date_computed,
+                  // latest contract end_date (prefer server-computed end_date,
                   // otherwise derive from start_date + duration_months)
                   const latestContractEnd = contracts.reduce<string | null>(
                     (max, c) => {
                       let ed: string | null = null;
-                      if (c.end_date_computed)
-                        ed = (c.end_date_computed as string).split("T")[0];
+                      if (c.end_date) ed = (c.end_date as string).split("T")[0];
                       else if (
                         c.start_date &&
                         typeof c.duration_months === "number"

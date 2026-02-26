@@ -28,7 +28,7 @@ const MOCK_MONTHS: Setting = {
   value_text: null,
 };
 const MOCK_FLAT: Setting = {
-  key: "potential_flat_eur",
+  key: "avg_revenue_per_contract",
   value_numeric: 900,
   value_text: null,
 };
@@ -52,8 +52,8 @@ export default function Settings() {
   });
 
   const { data: flatSetting, isLoading: lFlat } = useMockableQuery({
-    queryKey: ["settings", "potential_flat_eur"],
-    queryFn: () => fetchSetting("potential_flat_eur"),
+    queryKey: ["settings", "avg_revenue_per_contract"],
+    queryFn: () => fetchSetting("avg_revenue_per_contract"),
     mockData: MOCK_FLAT,
   });
 
@@ -80,7 +80,7 @@ export default function Settings() {
       if (!Number.isFinite(fVal) || fVal < 0)
         throw new Error("EUR-Betrag muss ≥ 0 sein");
       promises.push(updateSetting("potential_months", mVal));
-      promises.push(updateSetting("potential_flat_eur", fVal));
+      promises.push(updateSetting("avg_revenue_per_contract", fVal));
       await Promise.all(promises);
     },
     onSuccess: () => {
@@ -133,9 +133,11 @@ export default function Settings() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="potential_flat_eur">Pauschal-Betrag (EUR)</Label>
+            <Label htmlFor="avg_revenue_per_contract">
+              Pauschal-Betrag (EUR)
+            </Label>
             <Input
-              id="potential_flat_eur"
+              id="avg_revenue_per_contract"
               type="number"
               min={0}
               placeholder="z.B. 900"

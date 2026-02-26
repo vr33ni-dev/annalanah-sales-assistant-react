@@ -27,7 +27,7 @@ function toStatus(s: Stage): Row["status"] {
 
 export default function StageCard() {
   const { useMockData } = useAuthEnabled();
-  
+
   const { data: stages, isLoading: stagesLoading } = useQuery({
     queryKey: ["stages"],
     queryFn: getStages,
@@ -35,21 +35,21 @@ export default function StageCard() {
     enabled: !useMockData,
   });
 
-  // Assumption: average revenue per participant (EUR/USD). Configure in /api/settings/avg_revenue_per_participant
+  // Assumption: average revenue per participant => contract (EUR/USD). Configure in /api/settings/avg_revenue_per_contract
   const { data: avgRev, isLoading: settingLoading } = useQuery({
-    queryKey: ["avg_revenue_per_participant"],
-    queryFn: () => getNumericSetting("avg_revenue_per_participant", 250),
+    queryKey: ["avg_revenue_per_contract"],
+    queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     staleTime: 5 * 60_000,
     enabled: !useMockData,
   });
 
   const effectiveStages = useMockData ? mockStages : stages;
   const effectiveAvgRev = useMockData ? 250 : avgRev;
-  const isLoading = useMockData ? false : (stagesLoading || settingLoading);
+  const isLoading = useMockData ? false : stagesLoading || settingLoading;
 
-  if (isLoading)
-    return <CardContent>Loading…</CardContent>;
-  if (!effectiveStages?.length) return <CardContent>Keine Bühnen geplant.</CardContent>;
+  if (isLoading) return <CardContent>Loading…</CardContent>;
+  if (!effectiveStages?.length)
+    return <CardContent>Keine Bühnen geplant.</CardContent>;
 
   const rows: Row[] = effectiveStages.map((s) => {
     const adBudget = Number(s.ad_budget ?? 0);
@@ -99,8 +99,8 @@ export default function StageCard() {
       row.status === "done"
         ? "bg-success/10"
         : row.status === "pending"
-        ? "bg-warning/10"
-        : "bg-primary/10"
+          ? "bg-warning/10"
+          : "bg-primary/10"
     }`;
 
   return (

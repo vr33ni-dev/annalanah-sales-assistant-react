@@ -328,7 +328,7 @@ export interface Contract {
   sales_process_id: number;
   created_at: string;
   start_date: string;
-  end_date_computed?: string | null;
+  end_date?: string | null;
   duration_months: number;
   revenue_total: number;
   payment_frequency: string;
