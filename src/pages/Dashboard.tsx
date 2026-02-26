@@ -190,7 +190,7 @@ export default function Dashboard() {
   const today = new Date();
   const activeContracts = contracts.filter((c) => {
     const start = parseIsoToLocal(c.start_date) || new Date(0);
-    const end = parseIsoToLocal(c.end_date_computed ?? c.start_date) || start;
+    const end = parseIsoToLocal(c.end_date ?? c.start_date) || start;
     return start <= today && end >= today;
   }).length;
 
