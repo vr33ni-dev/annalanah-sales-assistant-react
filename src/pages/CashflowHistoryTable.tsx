@@ -79,22 +79,25 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
       const due = c.next_due_date ?? c.start_date ?? null;
       return {
         id: c.id,
-        contractLabel: `${c.client_name} - ${c.duration_months}M`,
+        contractLabel: `${c.client_name} - ${c.duration_months} Monate`,
         dueDate: due as string | null,
         amount: calcNextDueAmount(c),
       };
     })
-    .filter((e) => !!e.dueDate)
-    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+    .filter((e) => !!e.dueDate && e.amount > 0)
+    .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
 
   const entries =
     entriesFromApi && entriesFromApi.length > 0
-      ? entriesFromApi.map((r) => ({
-          id: r.id,
-          contractLabel: r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`,
-          dueDate: r.due_date,
-          amount: r.amount,
-        }))
+      ? entriesFromApi
+          .filter((r) => r.amount > 0)
+          .map((r) => ({
+            id: r.id,
+            contractLabel: r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`,
+            dueDate: r.due_date,
+            amount: r.amount,
+          }))
+          .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""))
       : derivedEntries;
 
   const isFetching = fetchingEntries || fetchingContracts;
