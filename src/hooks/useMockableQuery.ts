@@ -6,7 +6,7 @@ import { useAuthEnabled } from "@/auth/useAuthEnabled";
  * when no real API is available.
  */
 export function useMockableQuery<T>(
-  options: UseQueryOptions<T, Error, T, string[]> & { mockData: T }
+  options: UseQueryOptions<T, Error, T, (string | number)[]> & { mockData: T },
 ) {
   const { enabled, useMockData } = useAuthEnabled();
   const { mockData, ...queryOptions } = options;
