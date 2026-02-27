@@ -611,6 +611,33 @@ export interface CashflowRow {
   contract_id?: number;
 }
 
+// Optional: individual cashflow entries (past & scheduled payments)
+export interface CashflowEntry {
+  id: number;
+  contract_id?: number;
+  contract_label?: string;
+  due_date: string; // ISO date
+  amount: number;
+  confirmed?: boolean;
+}
+
+export const getCashflowEntries = async (
+  contractId?: number,
+): Promise<CashflowEntry[]> => {
+  const url = contractId
+    ? `/cashflow/entries?contract_id=${contractId}`
+    : `/cashflow/entries`;
+
+  try {
+    const { data } = await api.get<CashflowEntry[]>(url);
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch (e) {
+    // If server doesn't expose this endpoint, return empty and let caller fallback
+    return [];
+  }
+};
+
 export const getCashflowForecast = async (
   contractId?: number,
 ): Promise<CashflowRow[]> => {

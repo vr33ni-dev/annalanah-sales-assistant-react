@@ -8,7 +8,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Calendar } from "lucide-react";
-import { Contract, getContracts } from "@/lib/api";
+import {
+  Contract,
+  getContracts,
+  getCashflowEntries,
+  type CashflowEntry,
+} from "@/lib/api";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
@@ -32,10 +37,25 @@ function calcNextDueAmount(c: Contract): number {
 }
 
 export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
+  // Prefer a dedicated cashflow entries endpoint; fall back to deriving
+  // entries from contracts when the endpoint is not available or returns none.
   const {
-    data = [],
-    isFetching,
-    isError,
+    data: entriesFromApi = [],
+    isFetching: fetchingEntries,
+    isError: entriesError,
+  } = useMockableQuery<CashflowEntry[]>({
+    queryKey: ["cashflow-entries", contractId],
+    queryFn: () => getCashflowEntries(contractId),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<CashflowEntry>,
+    mockData: [],
+  });
+
+  const {
+    data: contracts = [],
+    isFetching: fetchingContracts,
+    isError: contractsError,
   } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
     queryFn: getContracts,
@@ -52,15 +72,33 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
   const now = new Date();
 
   // Derive "entries" from contracts that have a next due date
-  const entries = data
-    .filter((c) => !!c.next_due_date)
-    .map((c) => ({
-      id: c.id,
-      contractLabel: `${c.client_name} - ${c.duration_months}M`,
-      dueDate: c.next_due_date as string,
-      amount: calcNextDueAmount(c),
-    }))
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  // If the API returned entries, use them. Otherwise derive entries from
+  // contracts (as a fallback for older backends or mocks).
+  const derivedEntries = contracts
+    .map((c) => {
+      const due = c.next_due_date ?? c.start_date ?? null;
+      return {
+        id: c.id,
+        contractLabel: `${c.client_name} - ${c.duration_months}M`,
+        dueDate: due as string | null,
+        amount: calcNextDueAmount(c),
+      };
+    })
+    .filter((e) => !!e.dueDate)
+    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+
+  const entries =
+    entriesFromApi && entriesFromApi.length > 0
+      ? entriesFromApi.map((r) => ({
+          id: r.id,
+          contractLabel: r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`,
+          dueDate: r.due_date,
+          amount: r.amount,
+        }))
+      : derivedEntries;
+
+  const isFetching = fetchingEntries || fetchingContracts;
+  const isError = entriesError || contractsError;
 
   // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
   const filteredEntries = entries
@@ -81,7 +119,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
 
   // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
 
-  if (isFetching && data.length === 0) {
+  if (isFetching && entries.length === 0) {
     return (
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
