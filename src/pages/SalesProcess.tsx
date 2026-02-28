@@ -64,6 +64,8 @@ import { LeadSearch } from "@/components/LeadSearch";
 import { Lead } from "@/lib/api";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { useToast } from "@/hooks/use-toast";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/TablePagination";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -419,6 +421,8 @@ export default function SalesProcessView() {
 
     return result;
   }, [sales, activeStatusFilters, activeSourceFilters, dateFilter]);
+
+  const { page: salesPage, setPage: setSalesPage, totalPages: salesTotalPages, paginatedItems: paginatedSales } = usePagination(filteredEntries, 10);
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -1612,7 +1616,7 @@ export default function SalesProcessView() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEntries.map((e) => {
+              {paginatedSales.map((e) => {
                 const linkedStage =
                   typeof e.stage_id === "number"
                     ? (stages.find((s) => s.id === e.stage_id)?.name ?? null)
@@ -1948,6 +1952,7 @@ export default function SalesProcessView() {
               })}
             </TableBody>
           </Table>
+          <TablePagination page={salesPage} totalPages={salesTotalPages} onPageChange={setSalesPage} />
         </CardContent>
       </Card>
     </div>

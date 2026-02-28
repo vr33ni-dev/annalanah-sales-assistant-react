@@ -20,6 +20,8 @@ import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockClients } from "@/lib/mockData";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/TablePagination";
 
 const sourceLabels = {
   organic: "Organic",
@@ -74,6 +76,8 @@ export default function Clients() {
       : true;
     return matchesSearch && matchesMonth;
   });
+
+  const { page, setPage, totalPages, paginatedItems } = usePagination(filteredClients, 10);
 
   const handleEdit = (client: Client) => {
     setEditingClientId(client.id);
@@ -158,7 +162,7 @@ export default function Clients() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredClients.map((client) => (
+              {paginatedItems.map((client) => (
                 <TableRow key={client.id}>
                   <TableCell>
                     {editingClientId === client.id ? (
@@ -361,7 +365,7 @@ export default function Clients() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredClients.length === 0 && !isFetching && (
+              {paginatedItems.length === 0 && !isFetching && (
                 <TableRow>
                   <TableCell
                     colSpan={7}
@@ -373,6 +377,7 @@ export default function Clients() {
               )}
             </TableBody>
           </Table>
+          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </CardContent>
       </Card>
     </div>
