@@ -77,7 +77,10 @@ export default function Clients() {
     return matchesSearch && matchesMonth;
   });
 
-  const { page, setPage, totalPages, paginatedItems } = usePagination(filteredClients, 10);
+  const { page, setPage, totalPages, paginatedItems } = usePagination(
+    filteredClients,
+    10,
+  );
 
   const handleEdit = (client: Client) => {
     setEditingClientId(client.id);
@@ -377,7 +380,11 @@ export default function Clients() {
               )}
             </TableBody>
           </Table>
-          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </div>

@@ -29,7 +29,7 @@ const MOCK_MONTHS: Setting = {
 };
 const MOCK_FLAT: Setting = {
   key: "avg_revenue_per_contract",
-  value_numeric: 900,
+  value_numeric: 600,
   value_text: null,
 };
 

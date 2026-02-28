@@ -42,7 +42,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     staleTime: 10 * 60 * 1000,
   });
 
-  const { data: avgRevenue = 250 } = useQuery<number>({
+  const { data: avgRevenue = 600 } = useQuery<number>({
     queryKey: ["setting", "avg_revenue_per_contract"],
     queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     enabled,
