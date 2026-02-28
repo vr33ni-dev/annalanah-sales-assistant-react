@@ -20,7 +20,7 @@ import { getMockCommentsForEntity, isLovablePreview } from "@/lib/mockData";
 interface CommentsSectionProps {
   entityType: CommentEntityType;
   entityId: number;
-  isOpen: boolean;
+  isOpen?: boolean;
   maxHeight?: string;
   className?: string;
 }
@@ -46,7 +46,7 @@ export function CommentsSection({
   } = useQuery<Comment[], Error>({
     queryKey,
     queryFn: () => getComments(entityType, entityId),
-    enabled: isOpen && !!entityId && !useMockData,
+    enabled: (isOpen ?? true) && !!entityId && !useMockData,
   });
 
   // Use mock data in Lovable preview
