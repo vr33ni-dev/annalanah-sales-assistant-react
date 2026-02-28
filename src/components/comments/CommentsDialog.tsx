@@ -34,7 +34,7 @@ export function CommentsDialog({
   const { data: apiComments = [] } = useQuery({
     queryKey: ["comments", entityType, entityId],
     queryFn: () => getComments(entityType, entityId),
-    enabled: !!entityId && !useMockData,
+    enabled: open && !!entityId && !useMockData,
   });
 
   // Use mock data in Lovable preview
@@ -92,6 +92,7 @@ export function CommentsDialog({
         <CommentsSection
           entityType={entityType}
           entityId={entityId}
+          isOpen={open}
           maxHeight="350px"
         />
       </DialogContent>
