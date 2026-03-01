@@ -122,9 +122,8 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
       return due >= cutoff && due <= now;
     });
 
-  const showPagination = range === "all";
   const { page, setPage, totalPages, paginatedItems } = usePagination(filteredEntries, 10);
-  const displayedEntries = showPagination ? paginatedItems : filteredEntries;
+  const displayedEntries = paginatedItems;
 
   // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
 
@@ -199,7 +198,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
                 ))}
               </TableBody>
             </Table>
-            {showPagination && totalPages > 1 && (
+            {totalPages > 1 && (
               <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
             )}
           </>
