@@ -67,7 +67,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
 
   type RangeFilter = "all" | "30" | "90" | "365";
 
-  const [range, setRange] = useState<RangeFilter>("all");
+  const [range, setRange] = useState<RangeFilter>("30");
 
   const now = new Date();
 
