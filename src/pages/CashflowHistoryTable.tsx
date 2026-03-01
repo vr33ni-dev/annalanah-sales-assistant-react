@@ -18,6 +18,8 @@ import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import { useState } from "react";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/TablePagination";
 
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {
@@ -120,6 +122,10 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
       return due >= cutoff && due <= now;
     });
 
+  const showPagination = range === "all";
+  const { page, setPage, totalPages, paginatedItems } = usePagination(filteredEntries, 10);
+  const displayedEntries = showPagination ? paginatedItems : filteredEntries;
+
   // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
 
   if (isFetching && entries.length === 0) {
@@ -163,35 +169,40 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
             Keine anstehenden Zahlungen.
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vertrag</TableHead>
-                <TableHead>Fälligkeitsdatum</TableHead>
-                <TableHead>Betrag</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredEntries.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-medium">
-                    {e.contractLabel}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                      {e.dueDate
-                        ? new Date(e.dueDate).toLocaleDateString("de-DE")
-                        : "–"}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    €{Math.round(e.amount).toLocaleString()}
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Vertrag</TableHead>
+                  <TableHead>Fälligkeitsdatum</TableHead>
+                  <TableHead>Betrag</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {displayedEntries.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell className="font-medium">
+                      {e.contractLabel}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        {e.dueDate
+                          ? new Date(e.dueDate).toLocaleDateString("de-DE")
+                          : "–"}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      €{Math.round(e.amount).toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {showPagination && totalPages > 1 && (
+              <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            )}
+          </>
         )}
       </CardContent>
     </Card>
