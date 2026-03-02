@@ -938,7 +938,6 @@ export default function Contracts() {
                 <CommentsSection
                   entityType="contract"
                   entityId={selectedContract.id}
-                  isOpen={true}
                   maxHeight="250px"
                 />
               </div>
