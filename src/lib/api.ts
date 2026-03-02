@@ -549,8 +549,18 @@ export const createOrUpdateUpsell = async (
 };
 
 /** GET /sales/upsells/list */
-export const listUpsellCategories = async () => {
-  const { data } = await api.get(`/sales/upsells/list`);
+export type UpsellDateRangeParams = {
+  start_date?: string;
+  end_date?: string;
+};
+
+export const listUpsellCategories = async (params?: UpsellDateRangeParams) => {
+  const { data } = await api.get(`/sales/upsells/list`, {
+    params: {
+      ...(params?.start_date ? { start_date: params.start_date } : null),
+      ...(params?.end_date ? { end_date: params.end_date } : null),
+    },
+  });
   return data as {
     scheduled: ContractUpsell[];
     successful: ContractUpsell[];
@@ -559,8 +569,8 @@ export const listUpsellCategories = async () => {
 };
 
 // Flattened list of all upsells
-export const getUpsells = async () => {
-  const data = await listUpsellCategories();
+export const getUpsells = async (params?: UpsellDateRangeParams) => {
+  const data = await listUpsellCategories(params);
 
   return [
     ...(data.scheduled ?? []),
@@ -570,8 +580,15 @@ export const getUpsells = async () => {
 };
 
 /** GET /sales/upsells/analytics */
-export const getUpsellAnalytics = async () => {
-  const { data } = await api.get(`/sales/upsells/analytics`);
+export const getUpsellAnalytics = async (
+  params?: UpsellDateRangeParams,
+): Promise<UpsellAnalytics> => {
+  const { data } = await api.get<UpsellAnalytics>(`/sales/upsells/analytics`, {
+    params: {
+      ...(params?.start_date ? { start_date: params.start_date } : null),
+      ...(params?.end_date ? { end_date: params.end_date } : null),
+    },
+  });
   return data;
 };
 
