@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -10,8 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, UserPlus, CheckCircle2 } from "lucide-react";
-import { Lead, getLeads } from "@/lib/api";
+import { Search, UserPlus, CheckCircle2, Trash } from "lucide-react";
+import { Lead, getLeads, deleteLead } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockLeads } from "@/lib/mockData";
@@ -25,6 +27,7 @@ const sourceLabels: Record<string, string> = {
 
 export default function Leads() {
   const [searchTerm, setSearchTerm] = useState("");
+  const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Lead[]>({
     queryKey: ["leads"],
@@ -150,6 +153,7 @@ export default function Leads() {
                 <TableHead>Stage</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Erstellt am</TableHead>
+                <TableHead>Aktionen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -177,6 +181,22 @@ export default function Leads() {
                     )}
                   </TableCell>
                   <TableCell>{formatDate(lead.created_at)}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={async () => {
+                        const confirmed = window.confirm(
+                          "Lead wirklich löschen?",
+                        );
+                        if (!confirmed) return;
+                        await deleteLead(lead.id);
+                        queryClient.invalidateQueries({ queryKey: ["leads"] });
+                      }}
+                    >
+                      <Trash className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {filteredLeads.length === 0 && !isFetching && (
