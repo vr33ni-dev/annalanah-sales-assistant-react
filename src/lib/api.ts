@@ -128,6 +128,10 @@ export const createLead = async (payload: Partial<Lead>): Promise<Lead> => {
   return data as Lead;
 };
 
+export const deleteLead = async (id: string | number): Promise<void> => {
+  await api.delete(`/leads/${id}`);
+};
+
 /* Sales processes */
 export interface SalesProcess {
   id: number;
