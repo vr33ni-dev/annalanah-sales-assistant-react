@@ -42,11 +42,12 @@ import StageCard from "./StageCard";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { startOfMonth } from "date-fns";
+import { format, startOfMonth } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import {
   Tooltip,
   TooltipContent,
@@ -64,6 +65,28 @@ const formatLocalDate = (d?: Date | null) =>
 
 export default function Dashboard() {
   const navigate = useNavigate();
+
+  const { useMockData } = useAuthEnabled();
+
+  // -----------------------------
+  // DATE RANGE
+  // -----------------------------
+  const [range, setRange] = useState<DateRange>({
+    from: startOfMonth(new Date()),
+    to: new Date(),
+  });
+
+  const startDateParam = range.from
+    ? format(range.from, "yyyy-MM-dd")
+    : undefined;
+  const endDateParam = range.to ? format(range.to, "yyyy-MM-dd") : undefined;
+
+  const inRange = (dateStr?: string | null) => {
+    if (!dateStr || !range.from || !range.to) return false;
+    const d = parseIsoToLocal(dateStr);
+    if (!d) return false;
+    return d >= range.from && d <= range.to;
+  };
 
   // -----------------------------
   // LOAD DATA
@@ -97,32 +120,25 @@ export default function Dashboard() {
   });
 
   const { data: upsells = [] } = useMockableQuery<ContractUpsell[]>({
-    queryKey: ["upsells"],
-    queryFn: getUpsells,
+    queryKey: ["upsells", startDateParam ?? "", endDateParam ?? ""],
+    queryFn: () =>
+      getUpsells({
+        start_date: startDateParam,
+        end_date: endDateParam,
+      }),
     select: asArray<ContractUpsell>,
     mockData: mockUpsells,
   });
 
   const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
-    queryKey: ["upsellAnalytics"],
-    queryFn: getUpsellAnalytics,
+    queryKey: ["upsellAnalytics", startDateParam ?? "", endDateParam ?? ""],
+    queryFn: () =>
+      getUpsellAnalytics({
+        start_date: startDateParam,
+        end_date: endDateParam,
+      }),
     mockData: mockUpsellAnalytics,
   });
-
-  // -----------------------------
-  // DATE RANGE
-  // -----------------------------
-  const [range, setRange] = useState<DateRange>({
-    from: startOfMonth(new Date()),
-    to: new Date(),
-  });
-
-  const inRange = (dateStr?: string | null) => {
-    if (!dateStr || !range.from || !range.to) return false;
-    const d = parseIsoToLocal(dateStr);
-    if (!d) return false;
-    return d >= range.from && d <= range.to;
-  };
 
   // -----------------------------
   // HELPER
@@ -182,7 +198,13 @@ export default function Dashboard() {
     })
     .reduce((s, c) => s + (c.revenue_total ?? 0), 0);
 
-  const renewalRevenue = upsellAnalytics?.umsatz_sum ?? 0;
+  const renewalRevenue = useMockData
+    ? upsells
+        .filter(
+          (u) => u.upsell_result === "verlaengerung" && inRange(u.upsell_date),
+        )
+        .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0)
+    : (upsellAnalytics?.umsatz_sum ?? 0);
 
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
@@ -267,10 +289,24 @@ export default function Dashboard() {
   // -----------------------------
   // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
   // -----------------------------
-  const renewalRate =
-    upsellAnalytics?.verlangerungsquote != null
-      ? upsellAnalytics.verlangerungsquote + "%"
-      : "—";
+  const renewalRateValue = useMockData
+    ? (() => {
+        const decided = upsells.filter(
+          (u) =>
+            inRange(u.upsell_date) &&
+            (u.upsell_result === "verlaengerung" ||
+              u.upsell_result === "keine_verlaengerung"),
+        );
+        const total = decided.length;
+        const ok = decided.filter(
+          (u) => u.upsell_result === "verlaengerung",
+        ).length;
+        if (total === 0) return null;
+        return Math.round((1000 * ok) / total) / 10; // 1 decimal
+      })()
+    : (upsellAnalytics?.verlangerungsquote ?? null);
+
+  const renewalRate = renewalRateValue != null ? renewalRateValue + "%" : "—";
 
   // -----------------------------
   // RECENT ACTIVITIES (combine contracts + sales and sort by date)
