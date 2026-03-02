@@ -55,6 +55,17 @@ export function MonthlyKPITable({
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
 
+  // Parse YYYY-MM-DD or full ISO to a local Date (avoid timezone shifts)
+  const parseIsoToLocal = (dateStr?: string | null): Date | null => {
+    if (!dateStr) return null;
+    const datePart = String(dateStr).split("T")[0];
+    const parts = datePart.split("-").map((v) => Number(v));
+    if (parts.length < 3) return null;
+    const [y, m, d] = parts;
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+
   // Group upsells per client for renewal classification
   const upsellByClient: Record<number, ContractUpsell[]> = {};
   upsells.forEach((u) => {
@@ -65,10 +76,13 @@ export function MonthlyKPITable({
   function isRenewalProcess(sp: SalesProcess) {
     const clientUpsells = upsellByClient[sp.client_id] ?? [];
     if (!sp.follow_up_date) return false;
-    const f = new Date(sp.follow_up_date);
+    const f = parseIsoToLocal(sp.follow_up_date);
+    if (!f) return false;
     return clientUpsells.some((u) => {
       if (!u.upsell_date) return false;
-      return new Date(u.upsell_date) < f;
+      const uDate = parseIsoToLocal(u.upsell_date);
+      if (!uDate) return false;
+      return uDate < f;
     });
   }
 
@@ -79,57 +93,71 @@ export function MonthlyKPITable({
     const monthStart = new Date(currentYear, m, 1);
     const monthEnd = new Date(currentYear, m + 1, 0);
 
-    // Parse YYYY-MM-DD or full ISO to a local Date (avoid timezone shifts)
-    const parseIsoToLocal = (dateStr?: string | null): Date | null => {
-      if (!dateStr) return null;
-      const datePart = String(dateStr).split("T")[0];
-      const parts = datePart.split("-").map((v) => Number(v));
-      if (parts.length < 3) return null;
-      const [y, mm, dd] = parts;
-      if (!y || !mm || !dd) return null;
-      return new Date(y, mm - 1, dd);
-    };
-
     const inMonth = (dateStr?: string | null) => {
       const d = parseIsoToLocal(dateStr);
       if (!d) return false;
       return d >= monthStart && d <= monthEnd;
     };
 
-    // Contracts started in this month
-    const monthContracts = contracts.filter((c) => inMonth(c.start_date));
-    const revenue = monthContracts.reduce(
-      (s, c) => s + (c.revenue_total ?? 0),
+    // Month basis:
+    // - Abschlüsse: sales processes won in this month (completed_at month)
+    // - Abschlussquote: decided processes (won/lost) in this month
+    //   (wins use completed_at; losses fall back to updated_at/follow_up_date)
+    const decisionDateForProcess = (sp: SalesProcess) =>
+      sp.completed_at ??
+      sp.follow_up_date ??
+      sp.updated_at ??
+      sp.created_at ??
+      null;
+
+    const wonNewCustomerInMonth = salesProcesses.filter((sp) => {
+      const isWon = sp.closed === true || sp.completed_at != null;
+      if (!isWon) return false;
+
+      const winDate =
+        sp.completed_at ??
+        sp.follow_up_date ??
+        sp.updated_at ??
+        sp.created_at ??
+        null;
+      if (!winDate) return false;
+      if (!inMonth(winDate)) return false;
+
+      return !isRenewalProcess(sp);
+    });
+
+    const decidedNewCustomerInMonth = salesProcesses.filter((sp) => {
+      const isDecided =
+        sp.completed_at != null || sp.closed === true || sp.closed === false;
+      if (!isDecided) return false;
+      const decisionDate = decisionDateForProcess(sp);
+      if (!decisionDate) return false;
+      if (!inMonth(decisionDate)) return false;
+      return !isRenewalProcess(sp);
+    });
+
+    // New-customer revenue: use the sales process revenue for won deals in this month.
+    const newCustomerRevenue = wonNewCustomerInMonth.reduce(
+      (s, sp) => s + (sp.revenue ?? 0),
       0,
     );
 
-    // New customer revenue
-    const newCustomerRevenue = monthContracts
-      .filter((c) => {
-        const sp = salesProcesses.find((s) => s.id === c.sales_process_id);
-        if (!sp) return false;
-        return !isRenewalProcess(sp);
-      })
-      .reduce((s, c) => s + (c.revenue_total ?? 0), 0);
-
-    // Renewal revenue (upsells in this month)
+    // Renewal revenue: successful upsells by upsell_date in this month.
     const renewalRevenue = upsells
-      .filter((u) => inMonth(u.upsell_date) && u.upsell_revenue)
+      .filter((u) => {
+        if (u.upsell_result !== "verlaengerung") return false;
+        if (u.upsell_revenue == null) return false;
+        return inMonth(u.upsell_date);
+      })
       .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0);
 
-    // Sales processes with follow-up in this month
-    const monthCalls = salesProcesses.filter(
-      (sp) =>
-        sp.follow_up_date &&
-        inMonth(sp.follow_up_date) &&
-        !isRenewalProcess(sp),
-    );
-    const appeared = monthCalls.filter(
-      (sp) => sp.follow_up_result === true,
-    ).length;
-    const closedDeals = monthCalls.filter((sp) => sp.closed === true).length;
+    const revenue = newCustomerRevenue + renewalRevenue;
+
+    const closedDeals = wonNewCustomerInMonth.length;
     const closingRate =
-      appeared > 0 ? Math.round((closedDeals / appeared) * 100) : null;
+      decidedNewCustomerInMonth.length > 0
+        ? Math.round((closedDeals / decidedNewCustomerInMonth.length) * 100)
+        : null;
 
     monthlyData.push({
       month: MONTH_NAMES[m],

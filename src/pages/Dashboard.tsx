@@ -130,6 +130,16 @@ export default function Dashboard() {
     mockData: mockUpsells,
   });
 
+  // Unfiltered upsells are required for correct renewal vs new-customer
+  // classification (a renewal depends on historical upsells, not just those
+  // inside the currently selected date range).
+  const { data: upsellsAll = [] } = useMockableQuery<ContractUpsell[]>({
+    queryKey: ["upsellsAll"],
+    queryFn: () => getUpsells(),
+    select: asArray<ContractUpsell>,
+    mockData: mockUpsells,
+  });
+
   const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
     queryKey: ["upsellAnalytics", startDateParam ?? "", endDateParam ?? ""],
     queryFn: () =>
@@ -161,15 +171,12 @@ export default function Dashboard() {
   // -----------------------------
   // KPI: REVENUE
   // -----------------------------
-  const contractsInRange = contracts.filter((c) => inRange(c.start_date));
+  // We align Dashboard revenue KPIs with the closing KPIs by using the
+  // *decision date* of the sales process (completed_at when present, otherwise
+  // the follow-up/closing call date).
 
-  const totalRevenue = contractsInRange.reduce(
-    (s, c) => s + (c.revenue_total ?? 0),
-    0,
-  );
-
-  // Group upsells per client
-  const upsellByClient = groupBy(upsells, (u) => u.client_id);
+  // Group ALL upsells per client (needed for renewal classification)
+  const upsellByClient = groupBy(upsellsAll, (u) => u.client_id);
 
   // Correct classification logic:
   // A sales process is a RENEWAL process only if an upsell
@@ -189,14 +196,36 @@ export default function Dashboard() {
     });
   }
 
-  // Revenue split
-  const newCustomerRevenue = contractsInRange
-    .filter((c) => {
-      const sp = salesProcesses.find((s) => s.id === c.sales_process_id);
-      if (!sp) return false;
-      return !isRenewalProcess(sp); // classify by process
-    })
-    .reduce((s, c) => s + (c.revenue_total ?? 0), 0);
+  const decisionDateForProcess = (sp: SalesProcess) =>
+    sp.completed_at ??
+    sp.follow_up_date ??
+    sp.updated_at ??
+    sp.created_at ??
+    null;
+
+  const wonNewCustomerInRange = salesProcesses.filter((sp) => {
+    const isWon = sp.closed === true || sp.completed_at != null;
+    if (!isWon) return false;
+    if (isRenewalProcess(sp)) return false;
+
+    const winDate = decisionDateForProcess(sp);
+    return inRange(winDate);
+  });
+
+  const decidedNewCustomerInRange = salesProcesses.filter((sp) => {
+    const isDecided =
+      sp.completed_at != null || sp.closed === true || sp.closed === false;
+    if (!isDecided) return false;
+    if (isRenewalProcess(sp)) return false;
+
+    const decisionDate = decisionDateForProcess(sp);
+    return inRange(decisionDate);
+  });
+
+  const newCustomerRevenue = wonNewCustomerInRange.reduce(
+    (s, sp) => s + (sp.revenue ?? 0),
+    0,
+  );
 
   const renewalRevenue = useMockData
     ? upsells
@@ -205,6 +234,8 @@ export default function Dashboard() {
         )
         .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0)
     : (upsellAnalytics?.umsatz_sum ?? 0);
+
+  const totalRevenue = newCustomerRevenue + renewalRevenue;
 
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
@@ -218,10 +249,10 @@ export default function Dashboard() {
     return dt;
   }
 
-  // Active contracts for the Dashboard KPI: respect the selected date range
-  // and match the Contracts table semantics — a contract is counted when its
-  // END date falls inside the selected range (inclusive). For future-start
-  // contracts we include them only when they were confirmed (created_at <= today).
+  // Active contracts for the Dashboard KPI: respect the selected date range.
+  // A contract counts as "active" if its [start, end] period overlaps the
+  // selected range (inclusive). For future-start contracts we include them
+  // only when they were confirmed (created_at <= today).
   const viewStart = range.from
     ? new Date(
         range.from.getFullYear(),
@@ -238,21 +269,23 @@ export default function Dashboard() {
 
     const endRaw = c.end_date ?? undefined;
     let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
-    if (!cEnd && typeof c.duration_months === "number") {
-      cEnd = addMonthsDate(cStart, c.duration_months);
+    const durationMonths = Number(
+      (c as { duration_months?: unknown }).duration_months,
+    );
+    if (!cEnd && Number.isFinite(durationMonths) && durationMonths > 0) {
+      cEnd = addMonthsDate(cStart, durationMonths);
       cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
     }
 
-    // require an end date (open-ended contracts do not match a bounded range)
-    if (!cEnd) return false;
-
-    // check end within view range
+    // If end is missing, treat as open-ended.
+    // Overlap check (inclusive): [cStart, cEnd] intersects [viewStart, viewEnd]
     if (viewStart && viewEnd) {
-      if (cEnd < viewStart || cEnd > viewEnd) return false;
+      if (cStart > viewEnd) return false;
+      if (cEnd && cEnd < viewStart) return false;
     } else if (viewStart && !viewEnd) {
-      if (cEnd < viewStart) return false;
+      if (cEnd && cEnd < viewStart) return false;
     } else if (!viewStart && viewEnd) {
-      if (cEnd > viewEnd) return false;
+      if (cStart > viewEnd) return false;
     }
 
     // future-start contracts: include only if confirmed (created_at <= today)
@@ -270,21 +303,13 @@ export default function Dashboard() {
   // because closed/lost calls no longer have stage "follow_up".
   // A new-customer sales call is any call with a follow_up_date.
 
-  const newCustomerCalls = salesProcesses.filter(
-    (sp) =>
-      sp.follow_up_date && inRange(sp.follow_up_date) && !isRenewalProcess(sp),
-  );
-
-  // Appeared = customer showed up
-  const appearedNew = newCustomerCalls.filter(
-    (sp) => sp.follow_up_result === true,
-  ).length;
-
-  // Closed = deal won
-  const closedNew = newCustomerCalls.filter((sp) => sp.closed === true).length;
-
   const closingRateNew =
-    appearedNew > 0 ? Math.round((closedNew / appearedNew) * 100) + "%" : "—";
+    decidedNewCustomerInRange.length > 0
+      ? Math.round(
+          (wonNewCustomerInRange.length / decidedNewCustomerInRange.length) *
+            100,
+        ) + "%"
+      : "—";
 
   // -----------------------------
   // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
@@ -423,8 +448,9 @@ export default function Dashboard() {
           </TooltipTrigger>
           <TooltipContent>
             <p className="max-w-xs text-sm">
-              Anteil der Neukunden, die zum Zweitgespräch erschienen und danach
-              einen Vertrag abgeschlossen haben.
+              Anteil der entschiedenen Neukunden-Verkaufsprozesse im Zeitraum,
+              die gewonnen wurden. (Entscheiddatum: completed_at, sonst Datum
+              des Follow-up/Abschluss-Calls.)
             </p>
           </TooltipContent>
         </Tooltip>
@@ -436,7 +462,7 @@ export default function Dashboard() {
       <MonthlyKPITable
         contracts={contracts}
         salesProcesses={salesProcesses}
-        upsells={upsells}
+        upsells={upsellsAll}
       />
 
       {/* SECONDARY SECTION */}
