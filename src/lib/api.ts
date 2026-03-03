@@ -148,6 +148,8 @@ export interface SalesProcess {
   revenue?: number | null;
   stage_id?: number | null;
   created_at?: string | null;
+  updated_at?: string | null;
+  completed_at?: string | null;
 }
 
 export async function getSalesProcesses(): Promise<
@@ -183,6 +185,8 @@ export async function getSalesProcesses(): Promise<
       revenue: sp.revenue ?? null,
       stage_id: sp.stage_id ?? null,
       created_at: sp.created_at ?? null,
+      updated_at: sp.updated_at ?? null,
+      completed_at: sp.completed_at ?? null,
     };
   });
 }

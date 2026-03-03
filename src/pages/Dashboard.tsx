@@ -42,7 +42,7 @@ import StageCard from "./StageCard";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
@@ -72,7 +72,9 @@ export default function Dashboard() {
   // DATE RANGE
   // -----------------------------
   const [range, setRange] = useState<DateRange>({
-    from: startOfMonth(new Date()),
+    // Default to "last 3 months" = start of month 2 months ago → today.
+    // Example: Mar 3 → Jan 1 .. Mar 3
+    from: startOfMonth(subMonths(new Date(), 2)),
     to: new Date(),
   });
 
@@ -130,6 +132,16 @@ export default function Dashboard() {
     mockData: mockUpsells,
   });
 
+  // Unfiltered upsells are required for correct renewal vs new-customer
+  // classification (a renewal depends on historical upsells, not just those
+  // inside the currently selected date range).
+  const { data: upsellsAll = [] } = useMockableQuery<ContractUpsell[]>({
+    queryKey: ["upsellsAll"],
+    queryFn: () => getUpsells(),
+    select: asArray<ContractUpsell>,
+    mockData: mockUpsells,
+  });
+
   const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
     queryKey: ["upsellAnalytics", startDateParam ?? "", endDateParam ?? ""],
     queryFn: () =>
@@ -161,15 +173,12 @@ export default function Dashboard() {
   // -----------------------------
   // KPI: REVENUE
   // -----------------------------
-  const contractsInRange = contracts.filter((c) => inRange(c.start_date));
+  // We align Dashboard revenue KPIs with the closing KPIs by using the
+  // *decision date* of the sales process (completed_at when present, otherwise
+  // the follow-up/closing call date).
 
-  const totalRevenue = contractsInRange.reduce(
-    (s, c) => s + (c.revenue_total ?? 0),
-    0,
-  );
-
-  // Group upsells per client
-  const upsellByClient = groupBy(upsells, (u) => u.client_id);
+  // Group ALL upsells per client (needed for renewal classification)
+  const upsellByClient = groupBy(upsellsAll, (u) => u.client_id);
 
   // Correct classification logic:
   // A sales process is a RENEWAL process only if an upsell
@@ -189,14 +198,37 @@ export default function Dashboard() {
     });
   }
 
-  // Revenue split
-  const newCustomerRevenue = contractsInRange
-    .filter((c) => {
-      const sp = salesProcesses.find((s) => s.id === c.sales_process_id);
-      if (!sp) return false;
-      return !isRenewalProcess(sp); // classify by process
-    })
-    .reduce((s, c) => s + (c.revenue_total ?? 0), 0);
+  // Abschlussquote Neukunden:
+  // - Numerator: won (closed=true) with completed_at (contract made)
+  // - Denominator: decided (closed true/false)
+  // - Time bucketing:
+  //   - wins by completed_at
+  //   - losses by updated_at (fallback follow_up_date/created_at)
+
+  const wonNewCustomerInRange = salesProcesses.filter((sp) => {
+    if (sp.closed !== true) return false;
+    if (!sp.completed_at) return false;
+    if (isRenewalProcess(sp)) return false;
+    return inRange(sp.completed_at);
+  });
+
+  const decidedNewCustomerInRange = salesProcesses.filter((sp) => {
+    if (sp.closed !== true && sp.closed !== false) return false;
+    // Losses should only count if a follow-up call actually happened.
+    if (sp.closed === false && sp.follow_up_result !== true) return false;
+    if (isRenewalProcess(sp)) return false;
+
+    const decisionDate =
+      sp.closed === true
+        ? sp.completed_at
+        : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
+    return inRange(decisionDate);
+  });
+
+  const newCustomerRevenue = wonNewCustomerInRange.reduce(
+    (s, sp) => s + (sp.revenue ?? 0),
+    0,
+  );
 
   const renewalRevenue = useMockData
     ? upsells
@@ -205,6 +237,8 @@ export default function Dashboard() {
         )
         .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0)
     : (upsellAnalytics?.umsatz_sum ?? 0);
+
+  const totalRevenue = newCustomerRevenue + renewalRevenue;
 
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
@@ -218,10 +252,11 @@ export default function Dashboard() {
     return dt;
   }
 
-  // Active contracts for the Dashboard KPI: respect the selected date range
-  // and match the Contracts table semantics — a contract is counted when its
-  // END date falls inside the selected range (inclusive). For future-start
-  // contracts we include them only when they were confirmed (created_at <= today).
+  // Active contracts for the Dashboard KPI: respect the selected date range.
+  // Semantics:
+  // - Count contracts whose [start, end] period overlaps the selected window.
+  // - Additionally count future-start contracts (start > viewEnd) that were
+  //   created/confirmed within the selected window.
   const viewStart = range.from
     ? new Date(
         range.from.getFullYear(),
@@ -238,28 +273,32 @@ export default function Dashboard() {
 
     const endRaw = c.end_date ?? undefined;
     let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
-    if (!cEnd && typeof c.duration_months === "number") {
-      cEnd = addMonthsDate(cStart, c.duration_months);
+    const durationMonths = Number(
+      (c as { duration_months?: unknown }).duration_months,
+    );
+    if (!cEnd && Number.isFinite(durationMonths) && durationMonths > 0) {
+      cEnd = addMonthsDate(cStart, durationMonths);
       cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
     }
 
-    // require an end date (open-ended contracts do not match a bounded range)
-    if (!cEnd) return false;
+    const created = parseIsoToLocal(c.created_at) || new Date(0);
 
-    // check end within view range
-    if (viewStart && viewEnd) {
-      if (cEnd < viewStart || cEnd > viewEnd) return false;
-    } else if (viewStart && !viewEnd) {
-      if (cEnd < viewStart) return false;
-    } else if (!viewStart && viewEnd) {
-      if (cEnd > viewEnd) return false;
+    // If no explicit range selected, fall back to "currently active".
+    if (!viewStart && !viewEnd) {
+      if (cStart > today && created > today) return false;
+      if (!cEnd) return true;
+      return cEnd >= today;
     }
 
-    // future-start contracts: include only if confirmed (created_at <= today)
-    const created = parseIsoToLocal(c.created_at) || new Date(0);
-    if (cStart > today && created > today) return false;
+    // Require a bounded window for the "continues beyond range end" logic.
+    // (Dashboard date picker always provides both, but keep this safe.)
+    if (!viewStart || !viewEnd) return false;
 
-    return true;
+    const overlapsWindow = cStart <= viewEnd && (!cEnd || cEnd >= viewStart);
+    const isFutureStart = cStart > viewEnd;
+    const createdInWindow = created >= viewStart && created <= viewEnd;
+
+    return overlapsWindow || (isFutureStart && createdInWindow);
   }).length;
 
   // -----------------------------
@@ -270,21 +309,13 @@ export default function Dashboard() {
   // because closed/lost calls no longer have stage "follow_up".
   // A new-customer sales call is any call with a follow_up_date.
 
-  const newCustomerCalls = salesProcesses.filter(
-    (sp) =>
-      sp.follow_up_date && inRange(sp.follow_up_date) && !isRenewalProcess(sp),
-  );
-
-  // Appeared = customer showed up
-  const appearedNew = newCustomerCalls.filter(
-    (sp) => sp.follow_up_result === true,
-  ).length;
-
-  // Closed = deal won
-  const closedNew = newCustomerCalls.filter((sp) => sp.closed === true).length;
-
   const closingRateNew =
-    appearedNew > 0 ? Math.round((closedNew / appearedNew) * 100) + "%" : "—";
+    decidedNewCustomerInRange.length > 0
+      ? Math.round(
+          (wonNewCustomerInRange.length / decidedNewCustomerInRange.length) *
+            100,
+        ) + "%"
+      : "—";
 
   // -----------------------------
   // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
@@ -351,7 +382,6 @@ export default function Dashboard() {
 
   // debug: show which recent items parsed to a Date
   if (typeof window !== "undefined") {
-    // eslint-disable-next-line no-console
     console.debug(
       "[Dashboard] recent items:",
       recent.map((r) => ({ id: r.id, kind: r.kind, date: r.date })),
@@ -384,29 +414,80 @@ export default function Dashboard() {
 
       {/* KPI GRID 1 — Revenue */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
-          title="Gesamtumsatz"
-          value={euro(totalRevenue)}
-          icon={DollarSign}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Gesamtumsatz"
+                value={euro(totalRevenue)}
+                icon={DollarSign}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Summe der Vertragswerte im ausgewählten Zeitraum. Spiegelt nicht
+              die bereits erfolgten Cashflow-Zahlungen wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Aktive Verträge"
-          value={activeContracts}
-          icon={FileText}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Aktive Verträge"
+                value={activeContracts}
+                icon={FileText}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Anzahl der Verträge, deren Laufzeit den gewählten Zeitraum
+              überschneidet. Beinhaltet Verträge mit späterem Startzeitpunkt,
+              die aber im gewählten Zeitraum abgeschlossen wurden.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Umsatz durch Neukunden"
-          value={euro(newCustomerRevenue)}
-          icon={TrendingUp}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Umsatz durch Neukunden"
+                value={euro(newCustomerRevenue)}
+                icon={TrendingUp}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Vertragswert aus gewonnener Neukundenakquise im gewählten
+              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
+              wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Umsatz durch Verlängerungen"
-          value={euro(renewalRevenue)}
-          icon={TrendingUp}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Umsatz durch Verlängerungen"
+                value={euro(renewalRevenue)}
+                icon={TrendingUp}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Vertragswert aus erfolgreichen Verlängerungen (Upsells) im
+              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
+              wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* KPI GRID 2 — Performance */}
@@ -422,21 +503,40 @@ export default function Dashboard() {
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p className="max-w-xs text-sm">
-              Anteil der Neukunden, die zum Zweitgespräch erschienen und danach
-              einen Vertrag abgeschlossen haben.
+            <p className="max-w-xs text-xs">
+              Erfolgreiche Neukunden-Abschlüsse im gewählten Zeitraum. Gezählt
+              werden bestätigte Vertragsabschlüsse sowie keine
+              zustandegekommenen Abschlüsse nach stattgefundenem Zweitgespräch.
             </p>
           </TooltipContent>
         </Tooltip>
 
-        <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Verlängerungsquote"
+                value={renewalRate}
+                icon={Target}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Anteil erfolgreicher Upsells im gewählten Zeitraum: Anzahl Upsells
+              mit Ergebnis "Verlängerung" geteilt durch alle entschiedenen
+              Upsells ("Verlängerung" + "keine Verlängerung"), basierend auf dem
+              Upsell-Datum.
+            </p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
       <MonthlyKPITable
         contracts={contracts}
         salesProcesses={salesProcesses}
-        upsells={upsells}
+        upsells={upsellsAll}
       />
 
       {/* SECONDARY SECTION */}
