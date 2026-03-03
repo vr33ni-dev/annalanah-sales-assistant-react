@@ -100,40 +100,27 @@ export function MonthlyKPITable({
     };
 
     // Month basis:
-    // - Abschlüsse: sales processes won in this month (completed_at month)
-    // - Abschlussquote: decided processes (won/lost) in this month
-    //   (wins use completed_at; losses fall back to updated_at/follow_up_date)
-    const decisionDateForProcess = (sp: SalesProcess) =>
-      sp.completed_at ??
-      sp.follow_up_date ??
-      sp.updated_at ??
-      sp.created_at ??
-      null;
+    // - Abschlüsse (wins): completed_at month
+    // - Abschlussquote (decided): closed true/false
+    //   - wins bucketed by completed_at
+    //   - losses bucketed by updated_at (fallback follow_up_date/created_at)
 
     const wonNewCustomerInMonth = salesProcesses.filter((sp) => {
-      const isWon = sp.closed === true || sp.completed_at != null;
-      if (!isWon) return false;
-
-      const winDate =
-        sp.completed_at ??
-        sp.follow_up_date ??
-        sp.updated_at ??
-        sp.created_at ??
-        null;
-      if (!winDate) return false;
-      if (!inMonth(winDate)) return false;
-
+      if (sp.closed !== true) return false;
+      if (!sp.completed_at) return false;
+      if (!inMonth(sp.completed_at)) return false;
       return !isRenewalProcess(sp);
     });
 
     const decidedNewCustomerInMonth = salesProcesses.filter((sp) => {
-      const isDecided =
-        sp.completed_at != null ||
-        sp.closed === true ||
-        sp.closed === false ||
-        sp.follow_up_result === false;
-      if (!isDecided) return false;
-      const decisionDate = decisionDateForProcess(sp);
+      if (sp.closed !== true && sp.closed !== false) return false;
+      // Losses should only count if a follow-up call actually happened.
+      if (sp.closed === false && sp.follow_up_result !== true) return false;
+
+      const decisionDate =
+        sp.closed === true
+          ? sp.completed_at
+          : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
       if (!decisionDate) return false;
       if (!inMonth(decisionDate)) return false;
       return !isRenewalProcess(sp);

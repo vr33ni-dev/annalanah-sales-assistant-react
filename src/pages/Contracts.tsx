@@ -509,7 +509,7 @@ export default function Contracts() {
           value={euro(totalRevenue)}
           label="Gesamter Vertragswert"
           popover={
-            `Summe der revenue_total über alle aktiven Verträge\n` +
+            `Summe der Vertragswerte aller aktiven Verträge\n` +
             `= ${contracts.map((c) => euro(c.revenue_total)).join(" + ") || "0"}\n` +
             `= ${euro(totalRevenue)}`
           }

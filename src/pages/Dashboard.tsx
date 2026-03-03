@@ -198,29 +198,30 @@ export default function Dashboard() {
     });
   }
 
-  const decisionDateForProcess = (sp: SalesProcess) =>
-    sp.completed_at ??
-    sp.follow_up_date ??
-    sp.updated_at ??
-    sp.created_at ??
-    null;
+  // Abschlussquote Neukunden:
+  // - Numerator: won (closed=true) with completed_at (contract made)
+  // - Denominator: decided (closed true/false)
+  // - Time bucketing:
+  //   - wins by completed_at
+  //   - losses by updated_at (fallback follow_up_date/created_at)
 
   const wonNewCustomerInRange = salesProcesses.filter((sp) => {
-    const isWon = sp.closed === true || sp.completed_at != null;
-    if (!isWon) return false;
+    if (sp.closed !== true) return false;
+    if (!sp.completed_at) return false;
     if (isRenewalProcess(sp)) return false;
-
-    const winDate = decisionDateForProcess(sp);
-    return inRange(winDate);
+    return inRange(sp.completed_at);
   });
 
   const decidedNewCustomerInRange = salesProcesses.filter((sp) => {
-    const isDecided =
-      sp.completed_at != null || sp.closed === true || sp.closed === false;
-    if (!isDecided) return false;
+    if (sp.closed !== true && sp.closed !== false) return false;
+    // Losses should only count if a follow-up call actually happened.
+    if (sp.closed === false && sp.follow_up_result !== true) return false;
     if (isRenewalProcess(sp)) return false;
 
-    const decisionDate = decisionDateForProcess(sp);
+    const decisionDate =
+      sp.closed === true
+        ? sp.completed_at
+        : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
     return inRange(decisionDate);
   });
 
@@ -381,7 +382,6 @@ export default function Dashboard() {
 
   // debug: show which recent items parsed to a Date
   if (typeof window !== "undefined") {
-    // eslint-disable-next-line no-console
     console.debug(
       "[Dashboard] recent items:",
       recent.map((r) => ({ id: r.id, kind: r.kind, date: r.date })),
@@ -414,29 +414,80 @@ export default function Dashboard() {
 
       {/* KPI GRID 1 — Revenue */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
-          title="Gesamtumsatz"
-          value={euro(totalRevenue)}
-          icon={DollarSign}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Gesamtumsatz"
+                value={euro(totalRevenue)}
+                icon={DollarSign}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Summe der Vertragswerte im ausgewählten Zeitraum. Spiegelt nicht
+              die bereits erfolgten Cashflow-Zahlungen wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Aktive Verträge"
-          value={activeContracts}
-          icon={FileText}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Aktive Verträge"
+                value={activeContracts}
+                icon={FileText}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Anzahl der Verträge, deren Laufzeit den gewählten Zeitraum
+              überschneidet. Beinhaltet Verträge mit späterem Startzeitpunkt,
+              die aber im gewählten Zeitraum abgeschlossen wurden.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Umsatz durch Neukunden"
-          value={euro(newCustomerRevenue)}
-          icon={TrendingUp}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Umsatz durch Neukunden"
+                value={euro(newCustomerRevenue)}
+                icon={TrendingUp}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Vertragswert aus gewonnener Neukundenakquise im gewählten
+              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
+              wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
 
-        <KPICard
-          title="Umsatz durch Verlängerungen"
-          value={euro(renewalRevenue)}
-          icon={TrendingUp}
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Umsatz durch Verlängerungen"
+                value={euro(renewalRevenue)}
+                icon={TrendingUp}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Vertragswert aus erfolgreichen Verlängerungen (Upsells) im
+              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
+              wider.
+            </p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* KPI GRID 2 — Performance */}
@@ -452,15 +503,33 @@ export default function Dashboard() {
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p className="max-w-xs text-sm">
-              Anteil der entschiedenen Neukunden-Verkaufsprozesse im Zeitraum,
-              die gewonnen wurden. (Entscheiddatum: completed_at, sonst Datum
-              des Follow-up/Abschluss-Calls.)
+            <p className="max-w-xs text-xs">
+              Erfolgreiche Neukunden-Abschlüsse im gewählten Zeitraum. Gezählt
+              werden bestätigte Vertragsabschlüsse sowie keine
+              zustandegekommenen Abschlüsse nach stattgefundenem Zweitgespräch.
             </p>
           </TooltipContent>
         </Tooltip>
 
-        <KPICard title="Verlängerungsquote" value={renewalRate} icon={Target} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <KPICard
+                title="Verlängerungsquote"
+                value={renewalRate}
+                icon={Target}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="max-w-xs text-xs">
+              Anteil erfolgreicher Upsells im gewählten Zeitraum: Anzahl Upsells
+              mit Ergebnis "Verlängerung" geteilt durch alle entschiedenen
+              Upsells ("Verlängerung" + "keine Verlängerung"), basierend auf dem
+              Upsell-Datum.
+            </p>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
