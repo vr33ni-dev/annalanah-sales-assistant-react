@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Pencil, Save, X } from "lucide-react";
 
 import {
+  Client,
   SalesProcess,
   Stage,
   getSalesProcesses,
@@ -55,7 +56,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
-import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { MergeConflicts } from "@/types/merge";
 import { isFetchError, StartSalesProcessError } from "@/types/apiError";
@@ -191,6 +191,24 @@ export default function SalesProcessView() {
     mutationFn: startSalesProcess,
 
     onSuccess: (data: StartSalesProcessResponse) => {
+      // Keep client list in sync (SalesProcess start can create/update client)
+      try {
+        if (data.client) {
+          qc.setQueryData<Client[]>(["clients"], (old) => {
+            const prev = (old ?? []) as Client[];
+            const idx = prev.findIndex((c) => c.id === data.client.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], ...data.client };
+              return next;
+            }
+            return [data.client, ...prev];
+          });
+        }
+      } catch {
+        // ignore cache update errors
+      }
+
       // immediately update sales cache so the new entry shows up without a full refresh
       try {
         const sp = data.sales_process;
@@ -215,6 +233,7 @@ export default function SalesProcessView() {
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
       qc.invalidateQueries({ queryKey: ["contracts"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
@@ -319,6 +338,9 @@ export default function SalesProcessView() {
         qc.invalidateQueries({ queryKey: ["contracts"] });
         qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
       }
+
+      // Sales process updates can change the derived client status; refresh client list.
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
     onError: (err: unknown) =>
       alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
@@ -422,7 +444,12 @@ export default function SalesProcessView() {
     return result;
   }, [sales, activeStatusFilters, activeSourceFilters, dateFilter]);
 
-  const { page: salesPage, setPage: setSalesPage, totalPages: salesTotalPages, paginatedItems: paginatedSales } = usePagination(filteredEntries, 10);
+  const {
+    page: salesPage,
+    setPage: setSalesPage,
+    totalPages: salesTotalPages,
+    paginatedItems: paginatedSales,
+  } = usePagination(filteredEntries, 10);
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -1065,27 +1092,61 @@ export default function SalesProcessView() {
                 <div className="p-4 bg-muted/30 rounded-lg">
                   <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    Erschienen: {formData.zweitgespraechResult ? "Ja" : "Nein"}
+                    Erschienen:{" "}
+                    {formData.zweitgespraechResult === true
+                      ? "Ja"
+                      : formData.zweitgespraechResult === false
+                        ? "Nein"
+                        : "—"}
                   </p>
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Abschluss erfolgreich?</Label>
-                  <div className="flex items-center space-x-3">
-                    <Switch
-                      checked={formData.abschluss === true}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, abschluss: checked })
-                      }
-                    />
-                    <span className="text-sm">
-                      {formData.abschluss === true
-                        ? "Ja, Vertrag abgeschlossen"
+                  <Label>Abschluss</Label>
+                  <RadioGroup
+                    value={
+                      formData.abschluss === true
+                        ? "erfolgreich"
                         : formData.abschluss === false
-                          ? "Nein, kein Abschluss"
-                          : "Bitte auswählen"}
-                    </span>
-                  </div>
+                          ? "nicht_erfolgreich"
+                          : "unset"
+                    }
+                    onValueChange={(value) => {
+                      setFormData({
+                        ...formData,
+                        abschluss:
+                          value === "erfolgreich"
+                            ? true
+                            : value === "nicht_erfolgreich"
+                              ? false
+                              : null,
+                      });
+                    }}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="unset" id="abschluss-unset" />
+                      <Label htmlFor="abschluss-unset">Noch offen</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="erfolgreich"
+                        id="abschluss-erfolgreich"
+                      />
+                      <Label htmlFor="abschluss-erfolgreich">
+                        Erfolgreich (Vertrag abgeschlossen)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem
+                        value="nicht_erfolgreich"
+                        id="abschluss-nicht-erfolgreich"
+                      />
+                      <Label htmlFor="abschluss-nicht-erfolgreich">
+                        Nicht erfolgreich (kein Abschluss)
+                      </Label>
+                    </div>
+                  </RadioGroup>
                 </div>
 
                 {formData.abschluss && (
@@ -1952,7 +2013,11 @@ export default function SalesProcessView() {
               })}
             </TableBody>
           </Table>
-          <TablePagination page={salesPage} totalPages={salesTotalPages} onPageChange={setSalesPage} />
+          <TablePagination
+            page={salesPage}
+            totalPages={salesTotalPages}
+            onPageChange={setSalesPage}
+          />
         </CardContent>
       </Card>
     </div>

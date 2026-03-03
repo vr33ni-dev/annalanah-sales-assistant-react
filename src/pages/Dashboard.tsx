@@ -42,7 +42,7 @@ import StageCard from "./StageCard";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
@@ -72,7 +72,9 @@ export default function Dashboard() {
   // DATE RANGE
   // -----------------------------
   const [range, setRange] = useState<DateRange>({
-    from: startOfMonth(new Date()),
+    // Default to "last 3 months" = start of month 2 months ago → today.
+    // Example: Mar 3 → Jan 1 .. Mar 3
+    from: startOfMonth(subMonths(new Date(), 2)),
     to: new Date(),
   });
 
@@ -250,9 +252,10 @@ export default function Dashboard() {
   }
 
   // Active contracts for the Dashboard KPI: respect the selected date range.
-  // A contract counts as "active" if its [start, end] period overlaps the
-  // selected range (inclusive). For future-start contracts we include them
-  // only when they were confirmed (created_at <= today).
+  // Semantics:
+  // - Count contracts whose [start, end] period overlaps the selected window.
+  // - Additionally count future-start contracts (start > viewEnd) that were
+  //   created/confirmed within the selected window.
   const viewStart = range.from
     ? new Date(
         range.from.getFullYear(),
@@ -277,22 +280,24 @@ export default function Dashboard() {
       cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
     }
 
-    // If end is missing, treat as open-ended.
-    // Overlap check (inclusive): [cStart, cEnd] intersects [viewStart, viewEnd]
-    if (viewStart && viewEnd) {
-      if (cStart > viewEnd) return false;
-      if (cEnd && cEnd < viewStart) return false;
-    } else if (viewStart && !viewEnd) {
-      if (cEnd && cEnd < viewStart) return false;
-    } else if (!viewStart && viewEnd) {
-      if (cStart > viewEnd) return false;
+    const created = parseIsoToLocal(c.created_at) || new Date(0);
+
+    // If no explicit range selected, fall back to "currently active".
+    if (!viewStart && !viewEnd) {
+      if (cStart > today && created > today) return false;
+      if (!cEnd) return true;
+      return cEnd >= today;
     }
 
-    // future-start contracts: include only if confirmed (created_at <= today)
-    const created = parseIsoToLocal(c.created_at) || new Date(0);
-    if (cStart > today && created > today) return false;
+    // Require a bounded window for the "continues beyond range end" logic.
+    // (Dashboard date picker always provides both, but keep this safe.)
+    if (!viewStart || !viewEnd) return false;
 
-    return true;
+    const overlapsWindow = cStart <= viewEnd && (!cEnd || cEnd >= viewStart);
+    const isFutureStart = cStart > viewEnd;
+    const createdInWindow = created >= viewStart && created <= viewEnd;
+
+    return overlapsWindow || (isFutureStart && createdInWindow);
   }).length;
 
   // -----------------------------

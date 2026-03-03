@@ -128,7 +128,10 @@ export function MonthlyKPITable({
 
     const decidedNewCustomerInMonth = salesProcesses.filter((sp) => {
       const isDecided =
-        sp.completed_at != null || sp.closed === true || sp.closed === false;
+        sp.completed_at != null ||
+        sp.closed === true ||
+        sp.closed === false ||
+        sp.follow_up_result === false;
       if (!isDecided) return false;
       const decisionDate = decisionDateForProcess(sp);
       if (!decisionDate) return false;

@@ -67,7 +67,9 @@ import { CommentsSection } from "@/components/comments/CommentsSection";
 
 // add months to a YYYY-MM-DD string safely
 function addMonthsIso(iso: string, m: number): string {
-  const [y, mo, d] = iso.split("-").map(Number);
+  const datePart = iso.split("T")[0];
+  const dateOnly = iso.split("T")[0];
+  const [y, mo, d] = dateOnly.split("-").map(Number);
   const dt = new Date(y, mo - 1, d);
   dt.setMonth(dt.getMonth() + m);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
@@ -77,21 +79,24 @@ function addMonthsIso(iso: string, m: number): string {
 }
 
 function parseIso(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
+  const datePart = iso.split("T")[0];
+  const [y, m, d] = datePart.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function toYmdLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
 }
 
 // Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
 // Date normalized to local start-of-day (time components zeroed).
 function toDateStartOfDay(input?: string | null) {
   if (!input) return null;
-  // Prefer native Date parsing which handles full ISO strings.
-  const d = new Date(input);
-  if (!isNaN(d.getTime())) {
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  }
-  // Fallback: try YYYY-MM-DD prefix
-  const m = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Always parse by YYYY-MM-DD prefix and construct a local Date.
+  // Avoids timezone shifts caused by native Date parsing.
+  const m = String(input).match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return null;
 }
@@ -265,12 +270,8 @@ export default function Contracts() {
   const avgMonthlyYtd = metrics?.avg_monthly_ytd ?? avgMonthlyYtdComputed;
 
   /* ---- Filtered Contracts for Active Contracts table ---- */
-  const [dateStart, setDateStart] = useState<string>(
-    startOfYear.toISOString().split("T")[0],
-  );
-  const [dateEnd, setDateEnd] = useState<string>(
-    now.toISOString().split("T")[0],
-  );
+  const [dateStart, setDateStart] = useState<string>(toYmdLocal(startOfYear));
+  const [dateEnd, setDateEnd] = useState<string>(toYmdLocal(now));
 
   const filteredContracts = useMemo(() => {
     let list = contracts;
@@ -280,11 +281,12 @@ export default function Contracts() {
       list = list.filter((c) => String(c.client_id) === clientFilter);
     }
 
-    // date range filter: show contracts whose END date falls within the
-    // selected range (inclusive). This lets a contract count as active for
-    // the view if its end date is inside the window. Open-ended contracts
-    // are excluded when a bounded `viewEnd` is set.
-    if (dateStart || dateEnd) {
+    // date range filter (Active Contracts table semantics):
+    // - Include contracts whose [start, end] period overlaps the selected window.
+    // - Additionally include future-start contracts (start > viewEnd) that were
+    //   created/confirmed within the selected window.
+    // Only apply when BOTH bounds are set. If either input is cleared, show all.
+    if (dateStart && dateEnd) {
       const viewStart = toDateStartOfDay(dateStart ?? null);
       const viewEnd = toDateStartOfDay(dateEnd ?? null);
 
@@ -308,30 +310,20 @@ export default function Contracts() {
           }
         }
 
-        // New rule: include a contract when its end date falls inside the
-        // selected window. Behavior by inputs:
-        // - viewStart & viewEnd: require cEnd exists and viewStart <= cEnd <= viewEnd
-        // - viewStart only: include if cEnd is null (open-ended) OR cEnd >= viewStart
-        // - viewEnd only: include only if cEnd exists and cEnd <= viewEnd
-        if (viewStart && viewEnd) {
-          if (!cEnd) return false;
-          if (cEnd < viewStart || cEnd > viewEnd) return false;
-          return true;
-        }
+        // This logic requires a bounded, parseable window.
+        // If parsing fails, don't hide everything.
+        if (!viewStart || !viewEnd) return true;
 
-        if (viewStart && !viewEnd) {
-          // show contracts that end on/after viewStart (open-ended included)
-          if (!cEnd) return true;
-          return cEnd >= viewStart;
-        }
+        const created = toDateStartOfDay((c as Contract).created_at ?? null);
 
-        if (!viewStart && viewEnd) {
-          // only contracts that end on/before viewEnd; open-ended excluded
-          if (!cEnd) return false;
-          return cEnd <= viewEnd;
-        }
+        const overlapsWindow =
+          cStart <= viewEnd && (!cEnd || cEnd >= viewStart);
 
-        return true;
+        const isFutureStart = cStart > viewEnd;
+        const createdInWindow =
+          !!created && created >= viewStart && created <= viewEnd;
+
+        return overlapsWindow || (isFutureStart && createdInWindow);
       });
     }
 
@@ -375,8 +367,8 @@ export default function Contracts() {
             (!viewEnd && cEnd);
 
           if (needsExpand) {
-            if (cStart) setDateStart(cStart.toISOString().split("T")[0]);
-            if (cEnd) setDateEnd(cEnd.toISOString().split("T")[0]);
+            if (cStart) setDateStart(toYmdLocal(cStart));
+            if (cEnd) setDateEnd(toYmdLocal(cEnd));
           }
 
           if (String(match.client_id) !== clientFilter) {
@@ -434,7 +426,7 @@ export default function Contracts() {
     if (maxDate) {
       const currentEnd = toDateStartOfDay(dateEnd ?? null);
       if (!currentEnd || maxDate > currentEnd) {
-        setDateEnd(maxDate.toISOString().split("T")[0]);
+        setDateEnd(toYmdLocal(maxDate));
       }
     }
   }, [contracts, dateEnd]);
@@ -626,10 +618,10 @@ export default function Contracts() {
                 type="button"
                 title="Filter zurücksetzen – alle Verträge anzeigen"
                 onClick={() => {
-                  // Reset to range: from first contact → most recent contract start.
-                  // Fallback to defaults (start of year → today) when no data.
-                  const defaultStart = startOfYear.toISOString().split("T")[0];
-                  const defaultEnd = new Date().toISOString().split("T")[0];
+                  // Reset to range: earliest contact (fallback: earliest contract start)
+                  // → today. This keeps the active-contract filter meaningful.
+                  const defaultStart = toYmdLocal(startOfYear);
+                  const defaultEnd = toYmdLocal(new Date());
 
                   // earliest initial_contact_date from sales processes
                   let earliestContact: string | null = null;
@@ -654,28 +646,8 @@ export default function Contracts() {
                     );
                   }
 
-                  // latest contract end_date (prefer server-computed end_date,
-                  // otherwise derive from start_date + duration_months)
-                  const latestContractEnd = contracts.reduce<string | null>(
-                    (max, c) => {
-                      let ed: string | null = null;
-                      if (c.end_date) ed = (c.end_date as string).split("T")[0];
-                      else if (
-                        c.start_date &&
-                        typeof c.duration_months === "number"
-                      )
-                        ed = addMonthsIso(
-                          c.start_date,
-                          c.duration_months,
-                        ).split("T")[0];
-                      if (!ed) return max;
-                      return !max || ed > max ? ed : max;
-                    },
-                    null,
-                  );
-
                   setDateStart(earliestContact ?? defaultStart);
-                  setDateEnd(latestContractEnd ?? defaultEnd);
+                  setDateEnd(defaultEnd);
                 }}
                 className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
