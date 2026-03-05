@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Pencil, Save, X, Trash } from "lucide-react";
-import { Client, getClients, getStages, Stage } from "@/lib/api";
+import { Client, getClients, getStages, Stage, updateClient } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
@@ -113,19 +113,19 @@ export default function Clients() {
     }
 
     // Clear stage if switching to organic
-    const payload: Partial<Client> & { id: number } = {
-      id: editingClientId,
+    const payload: Partial<Client> = {
       ...editedClient,
       source_stage_name: editedClient.source === "paid" ? editedClient.source_stage_name : null,
     };
 
-    await fetch(`/api/clients/${editingClientId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      await updateClient(editingClientId, payload);
+    } catch (e) {
+      console.warn("[Clients] save failed (expected in preview):", e);
+    }
 
     setEditingClientId(null);
+    setEditedClient({});
     queryClient.invalidateQueries({ queryKey: ["clients"] });
   };
 

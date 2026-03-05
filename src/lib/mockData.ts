@@ -39,6 +39,7 @@ export const mockClients: Client[] = [
     source: "paid",
     source_stage_name: "Facebook Ads September",
     status: "active",
+    completed_at: "2026-03-15",
   },
   {
     id: 3,
