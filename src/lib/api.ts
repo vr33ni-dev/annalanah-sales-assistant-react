@@ -709,6 +709,26 @@ export const getCashflowEntries = async (
   }
 };
 
+export type RawExportTable = "clients" | "contracts" | "cashflow_entries";
+
+export const getRawExportUrl = (table: RawExportTable): string => {
+  return `/api/exports/raw/${table}.csv`;
+};
+
+export const getAggregatedCashflowExportUrl = (
+  fromMonth?: string,
+  toMonth?: string,
+): string => {
+  const params = new URLSearchParams();
+  if (fromMonth?.trim()) params.set("from", fromMonth.trim());
+  if (toMonth?.trim()) params.set("to", toMonth.trim());
+
+  const qs = params.toString();
+  return qs
+    ? `/api/exports/aggregated/cashflow.csv?${qs}`
+    : `/api/exports/aggregated/cashflow.csv`;
+};
+
 export const getCashflowForecast = async (
   contractId?: number,
 ): Promise<CashflowRow[]> => {

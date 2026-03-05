@@ -25,6 +25,7 @@ import { onAuthMessage } from "@/auth/useAuth"; // cross-tab logout listener
 import { useMe } from "@/auth/useAuth"; // <-- add this
 import NLQConsole from "./pages/NLQConsole";
 import Settings from "./pages/Settings";
+import DataExport from "./pages/DataExport";
 
 const queryClient = new QueryClient();
 
@@ -105,6 +106,7 @@ const App = () => {
               <Route path="/stages" element={<Stages />} />
               {/* 🧠 Natural Language Query Console */}
               <Route path="/nlq" element={<NLQConsole />} />
+              <Route path="/exports" element={<DataExport />} />
               <Route path="/settings" element={<Settings />} />
               {/* Protected 404 fallback */}
               <Route path="*" element={<NotFound />} />
