@@ -32,14 +32,23 @@ const MOCK_FLAT: Setting = {
   value_numeric: 600,
   value_text: null,
 };
+const MOCK_NOTIFY_EMAIL: Setting = {
+  key: "new_contract_notify_email",
+  value_numeric: null,
+  value_text: "",
+};
 
 const fetchSetting = async (key: string): Promise<Setting> => {
   const { data } = await api.get(`/settings/${key}`);
   return data;
 };
 
-const updateSetting = async (key: string, value: number) => {
+const updateNumericSetting = async (key: string, value: number) => {
   await api.put(`/settings/${key}`, { value_numeric: value });
+};
+
+const updateTextSetting = async (key: string, value: string) => {
+  await api.put(`/settings/${key}`, { value_text: value });
 };
 
 export default function Settings() {
@@ -57,8 +66,15 @@ export default function Settings() {
     mockData: MOCK_FLAT,
   });
 
+  const { data: notifyEmailSetting } = useMockableQuery({
+    queryKey: ["settings", "new_contract_notify_email"],
+    queryFn: () => fetchSetting("new_contract_notify_email"),
+    mockData: MOCK_NOTIFY_EMAIL,
+  });
+
   const [months, setMonths] = useState("");
   const [flatEur, setFlatEur] = useState("");
+  const [notifyEmail, setNotifyEmail] = useState("");
 
   useEffect(() => {
     if (monthsSetting?.value_numeric != null)
@@ -70,17 +86,26 @@ export default function Settings() {
       setFlatEur(String(flatSetting.value_numeric));
   }, [flatSetting]);
 
+  useEffect(() => {
+    setNotifyEmail(notifyEmailSetting?.value_text ?? "");
+  }, [notifyEmailSetting]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const promises: Promise<void>[] = [];
       const mVal = Number(months);
       const fVal = Number(flatEur);
+      const nVal = notifyEmail.trim();
       if (!Number.isFinite(mVal) || mVal <= 0)
         throw new Error("Monate muss eine positive Zahl sein");
       if (!Number.isFinite(fVal) || fVal < 0)
         throw new Error("EUR-Betrag muss ≥ 0 sein");
-      promises.push(updateSetting("potential_months", mVal));
-      promises.push(updateSetting("avg_revenue_per_contract", fVal));
+      if (nVal !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nVal)) {
+        throw new Error("Bitte eine gültige E-Mail-Adresse eingeben");
+      }
+      promises.push(updateNumericSetting("potential_months", mVal));
+      promises.push(updateNumericSetting("avg_revenue_per_contract", fVal));
+      promises.push(updateTextSetting("new_contract_notify_email", nVal));
       await Promise.all(promises);
     },
     onSuccess: () => {
@@ -148,6 +173,24 @@ export default function Settings() {
             <p className="text-xs text-muted-foreground">
               Pauschaler EUR-Umsatz pro Vertrag und Monat für potenzielle
               Einnahmen.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="new_contract_notify_email">
+              Benachrichtigungs-E-Mail (neuer Vertrag)
+            </Label>
+            <Input
+              id="new_contract_notify_email"
+              type="email"
+              placeholder="name@example.com"
+              value={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.value)}
+              disabled={saving}
+            />
+            <p className="text-xs text-muted-foreground">
+              Empfänger für E-Mail-Benachrichtigungen bei neuen Verträgen. Leer
+              lassen, um den Wert aus der Server-Umgebung zu verwenden.
             </p>
           </div>
 
