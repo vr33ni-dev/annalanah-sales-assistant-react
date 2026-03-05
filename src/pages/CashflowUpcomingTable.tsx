@@ -2,9 +2,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   getCashflowForecast,
+  getCashflowEntries,
   getNumericSetting,
+  type CashflowEntry,
   type CashflowRow,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
@@ -20,11 +23,12 @@ function labelFromYm(ym: string) {
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
+  const isContractView = typeof contractId === "number";
 
   const {
     data: forecast = [],
-    isFetching,
-    isError,
+    isFetching: isFetchingForecast,
+    isError: isErrorForecast,
   } = useQuery<CashflowRow[]>({
     queryKey: ["cashflow-forecast", contractId],
     queryFn: ({ queryKey }) =>
@@ -33,6 +37,19 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
+  });
+
+  const {
+    data: entries = [],
+    isFetching: isFetchingEntries,
+    isError: isErrorEntries,
+  } = useQuery<CashflowEntry[]>({
+    queryKey: ["cashflow-entries", contractId],
+    queryFn: () => getCashflowEntries(contractId),
+    enabled: enabled && isContractView,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<CashflowEntry>,
   });
 
   const { data: potentialMonths = 6 } = useQuery<number>({
@@ -50,6 +67,47 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   });
 
   const showPotential = !contractId; // only show potential if all contracts view
+
+  const rows = useMemo(() => {
+    if (!isContractView) return forecast;
+
+    if (!entries || entries.length === 0) return [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+    const byMonth = new Map<string, number>();
+
+    const scopedEntries = entries.filter((entry) => {
+      if (typeof contractId !== "number") return true;
+      if (typeof entry?.contract_id === "number") {
+        return entry.contract_id === contractId;
+      }
+      return true;
+    });
+
+    for (const entry of scopedEntries) {
+      const amount = Number(entry?.amount ?? NaN);
+      if (!entry?.due_date || !Number.isFinite(amount) || amount <= 0) {
+        continue;
+      }
+
+      const dueYmd = String(entry.due_date).match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+      if (!dueYmd) continue;
+      if (dueYmd <= todayYmd) continue;
+
+      const ym = dueYmd.slice(0, 7);
+      byMonth.set(ym, (byMonth.get(ym) ?? 0) + amount);
+    }
+
+    return Array.from(byMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
+  }, [contractId, entries, forecast, isContractView]);
+
+  const isFetching = isContractView ? isFetchingEntries : isFetchingForecast;
+  const isError = isContractView ? isErrorEntries : isErrorForecast;
 
   return (
     <Card>
@@ -79,11 +137,11 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
           <div>Forecast wird geladen…</div>
         ) : isError ? (
           <div className="text-red-500">Fehler beim Laden des Forecasts.</div>
-        ) : forecast.length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="text-muted-foreground">Keine Prognosedaten.</div>
         ) : (
           <div className="space-y-4">
-            {forecast.slice(0, potentialMonths).map((row) => {
+            {rows.slice(0, potentialMonths).map((row) => {
               const total = showPotential
                 ? Math.round((row.confirmed ?? 0) + (row.potential ?? 0))
                 : Math.round(row.confirmed ?? 0);
@@ -98,7 +156,9 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
                   <div className="space-y-1">
                     {/* Always show confirmed */}
                     <div className="flex justify-between text-sm">
-                      <span className="text-success">Bestätigt</span>
+                      <span className="text-success">
+                        {isContractView ? "Geplant" : "Bestätigt"}
+                      </span>
                       <span>€{row.confirmed.toLocaleString()}</span>
                     </div>
 
