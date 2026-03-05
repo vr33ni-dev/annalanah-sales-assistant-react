@@ -471,7 +471,7 @@ export default function SalesProcessView() {
     Number(formData.contractDuration) > 0 &&
     !!formData.contractStart &&
     !!formData.contractFrequency &&
-    ["monthly", "bi-monthly", "quarterly", "bi-yearly"].includes(
+    ["monthly", "bi-monthly", "quarterly", "bi-yearly", "one-time"].includes(
       formData.contractFrequency,
     );
 
