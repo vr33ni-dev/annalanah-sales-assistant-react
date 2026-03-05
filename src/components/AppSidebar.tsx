@@ -7,6 +7,7 @@ import {
   Calendar,
   BrainIcon,
   Settings,
+  FileSpreadsheet,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
@@ -30,6 +31,7 @@ const navigationItems = [
   { title: "Verträge & Cashflow", url: "/contracts", icon: FileText },
   { title: "Bühnen & Events", url: "/stages", icon: Calendar },
   { title: "NLQ", url: "/nlq", icon: BrainIcon },
+  { title: "Data Export", url: "/exports", icon: FileSpreadsheet },
   { title: "Einstellungen", url: "/settings", icon: Settings },
 ];
 
@@ -87,7 +89,7 @@ export function AppSidebar() {
                       end={item.url === "/"}
                       className={({ isActive }) =>
                         `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all ${getNavCls(
-                          { isActive }
+                          { isActive },
                         )}`
                       }
                     >
