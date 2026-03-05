@@ -649,16 +649,62 @@ export interface CashflowEntry {
 export const getCashflowEntries = async (
   contractId?: number,
 ): Promise<CashflowEntry[]> => {
-  const url = contractId
-    ? `/cashflow/entries?contract_id=${contractId}`
-    : `/cashflow/entries`;
+  if (contractId) {
+    try {
+      const { data } = await api.get<CashflowEntry[]>(
+        `/contracts/${contractId}/cashflow`,
+      );
+      if (Array.isArray(data)) return data;
+    } catch {
+      // Backward-compatible fallback for older backend route
+      try {
+        const { data } = await api.get<CashflowEntry[]>(
+          `/cashflow/entries?contract_id=${contractId}`,
+        );
+        if (Array.isArray(data)) return data;
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
 
+  // Prefer per-contract schedules as source of truth for all-contract history,
+  // because some backends expose incomplete /cashflow/entries aggregates.
   try {
-    const { data } = await api.get<CashflowEntry[]>(url);
+    const contracts = await getContracts();
+    const lists = await Promise.all(
+      contracts.map(async (contract) => {
+        try {
+          const { data } = await api.get<CashflowEntry[]>(
+            `/contracts/${contract.id}/cashflow`,
+          );
+          if (!Array.isArray(data)) return [] as CashflowEntry[];
+          return data.map((entry) => ({
+            ...entry,
+            contract_id:
+              typeof entry.contract_id === "number"
+                ? entry.contract_id
+                : contract.id,
+          }));
+        } catch {
+          return [] as CashflowEntry[];
+        }
+      }),
+    );
+
+    const flattened = lists.flat();
+    if (flattened.length > 0) return flattened;
+  } catch {
+    // Continue to aggregate endpoint fallback below
+  }
+
+  // Legacy aggregate endpoint fallback
+  try {
+    const { data } = await api.get<CashflowEntry[]>(`/cashflow/entries`);
     if (!Array.isArray(data)) return [];
     return data;
-  } catch (e) {
-    // If server doesn't expose this endpoint, return empty and let caller fallback
+  } catch {
     return [];
   }
 };

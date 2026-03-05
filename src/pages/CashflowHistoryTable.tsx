@@ -17,9 +17,27 @@ import {
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
+
+function toYmdLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+function extractYmd(input?: string | null): string | null {
+  if (!input) return null;
+  return String(input).match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+}
+
+function formatYmdToLocale(ymd?: string | null): string {
+  if (!ymd) return "–";
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return "–";
+  return new Date(y, m - 1, d).toLocaleDateString("de-DE");
+}
 
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {
@@ -69,7 +87,11 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
 
   type RangeFilter = "all" | "30" | "90" | "365";
 
-  const [range, setRange] = useState<RangeFilter>("30");
+  const [range, setRange] = useState<RangeFilter>(contractId ? "30" : "all");
+
+  useEffect(() => {
+    setRange(contractId ? "30" : "all");
+  }, [contractId]);
 
   const now = new Date();
 
@@ -81,6 +103,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
       const due = c.next_due_date ?? c.start_date ?? null;
       return {
         id: c.id,
+        contractId: c.id,
         contractLabel: `${c.client_name} - ${c.duration_months} Monate`,
         dueDate: due as string | null,
         amount: calcNextDueAmount(c),
@@ -93,12 +116,24 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
     entriesFromApi && entriesFromApi.length > 0
       ? entriesFromApi
           .filter((r) => r.amount > 0)
-          .map((r) => ({
-            id: r.id,
-            contractLabel: r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`,
-            dueDate: r.due_date,
-            amount: r.amount,
-          }))
+          .map((r) => {
+            const contract =
+              typeof r.contract_id === "number"
+                ? contracts.find((c) => c.id === r.contract_id)
+                : undefined;
+
+            const contractLabel = contract
+              ? `${contract.client_name} - ${contract.duration_months} Monate`
+              : (r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`);
+
+            return {
+              id: r.id,
+              contractId: r.contract_id,
+              contractLabel,
+              dueDate: r.due_date,
+              amount: r.amount,
+            };
+          })
           .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""))
       : derivedEntries;
 
@@ -107,22 +142,28 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
 
   // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
   const filteredEntries = entries
-    .filter((e) => !contractId || e.id === contractId)
+    .filter((e) => !contractId || e.contractId === contractId)
     .filter((e) => {
-      const due = new Date(e.dueDate);
+      const dueYmd = extractYmd(e.dueDate);
+      if (!dueYmd) return false;
+      const todayYmd = toYmdLocal(now);
 
       // "all" = only past & today
-      if (range === "all") return due <= now;
+      if (range === "all") return dueYmd <= todayYmd;
 
       // last X days
       const days = parseInt(range, 10);
       const cutoff = new Date(now);
       cutoff.setDate(cutoff.getDate() - days);
+      const cutoffYmd = toYmdLocal(cutoff);
 
-      return due >= cutoff && due <= now;
+      return dueYmd >= cutoffYmd && dueYmd <= todayYmd;
     });
 
-  const { page, setPage, totalPages, paginatedItems } = usePagination(filteredEntries, 10);
+  const { page, setPage, totalPages, paginatedItems } = usePagination(
+    filteredEntries,
+    10,
+  );
   const displayedEntries = paginatedItems;
 
   // const historyEntries = entries.filter(e => new Date(e.dueDate) <= today);
@@ -172,23 +213,25 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Vertrag</TableHead>
+                  {!contractId && <TableHead>Vertrag</TableHead>}
                   <TableHead>Fälligkeitsdatum</TableHead>
                   <TableHead>Betrag</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayedEntries.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-medium">
-                      {e.contractLabel}
-                    </TableCell>
+                  <TableRow
+                    key={`${e.contractId ?? "na"}-${e.id}-${e.dueDate ?? "na"}`}
+                  >
+                    {!contractId && (
+                      <TableCell className="font-medium">
+                        {e.contractLabel}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-muted-foreground" />
-                        {e.dueDate
-                          ? new Date(e.dueDate).toLocaleDateString("de-DE")
-                          : "–"}
+                        {formatYmdToLocale(extractYmd(e.dueDate))}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -199,7 +242,11 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
               </TableBody>
             </Table>
             {totalPages > 1 && (
-              <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
             )}
           </>
         )}
