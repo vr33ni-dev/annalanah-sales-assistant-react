@@ -14,11 +14,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Pencil, Save, X, Trash } from "lucide-react";
-import { Client, getClients } from "@/lib/api";
+import { Client, getClients, getStages, Stage } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockClients } from "@/lib/mockData";
+import { mockClients, mockStages } from "@/lib/mockData";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
@@ -63,6 +63,16 @@ export default function Clients() {
     mockData: mockClients,
   });
 
+  const { data: stagesData } = useMockableQuery<Stage[]>({
+    queryKey: ["stages"],
+    queryFn: getStages,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (d) => asArray<Stage>(d),
+    mockData: mockStages,
+  });
+
+  const stages = stagesData ?? [];
   const clients = data ?? [];
 
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
@@ -90,15 +100,23 @@ export default function Clients() {
   const handleSave = async () => {
     if (!editingClientId) return;
 
+    // ✅ validation: require stage if Paid Ads
+    if (editedClient.source === "paid" && !editedClient.source_stage_name) {
+      alert("Bitte eine Bühne auswählen (erforderlich für Paid Ads).");
+      return;
+    }
+
     // ✅ validation: require completed_at if Kunde
     if (editedClient.status === "active" && !editedClient.completed_at) {
       alert("Bitte das Abschlussdatum angeben (erforderlich für Kunden).");
       return;
     }
 
-    const payload = {
+    // Clear stage if switching to organic
+    const payload: Partial<Client> & { id: number } = {
       id: editingClientId,
       ...editedClient,
+      source_stage_name: editedClient.source === "paid" ? editedClient.source_stage_name : null,
     };
 
     await fetch(`/api/clients/${editingClientId}`, {
@@ -159,6 +177,7 @@ export default function Clients() {
                 <TableHead>Email</TableHead>
                 <TableHead>Telefon</TableHead>
                 <TableHead>Quelle</TableHead>
+                <TableHead>Bühne</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Abgeschlossen am</TableHead>
                 <TableHead>Aktionen</TableHead>
@@ -221,6 +240,7 @@ export default function Clients() {
                           setEditedClient({
                             ...editedClient,
                             source: e.target.value,
+                            source_stage_name: e.target.value === "paid" ? editedClient.source_stage_name : null,
                           })
                         }
                       >
@@ -231,6 +251,34 @@ export default function Clients() {
                       (sourceLabels[
                         client.source as keyof typeof sourceLabels
                       ] ?? client.source)
+                    )}
+                  </TableCell>
+
+                  <TableCell>
+                    {editingClientId === client.id ? (
+                      editedClient.source === "paid" ? (
+                        <select
+                          className="border rounded px-2 py-1"
+                          value={editedClient.source_stage_name || ""}
+                          onChange={(e) =>
+                            setEditedClient({
+                              ...editedClient,
+                              source_stage_name: e.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">Bühne wählen…</option>
+                          {stages.map((stage) => (
+                            <option key={stage.id} value={stage.name}>
+                              {stage.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-muted-foreground">–</span>
+                      )
+                    ) : (
+                      client.source_stage_name || "–"
                     )}
                   </TableCell>
 
@@ -371,7 +419,7 @@ export default function Clients() {
               {paginatedItems.length === 0 && !isFetching && (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center text-muted-foreground"
                   >
                     Keine Einträge gefunden.
