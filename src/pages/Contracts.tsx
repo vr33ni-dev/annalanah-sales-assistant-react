@@ -59,7 +59,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
-import { formatDateOnly } from "@/helpers/date";
+import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 
@@ -82,12 +82,6 @@ function parseIso(iso: string) {
   const datePart = iso.split("T")[0];
   const [y, m, d] = datePart.split("-").map(Number);
   return new Date(y, m - 1, d);
-}
-
-function toYmdLocal(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
 }
 
 // Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
@@ -122,14 +116,6 @@ function monthsOverlap(a1: Date, a2: Date, b1: Date, b2: Date): number {
   // include current month if e is past the 1st
   const includeE = e.getDate() > 1 ? 1 : 0;
   return Math.max(0, months + includeE);
-}
-
-function labelFromYm(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    year: "numeric",
-  }).format(new Date(y, m - 1, 1));
 }
 
 function euro(n: number) {
@@ -394,7 +380,15 @@ export default function Contracts() {
     if (openParam && filteredContracts.length > 0) {
       setSelectedContract(filteredContracts[0]);
     }
-  }, [searchParams, filteredContracts]);
+  }, [
+    clientFilter,
+    contracts,
+    dateEnd,
+    dateStart,
+    filteredContracts,
+    navigate,
+    searchParams,
+  ]);
 
   // Reset to page 1 on filter change
   useEffect(() => {
@@ -470,7 +464,7 @@ export default function Contracts() {
     const total = r.confirmed; // confirmed-only KPI
     return {
       ym: r.month,
-      label: labelFromYm(r.month),
+      label: formatMonthLabel(r.month),
       confirmed: r.confirmed,
       potential: r.potential,
       total,

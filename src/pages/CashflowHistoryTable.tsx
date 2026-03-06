@@ -20,24 +20,7 @@ import { asArray } from "@/lib/safe";
 import { useEffect, useState } from "react";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
-
-function toYmdLocal(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
-}
-
-function extractYmd(input?: string | null): string | null {
-  if (!input) return null;
-  return String(input).match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
-}
-
-function formatYmdToLocale(ymd?: string | null): string {
-  if (!ymd) return "–";
-  const [y, m, d] = ymd.split("-").map(Number);
-  if (!y || !m || !d) return "–";
-  return new Date(y, m - 1, d).toLocaleDateString("de-DE");
-}
+import { extractYmd, formatYmdToLocale, toYmdLocal } from "@/helpers/date";
 
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {

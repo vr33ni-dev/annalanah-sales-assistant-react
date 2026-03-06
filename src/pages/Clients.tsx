@@ -22,6 +22,7 @@ import { mockClients, mockStages } from "@/lib/mockData";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
+import { formatDateOnly } from "@/helpers/date";
 
 const sourceLabels = {
   organic: "Organic",
@@ -115,7 +116,8 @@ export default function Clients() {
     // Clear stage if switching to organic
     const payload: Partial<Client> = {
       ...editedClient,
-      source_stage_name: editedClient.source === "paid" ? editedClient.source_stage_name : null,
+      source_stage_name:
+        editedClient.source === "paid" ? editedClient.source_stage_name : null,
     };
 
     try {
@@ -240,7 +242,10 @@ export default function Clients() {
                           setEditedClient({
                             ...editedClient,
                             source: e.target.value,
-                            source_stage_name: e.target.value === "paid" ? editedClient.source_stage_name : null,
+                            source_stage_name:
+                              e.target.value === "paid"
+                                ? editedClient.source_stage_name
+                                : null,
                           })
                         }
                       >
@@ -352,7 +357,7 @@ export default function Clients() {
                           )}
                       </div>
                     ) : client.completed_at ? (
-                      new Date(client.completed_at).toISOString().split("T")[0]
+                      formatDateOnly(client.completed_at)
                     ) : (
                       "-"
                     )}
