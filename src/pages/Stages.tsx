@@ -61,6 +61,7 @@ import {
 } from "@/components/stage/ParticipantForm";
 import { StageParticipantsDialog } from "@/components/stage/StageParticipantsDialog";
 import { StagePerformanceDialog } from "@/components/stage/StagePerformanceDialog";
+import { queryKeys } from "@/lib/queryKeys";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -226,8 +227,8 @@ function CreateStageDialog() {
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["stages"] });
-      await qc.invalidateQueries({ queryKey: ["leads"] });
+      await qc.invalidateQueries({ queryKey: queryKeys.stages });
+      await qc.invalidateQueries({ queryKey: queryKeys.leads });
       setOpen(false);
       setName("");
       setDate("");
@@ -358,7 +359,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
   // Fetch existing participants when dialog opens
   const { data: existingParticipants = [], isLoading: loadingParticipants } =
     useQuery<StageParticipantUI[]>({
-      queryKey: ["stage-participants", stage.id],
+      queryKey: queryKeys.stageParticipants(stage.id),
       queryFn: () => getStageParticipants(stage.id),
       enabled: open,
     });
@@ -367,8 +368,8 @@ function EditStageDialog({ stage }: { stage: Stage }) {
     mutationFn: (participantId: number) =>
       deleteStageParticipant(stage.id, participantId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["stage-participants", stage.id] });
-      qc.invalidateQueries({ queryKey: ["stages"] }); // recorded_contacts
+      qc.invalidateQueries({ queryKey: queryKeys.stageParticipants(stage.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.stages }); // recorded_contacts
     },
   });
 
@@ -460,12 +461,12 @@ function EditStageDialog({ stage }: { stage: Stage }) {
       }
     },
     onMutate: async () => {
-      await qc.cancelQueries({ queryKey: ["stages"] });
-      const prev = qc.getQueryData<Stage[]>(["stages"]);
+      await qc.cancelQueries({ queryKey: queryKeys.stages });
+      const prev = qc.getQueryData<Stage[]>(queryKeys.stages);
 
       if (prev) {
         qc.setQueryData<Stage[]>(
-          ["stages"],
+          queryKeys.stages,
           (old) =>
             old?.map((s) =>
               s.id === stage.id
@@ -485,7 +486,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
       return { prev };
     },
     onError: (err, _, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["stages"], ctx.prev);
+      if (ctx?.prev) qc.setQueryData(queryKeys.stages, ctx.prev);
     },
     onSuccess: () => {
       // ✅ Close the dialog immediately after a successful update
@@ -495,9 +496,9 @@ function EditStageDialog({ stage }: { stage: Stage }) {
     },
     onSettled: () => {
       // ✅ Refresh data in background
-      qc.invalidateQueries({ queryKey: ["stages"] });
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["stage-participants", stage.id] });
+      qc.invalidateQueries({ queryKey: queryKeys.stages });
+      qc.invalidateQueries({ queryKey: queryKeys.leads });
+      qc.invalidateQueries({ queryKey: queryKeys.stageParticipants(stage.id) });
     },
   });
 
@@ -646,7 +647,7 @@ export default function Stages() {
   const { data, isLoading, isError, error, refetch } = useMockableQuery<
     Stage[]
   >({
-    queryKey: ["stages"],
+    queryKey: queryKeys.stages,
     queryFn: getStages,
     staleTime: 60_000,
     mockData: mockStages,

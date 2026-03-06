@@ -67,6 +67,7 @@ import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { useToast } from "@/hooks/use-toast";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
+import { queryKeys } from "@/lib/queryKeys";
 
 type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
@@ -85,6 +86,41 @@ const stageBadgeClass: Record<
 
 // gespräch type: which flow the user chose
 type GespraechType = "erstgespraech" | "zweitgespraech";
+
+const STATUS_FILTER_OPTIONS = [
+  "erstgespräch",
+  "erstgespräch abgeschlossen",
+  "zweitgespräch geplant",
+  "zweitgespräch abgeschlossen",
+  "abgeschlossen",
+  "verloren",
+] as const;
+
+type StatusFilter = "all" | (typeof STATUS_FILTER_OPTIONS)[number];
+
+function getStatusFilterLabel(entry: SalesProcessWithStageId): StatusFilter {
+  const now = new Date();
+  const erstDate = parseIsoToLocal(entry.initial_contact_date);
+  const zweitDate = parseIsoToLocal(entry.follow_up_date);
+
+  if (entry.stage === SALES_STAGE.INITIAL_CONTACT) {
+    if (erstDate && erstDate > now) {
+      return "erstgespräch";
+    }
+    if (erstDate && (!zweitDate || zweitDate > now)) {
+      return "erstgespräch abgeschlossen";
+    }
+    return "erstgespräch";
+  }
+
+  if (entry.stage === SALES_STAGE.FOLLOW_UP) {
+    return (entry.follow_up_result ?? null) == null
+      ? "zweitgespräch geplant"
+      : "zweitgespräch abgeschlossen";
+  }
+
+  return entry.stage === SALES_STAGE.CLOSED ? "abgeschlossen" : "verloren";
+}
 
 export default function SalesProcessView() {
   const { toast } = useToast();
@@ -115,7 +151,7 @@ export default function SalesProcessView() {
     isFetching: loadingSales,
     isError: errorSales,
   } = useMockableQuery<SalesProcessWithStageId[]>({
-    queryKey: ["sales"],
+    queryKey: queryKeys.sales,
     queryFn: getSalesProcesses as unknown as () => Promise<
       SalesProcessWithStageId[]
     >,
@@ -130,7 +166,7 @@ export default function SalesProcessView() {
     isFetching: loadingStages,
     isError: errorStages,
   } = useMockableQuery<Stage[]>({
-    queryKey: ["stages"],
+    queryKey: queryKeys.stages,
     queryFn: getStages,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -158,17 +194,6 @@ export default function SalesProcessView() {
   );
   const [pendingPayload, setPendingPayload] =
     useState<StartSalesProcessRequest | null>(null);
-
-  type StatusFilter =
-    | "all"
-    | "erstgespräch"
-    | "erstgespräch abgeschlossen"
-    | "zweitgespräch geplant"
-    | "zweitgespräch abgeschlossen"
-    | "abgeschlossen"
-    | "verloren";
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -203,7 +228,7 @@ export default function SalesProcessView() {
       // Keep client list in sync (SalesProcess start can create/update client)
       try {
         if (data.client) {
-          qc.setQueryData<Client[]>(["clients"], (old) => {
+          qc.setQueryData<Client[]>(queryKeys.clients, (old) => {
             const prev = (old ?? []) as Client[];
             const idx = prev.findIndex((c) => c.id === data.client.id);
             if (idx >= 0) {
@@ -223,7 +248,7 @@ export default function SalesProcessView() {
         const sp = data.sales_process;
         if (sp) {
           type SalesCacheItem = SalesProcess & { stage_label: string };
-          qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
+          qc.setQueryData<SalesCacheItem[]>(queryKeys.sales, (old) => {
             const prev: SalesCacheItem[] = old ?? [];
             const item: SalesCacheItem = {
               ...sp,
@@ -239,10 +264,10 @@ export default function SalesProcessView() {
       } catch {
         // ignore cache update errors
       }
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["contracts"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: queryKeys.sales });
+      qc.invalidateQueries({ queryKey: queryKeys.leads });
+      qc.invalidateQueries({ queryKey: queryKeys.contracts });
+      qc.invalidateQueries({ queryKey: queryKeys.clients });
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
@@ -314,7 +339,7 @@ export default function SalesProcessView() {
         console.debug("mPatch.onSuccess - response:", data);
 
         type SalesCacheItem = SalesProcess & { stage_label: string };
-        qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
+        qc.setQueryData<SalesCacheItem[]>(queryKeys.sales, (old) => {
           const prev: SalesCacheItem[] = (old as SalesCacheItem[]) ?? [];
           const updated = prev.map((item) => {
             if (item.id !== data.id) return item;
@@ -340,24 +365,30 @@ export default function SalesProcessView() {
           "mPatch.onSuccess - cache update failed, invalidating",
           err,
         );
-        qc.invalidateQueries({ queryKey: ["sales"] });
+        qc.invalidateQueries({ queryKey: queryKeys.sales });
       }
 
       if (vars.payload.closed === true) {
-        qc.invalidateQueries({ queryKey: ["contracts"] });
-        qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
+        qc.invalidateQueries({ queryKey: queryKeys.contracts });
+        qc.invalidateQueries({ queryKey: queryKeys.contract(vars.id) });
       }
 
       // Sales process updates can change the derived client status; refresh client list.
-      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: queryKeys.clients });
     },
     onError: (err: unknown) => showErrorToast("Fehler beim Aktualisieren", err),
   });
 
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
   const [activeSourceFilters, setActiveSourceFilters] = useState<string[]>([]);
+  const statusFilter: StatusFilter =
+    activeStatusFilters.length === 1
+      ? (activeStatusFilters[0] as StatusFilter)
+      : "all";
 
-  const toggleStatusFilter = (value: string) => {
+  const toggleStatusFilter = (
+    value: (typeof STATUS_FILTER_OPTIONS)[number],
+  ) => {
     setActiveStatusFilters((prev) =>
       prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
     );
@@ -387,33 +418,9 @@ export default function SalesProcessView() {
     let result = sales;
 
     if (activeStatusFilters.length > 0) {
-      result = result.filter((e) => {
-        let label: string;
-        const now = new Date();
-        const erstDate = parseIsoToLocal(e.initial_contact_date);
-        const zweitDate = parseIsoToLocal(e.follow_up_date);
-
-        if (e.stage === SALES_STAGE.INITIAL_CONTACT) {
-          if (erstDate && erstDate > now) {
-            label = "erstgespräch";
-          } else if (erstDate && (!zweitDate || zweitDate > now)) {
-            label = "erstgespräch abgeschlossen";
-          } else {
-            label = "erstgespräch";
-          }
-        } else if (e.stage === SALES_STAGE.FOLLOW_UP) {
-          if ((e.follow_up_result ?? null) == null) {
-            label = "zweitgespräch geplant";
-          } else {
-            label = "zweitgespräch abgeschlossen";
-          }
-        } else if (e.stage === SALES_STAGE.CLOSED) {
-          label = "abgeschlossen";
-        } else {
-          label = "verloren";
-        }
-        return activeStatusFilters.includes(label);
-      });
+      result = result.filter((e) =>
+        activeStatusFilters.includes(getStatusFilterLabel(e)),
+      );
     }
 
     if (activeSourceFilters.length > 0) {
@@ -1494,7 +1501,9 @@ export default function SalesProcessView() {
           <div className="flex justify-between items-center">
             <Select
               value={statusFilter}
-              onValueChange={(v: StatusFilter) => setStatusFilter(v)}
+              onValueChange={(value: StatusFilter) =>
+                setActiveStatusFilters(value === "all" ? [] : [value])
+              }
             >
               <SelectTrigger className="w-56">
                 <SelectValue placeholder="Status filtern" />
@@ -1546,14 +1555,7 @@ export default function SalesProcessView() {
                           </label>
                         </div>
 
-                        {[
-                          "erstgespräch",
-                          "erstgespräch abgeschlossen",
-                          "zweitgespräch geplant",
-                          "zweitgespräch abgeschlossen",
-                          "abgeschlossen",
-                          "verloren",
-                        ].map((status) => {
+                        {STATUS_FILTER_OPTIONS.map((status) => {
                           const capitalized =
                             status.charAt(0).toUpperCase() + status.slice(1);
                           return (
@@ -1761,7 +1763,7 @@ export default function SalesProcessView() {
                                       } as SalesProcessUpdateRequest,
                                     });
                                     await qc.invalidateQueries({
-                                      queryKey: ["sales"],
+                                      queryKey: queryKeys.sales,
                                     });
                                   } catch (err) {
                                     showErrorToast(
@@ -1850,7 +1852,7 @@ export default function SalesProcessView() {
                                       } as SalesProcessUpdateRequest,
                                     });
                                     await qc.invalidateQueries({
-                                      queryKey: ["sales"],
+                                      queryKey: queryKeys.sales,
                                     });
                                   } catch (err) {
                                     showErrorToast(

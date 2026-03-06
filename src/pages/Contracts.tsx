@@ -30,7 +30,6 @@ import {
 
 import { UpsellModal } from "@/components/upsell/UpsellModal";
 import { CashflowHistoryTable } from "./CashflowHistoryTable";
-import { useQuery } from "@tanstack/react-query";
 import {
   Contract,
   getContracts,
@@ -50,6 +49,7 @@ import {
   mockContracts,
   mockCashflowForecast,
   mockSalesProcesses,
+  mockUpsells,
 } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
@@ -62,6 +62,7 @@ import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
 import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+import { queryKeys } from "@/lib/queryKeys";
 
 /* ---------------- helpers ---------------- */
 
@@ -142,14 +143,23 @@ export default function Contracts() {
   );
 
   // Upsell for selected contract
-  const { data: upsell, refetch: refetchUpsell } = useQuery({
-    queryKey: ["upsell", selectedContract?.sales_process_id],
+  const { data: upsell, refetch: refetchUpsell } = useMockableQuery<
+    ContractUpsell[],
+    ContractUpsell | null,
+    ReturnType<typeof queryKeys.upsell>
+  >({
+    queryKey: queryKeys.upsell(selectedContract?.sales_process_id),
     queryFn: () =>
       selectedContract
         ? getUpsellForSalesProcess(selectedContract.sales_process_id)
         : null,
     enabled: !!selectedContract,
     select: (list) => (list && list.length > 0 ? list[0] : null),
+    mockData: selectedContract
+      ? mockUpsells.filter(
+          (item) => item.sales_process_id === selectedContract.sales_process_id,
+        )
+      : [],
   });
 
   // Contracts for table + KPIs

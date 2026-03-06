@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { Settings as SettingsIcon, Save } from "lucide-react";
+import { queryKeys } from "@/lib/queryKeys";
 
 type Setting = {
   key: string;
@@ -55,19 +56,19 @@ export default function Settings() {
   const qc = useQueryClient();
 
   const { data: monthsSetting, isLoading: lMonths } = useMockableQuery({
-    queryKey: ["settings", "potential_months"],
+    queryKey: queryKeys.setting("potential_months"),
     queryFn: () => fetchSetting("potential_months"),
     mockData: MOCK_MONTHS,
   });
 
   const { data: flatSetting, isLoading: lFlat } = useMockableQuery({
-    queryKey: ["settings", "avg_revenue_per_contract"],
+    queryKey: queryKeys.setting("avg_revenue_per_contract"),
     queryFn: () => fetchSetting("avg_revenue_per_contract"),
     mockData: MOCK_FLAT,
   });
 
   const { data: notifyEmailSetting } = useMockableQuery({
-    queryKey: ["settings", "new_contract_notify_email"],
+    queryKey: queryKeys.setting("new_contract_notify_email"),
     queryFn: () => fetchSetting("new_contract_notify_email"),
     mockData: MOCK_NOTIFY_EMAIL,
   });
@@ -109,8 +110,8 @@ export default function Settings() {
       await Promise.all(promises);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["settings"] });
-      qc.invalidateQueries({ queryKey: ["cashflow"] });
+      qc.invalidateQueries({ queryKey: queryKeys.settings });
+      qc.invalidateQueries({ queryKey: queryKeys.cashflow });
       toast({ title: "Einstellungen gespeichert" });
     },
     onError: (e: Error) => {

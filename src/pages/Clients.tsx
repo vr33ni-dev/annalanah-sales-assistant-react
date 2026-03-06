@@ -23,6 +23,7 @@ import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
 import { formatDateOnly } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 
 const sourceLabels = {
   organic: "Organic",
@@ -56,7 +57,7 @@ export default function Clients() {
   const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Client[]>({
-    queryKey: ["clients"],
+    queryKey: queryKeys.clients,
     queryFn: getClients,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -65,7 +66,7 @@ export default function Clients() {
   });
 
   const { data: stagesData } = useMockableQuery<Stage[]>({
-    queryKey: ["stages"],
+    queryKey: queryKeys.stages,
     queryFn: getStages,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -128,7 +129,7 @@ export default function Clients() {
 
     setEditingClientId(null);
     setEditedClient({});
-    queryClient.invalidateQueries({ queryKey: ["clients"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.clients });
   };
 
   if (isFetching && clients.length === 0)
@@ -404,13 +405,13 @@ export default function Clients() {
                             });
 
                             queryClient.invalidateQueries({
-                              queryKey: ["clients"],
+                              queryKey: queryKeys.clients,
                             });
                             queryClient.invalidateQueries({
-                              queryKey: ["sales"],
+                              queryKey: queryKeys.sales,
                             });
                             queryClient.invalidateQueries({
-                              queryKey: ["contracts"],
+                              queryKey: queryKeys.contracts,
                             });
                           }}
                         >
