@@ -12,9 +12,6 @@ import { Stage } from "@/lib/api";
 
 interface Props {
   stage: Stage;
-  estimatedRevenue: number | null;
-  roiVal: number | null;
-  closingRate: number | null;
 }
 
 const fmtMoney = (v: number | null) =>
@@ -22,12 +19,16 @@ const fmtMoney = (v: number | null) =>
 
 const fmtPct = (v: number | null) => (typeof v === "number" ? `${v}%` : "–");
 
-export function StagePerformanceDialog({
-  stage,
-  estimatedRevenue,
-  roiVal,
-  closingRate,
-}: Props) {
+export function StagePerformanceDialog({ stage }: Props) {
+  const actualRevenue =
+    typeof stage.actual_revenue === "number" ? stage.actual_revenue : null;
+  const roiVal = typeof stage.roi === "number" ? stage.roi : null;
+  const attendanceRate =
+    typeof stage.attendance_rate === "number" ? stage.attendance_rate : null;
+  const closingRate =
+    typeof stage.closing_rate === "number" ? stage.closing_rate : null;
+  const closedContracts = stage.closed_contracts ?? 0;
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -50,16 +51,14 @@ export function StagePerformanceDialog({
           {/* Umsatz */}
           <section>
             <p className="text-muted-foreground">Umsatz</p>
-            <p className="text-2xl font-semibold">
-              {fmtMoney(estimatedRevenue)}
-            </p>
+            <p className="text-2xl font-semibold">{fmtMoney(actualRevenue)}</p>
             <p className="text-xs text-muted-foreground">
-              Ø Umsatz × Teilnehmer
+              Summe abgeschlossener Verträge dieser Bühne
             </p>
           </section>
 
           {/* KPI Grid */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="rounded-md border p-3">
               <p className="text-muted-foreground text-xs">ROI</p>
               <p className="text-lg font-medium">{roiVal}</p>
@@ -67,10 +66,18 @@ export function StagePerformanceDialog({
             </div>
 
             <div className="rounded-md border p-3">
+              <p className="text-muted-foreground text-xs">Attendance Rate</p>
+              <p className="text-lg font-medium">{fmtPct(attendanceRate)}</p>
+              <p className="text-xs text-muted-foreground">
+                Teilnehmer / Anmeldungen
+              </p>
+            </div>
+
+            <div className="rounded-md border p-3">
               <p className="text-muted-foreground text-xs">Closing-Rate</p>
               <p className="text-lg font-medium">{fmtPct(closingRate)}</p>
               <p className="text-xs text-muted-foreground">
-                Teilnehmer / Anmeldungen
+                Abschlüsse / Teilnehmer
               </p>
             </div>
           </div>
@@ -92,13 +99,22 @@ export function StagePerformanceDialog({
                 <span>Erfasste Kontakte</span>
                 <span>{stage.recorded_contacts ?? "–"}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Abschlüsse</span>
+                <span>{closedContracts}</span>
+              </div>
             </div>
           </section>
 
           {/* Interpretation */}
           <section className="rounded-md bg-muted/40 p-3 text-xs">
+            {attendanceRate != null && attendanceRate < 40 && (
+              <p>⚠️ Niedrige Attendance Rate – Teilnahme-Reminder prüfen.</p>
+            )}
             {closingRate != null && closingRate < 40 && (
-              <p>⚠️ Niedrige Closing-Rate – Teilnahme-Reminder prüfen.</p>
+              <p>
+                ⚠️ Niedrige Closing-Rate – Follow-up und Angebotsprozess prüfen.
+              </p>
             )}
             {roiVal != null && roiVal >= 1 && (
               <p>✅ Positiver ROI – Event rechnet sich.</p>

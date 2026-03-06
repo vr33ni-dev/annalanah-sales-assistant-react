@@ -2,7 +2,8 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockStages, mockAppSettings } from "@/lib/mockData";
+import { mockStages } from "@/lib/mockData";
+import { formatDateOnly, toDateOnly } from "@/helpers/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +51,6 @@ import {
   getStageParticipants,
   Stage,
   StageParticipant,
-  getNumericSetting,
   StageParticipantUI,
 } from "@/lib/api";
 import type { AddStageParticipantRequest } from "@/lib/api";
@@ -75,26 +75,11 @@ const num = (v: number | null | undefined): number =>
   typeof v === "number" && Number.isFinite(v) ? v : 0;
 
 const formatDate = (iso?: string | null): string => {
-  if (!iso) return "–";
-
-  // if it's a pure date string like "2025-10-26", return as-is
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-
-  // if it's ISO with time and Z, remove time part to keep UTC date
-  const match = iso.match(/^(\d{4}-\d{2}-\d{2})T/);
-  if (match) return match[1];
-
-  // fallback
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+  return formatDateOnly(iso);
 };
 
 function formatDateForInput(value?: string | null): string {
-  if (!value) return "";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return "";
-  // Format as YYYY-MM-DD
-  return d.toISOString().split("T")[0];
+  return toDateOnly(value);
 }
 
 const deriveStatus = (iso?: string | null): StatusKey => {
@@ -121,15 +106,26 @@ const fmtMoney = (v: number | null | undefined) =>
 const pct = (n: number) => `${n}%`;
 const euro = (n: number) => `€${n.toLocaleString()}`;
 
-const closingText = (
+const attendanceText = (
   participants: number,
   registrations: number,
-  closing?: number | null,
+  attendanceRate?: number | null,
 ) => {
   if (!(registrations > 0)) return "Closing-Rate: nicht genug Daten.";
-  const val = typeof closing === "number" ? pct(closing) : "–";
-  return `Closing-Rate = (Teilnehmer / Anmeldungen) × 100
+  const val = typeof attendanceRate === "number" ? pct(attendanceRate) : "–";
+  return `Attendance Rate = (Teilnehmer / Anmeldungen) × 100
 = (${participants} / ${registrations}) × 100 = ${val}`;
+};
+
+const closingText = (
+  closedContracts: number,
+  participants: number,
+  closingRate?: number | null,
+) => {
+  if (!(participants > 0)) return "Closing-Rate: nicht genug Daten.";
+  const val = typeof closingRate === "number" ? pct(closingRate) : "–";
+  return `Closing-Rate = (Abschlüsse / Teilnehmer) × 100
+= (${closedContracts} / ${participants}) × 100 = ${val}`;
 };
 
 // “ROI” here = Umsatz/Budget × 100 (i.e., ROAS but labeled ROI)
@@ -656,19 +652,6 @@ export default function Stages() {
     mockData: mockStages,
   });
 
-  // Average revenue per participant (used to estimate Umsatz)
-  const { data: avgRev, isLoading: avgRevLoading } = useMockableQuery<number>({
-    queryKey: ["avg_revenue_per_contract"],
-    queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
-    staleTime: 5 * 60_000,
-    mockData: mockAppSettings.avg_revenue_per_contract,
-  });
-
-  // Treat non-positive average as "not ready"
-  const effectiveAvgRev =
-    typeof avgRev === "number" && avgRev > 0 ? avgRev : undefined;
-  const isAvgReady = !!effectiveAvgRev && !avgRevLoading;
-
   const stages = useMemo<Stage[]>(() => data ?? [], [data]);
 
   const filteredStages = useMemo<Stage[]>(() => {
@@ -683,28 +666,42 @@ export default function Stages() {
         const budget = num(s.ad_budget);
         const regs = num(s.registrations);
         const parts = num(s.participants);
+        const closedContracts = num(s.closed_contracts);
+        const revenue = num(s.actual_revenue);
         agg.budget += budget;
         agg.registrations += regs;
         agg.participants += parts;
-        if (isAvgReady) agg.revenue += parts * (effectiveAvgRev as number);
+        agg.closedContracts += closedContracts;
+        agg.revenue += revenue;
         return agg;
       },
-      { budget: 0, registrations: 0, participants: 0, revenue: 0 },
+      {
+        budget: 0,
+        registrations: 0,
+        participants: 0,
+        revenue: 0,
+        closedContracts: 0,
+      },
     );
 
-    const closingRate =
+    const attendanceRate =
       acc.registrations > 0
         ? Math.round((acc.participants / acc.registrations) * 100)
         : null;
 
+    const closingRate =
+      acc.participants > 0
+        ? Math.round((acc.closedContracts / acc.participants) * 100)
+        : null;
+
     // "ROI" as Umsatz/Budget (ROAS math)
     const roiVal =
-      isAvgReady && acc.budget > 0
+      acc.budget > 0
         ? Math.round((acc.revenue / acc.budget) * 100) / 100
         : null;
 
-    return { ...acc, closingRate, roiVal };
-  }, [stages, isAvgReady, effectiveAvgRev]);
+    return { ...acc, attendanceRate, closingRate, roiVal };
+  }, [stages]);
 
   return (
     <div className="space-y-4">
@@ -762,16 +759,25 @@ export default function Stages() {
         <MetricChip
           icon={<Target className="w-4 h-4" />}
           iconBg="bg-success/10 text-success"
+          value={fmtPct(totals.attendanceRate)}
+          label="Attendance Rate"
+          popover={attendanceText(
+            totals.participants,
+            totals.registrations,
+            totals.attendanceRate ?? undefined,
+          )}
+        />
+
+        <MetricChip
+          icon={<Target className="w-4 h-4" />}
+          iconBg="bg-info/10 text-info"
           value={fmtPct(totals.closingRate)}
           label="Closing-Rate"
-          popover={
-            // same calculation text you already build
-            closingText(
-              totals.participants,
-              totals.registrations,
-              totals.closingRate ?? undefined,
-            )
-          }
+          popover={closingText(
+            totals.closedContracts,
+            totals.participants,
+            totals.closingRate ?? undefined,
+          )}
         />
 
         <MetricChip
@@ -780,7 +786,7 @@ export default function Stages() {
           value={totals.roiVal}
           label="ROI gesamt"
           popover={roiText(
-            isAvgReady ? totals.revenue : null,
+            totals.revenue,
             totals.budget,
             totals.roiVal ?? undefined,
           )}
@@ -822,19 +828,26 @@ export default function Stages() {
                 const budget = num(stage.ad_budget);
                 const regs = num(stage.registrations);
                 const parts = num(stage.participants);
-
-                const revenue = isAvgReady
-                  ? parts * (effectiveAvgRev as number)
-                  : null;
+                const revenue = num(stage.actual_revenue);
 
                 // "ROI" per row = Umsatz/Budget × 100
-                const roiVal =
-                  isAvgReady && budget > 0 && revenue != null
-                    ? Math.round((revenue / budget) * 100) / 100
-                    : null;
+                const roiVal = typeof stage.roi === "number" ? stage.roi : null;
+
+                const attendanceRate =
+                  typeof stage.attendance_rate === "number"
+                    ? stage.attendance_rate
+                    : regs > 0
+                      ? Math.round((parts / regs) * 100)
+                      : null;
 
                 const closingRate =
-                  regs > 0 ? Math.round((parts / regs) * 100) : null;
+                  typeof stage.closing_rate === "number"
+                    ? stage.closing_rate
+                    : parts > 0
+                      ? Math.round((num(stage.closed_contracts) / parts) * 100)
+                      : null;
+
+                const closedContracts = num(stage.closed_contracts);
 
                 const roiClass =
                   roiVal == null
@@ -893,11 +906,33 @@ export default function Stages() {
                               type="button"
                               className="px-1.5 py-0.5 rounded bg-accent/40 cursor-pointer"
                             >
+                              AR: {fmtPct(attendanceRate ?? undefined)}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="whitespace-pre-line text-xs">
+                            {attendanceText(
+                              parts,
+                              regs,
+                              attendanceRate ?? undefined,
+                            )}
+                          </PopoverContent>
+                        </Popover>
+
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="px-1.5 py-0.5 rounded bg-accent/40 cursor-pointer"
+                            >
                               CR: {fmtPct(closingRate ?? undefined)}
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="whitespace-pre-line text-xs">
-                            {closingText(parts, regs, closingRate ?? undefined)}
+                            {closingText(
+                              closedContracts,
+                              parts,
+                              closingRate ?? undefined,
+                            )}
                           </PopoverContent>
                         </Popover>
                       </div>
@@ -912,12 +947,7 @@ export default function Stages() {
                     <TableCell className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
                         <StageParticipantsDialog stage={stage} />
-                        <StagePerformanceDialog
-                          stage={stage}
-                          estimatedRevenue={revenue}
-                          roiVal={roiVal}
-                          closingRate={closingRate}
-                        />
+                        <StagePerformanceDialog stage={stage} />
 
                         <EditStageDialog stage={stage} />
                       </div>
@@ -940,13 +970,9 @@ export default function Stages() {
 
           {/* Compact inline insights */}
           <p className="mt-3 text-xs text-muted-foreground">
-            Ø Umsatz/Teilnehmer:{" "}
-            {isAvgReady
-              ? `€${(effectiveAvgRev as number).toLocaleString()}`
-              : "–"}
+            Abschlüsse gesamt: {totals.closedContracts}
             {" • "}
-            Geschätzter Umsatz gesamt:{" "}
-            {fmtMoney(isAvgReady ? totals.revenue : null)}
+            Ist-Umsatz gesamt: {fmtMoney(totals.revenue)}
           </p>
         </CardContent>
       </Card>

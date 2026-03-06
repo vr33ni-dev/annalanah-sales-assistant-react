@@ -380,6 +380,11 @@ export interface Stage {
   registrations?: number | null;
   participants?: number | null;
   recorded_contacts?: number; // read-only, derived
+  closed_contracts?: number;
+  actual_revenue?: number;
+  attendance_rate?: number;
+  closing_rate?: number;
+  roi?: number;
 }
 
 export const getStages = async (): Promise<Stage[]> => {

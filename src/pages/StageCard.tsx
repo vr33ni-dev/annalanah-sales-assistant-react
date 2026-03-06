@@ -1,8 +1,8 @@
 // stageCard.tsx
-import { getStages, Stage, getNumericSetting } from "@/lib/api";
+import { getStages, Stage } from "@/lib/api";
 import { CardContent } from "@/components/ui/card";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockStages, mockAppSettings } from "@/lib/mockData";
+import { mockStages } from "@/lib/mockData";
 
 type Row = {
   id: number;
@@ -34,15 +34,7 @@ export default function StageCard() {
     mockData: mockStages,
   });
 
-  const { data: effectiveAvgRev, isLoading: settingLoading } =
-    useMockableQuery<number>({
-      queryKey: ["avg_revenue_per_contract"],
-      queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
-      staleTime: 5 * 60_000,
-      mockData: mockAppSettings.avg_revenue_per_contract,
-    });
-
-  const isLoading = stagesLoading || settingLoading;
+  const isLoading = stagesLoading;
 
   if (isLoading) return <CardContent>Loading…</CardContent>;
   if (!effectiveStages?.length)
@@ -52,13 +44,8 @@ export default function StageCard() {
     const adBudget = Number(s.ad_budget ?? 0);
     const participants = Number(s.participants ?? 0);
     const status = toStatus(s);
-
-    let roiPct: number | undefined;
-    if (adBudget > 0 && effectiveAvgRev != null) {
-      const revenue = participants * effectiveAvgRev;
-      const roi = (revenue - adBudget) / adBudget; // e.g. 0.48 = +48%
-      roiPct = Math.round(roi * 100);
-    }
+    const roiPct =
+      typeof s.roi === "number" ? Math.round((s.roi - 1) * 100) : undefined;
 
     return {
       id: s.id,

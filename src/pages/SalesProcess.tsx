@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockSalesProcesses, mockStages } from "@/lib/mockData";
 import { format } from "date-fns";
+import { parseIsoToLocal } from "@/helpers/date";
 import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { de } from "date-fns/locale";
@@ -98,6 +99,14 @@ export default function SalesProcessView() {
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     return d > t;
+  }
+
+  function showErrorToast(title: string, err: unknown) {
+    toast({
+      title,
+      description: extractErrorMessage(err),
+      variant: "destructive",
+    });
   }
 
   // Queries
@@ -243,14 +252,14 @@ export default function SalesProcessView() {
 
     onError: (err: unknown) => {
       if (!isFetchError(err)) {
-        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+        showErrorToast("Fehler beim Anlegen", err);
         return;
       }
 
       const { status, data } = err.response;
 
       if (status !== 409 || typeof data !== "object" || data === null) {
-        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+        showErrorToast("Fehler beim Anlegen", err);
         return;
       }
 
@@ -272,7 +281,7 @@ export default function SalesProcessView() {
         return;
       }
 
-      alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+      showErrorToast("Fehler beim Anlegen", err);
     },
   });
 
@@ -342,8 +351,7 @@ export default function SalesProcessView() {
       // Sales process updates can change the derived client status; refresh client list.
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
-    onError: (err: unknown) =>
-      alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
+    onError: (err: unknown) => showErrorToast("Fehler beim Aktualisieren", err),
   });
 
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
@@ -359,20 +367,6 @@ export default function SalesProcessView() {
       prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
     );
   };
-
-  function parseDateSafe(input?: string | null): Date | null {
-    if (!input) return null;
-    try {
-      const date = new Date(input);
-      return new Date(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-      );
-    } catch {
-      return null;
-    }
-  }
 
   function normalizeStartPayload(
     p: StartSalesProcessRequest,
@@ -396,8 +390,8 @@ export default function SalesProcessView() {
       result = result.filter((e) => {
         let label: string;
         const now = new Date();
-        const erstDate = parseDateSafe(e.initial_contact_date);
-        const zweitDate = parseDateSafe(e.follow_up_date);
+        const erstDate = parseIsoToLocal(e.initial_contact_date);
+        const zweitDate = parseIsoToLocal(e.follow_up_date);
 
         if (e.stage === SALES_STAGE.INITIAL_CONTACT) {
           if (erstDate && erstDate > now) {
@@ -431,7 +425,7 @@ export default function SalesProcessView() {
     if (dateFilter !== "all") {
       const today = new Date();
       result = result.filter((e) => {
-        const d = parseDateSafe(e.follow_up_date);
+        const d = parseIsoToLocal(e.follow_up_date);
         if (!d) return false;
         if (dateFilter === "past") return d < today;
         if (dateFilter === "upcoming") return d > today;
@@ -521,7 +515,7 @@ export default function SalesProcessView() {
         });
         resolvedLeadId = lead.id;
       } catch (err: unknown) {
-        alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
+        showErrorToast("Fehler beim Anlegen des Leads", err);
         return;
       }
     }
@@ -540,8 +534,6 @@ export default function SalesProcessView() {
       stage: SALES_STAGE.INITIAL_CONTACT,
     };
 
-    // log payload for debugging to confirm source and source_stage_id
-    console.log("handleZweitgespraechStart payload:", payload);
     await mStart.mutateAsync(payload);
   };
 
@@ -1707,7 +1699,7 @@ export default function SalesProcessView() {
                         <span className="text-sm">
                           {e.initial_contact_date
                             ? format(
-                                parseDateSafe(e.initial_contact_date)!,
+                                parseIsoToLocal(e.initial_contact_date)!,
                                 "dd.MM.yyyy",
                                 { locale: de },
                               )
@@ -1751,7 +1743,7 @@ export default function SalesProcessView() {
                               <Calendar
                                 mode="single"
                                 selected={
-                                  parseDateSafe(
+                                  parseIsoToLocal(
                                     e.initial_contact_date ?? null,
                                   ) ?? undefined
                                 }
@@ -1772,9 +1764,9 @@ export default function SalesProcessView() {
                                       queryKey: ["sales"],
                                     });
                                   } catch (err) {
-                                    alert(
-                                      "Fehler beim Speichern: " +
-                                        extractErrorMessage(err),
+                                    showErrorToast(
+                                      "Fehler beim Speichern",
+                                      err,
                                     );
                                   } finally {
                                     setSavingId(null);
@@ -1796,7 +1788,7 @@ export default function SalesProcessView() {
                           {e.follow_up_date &&
                           e.stage !== SALES_STAGE.INITIAL_CONTACT
                             ? format(
-                                parseDateSafe(e.follow_up_date)!,
+                                parseIsoToLocal(e.follow_up_date)!,
                                 "dd.MM.yyyy",
                                 { locale: de },
                               )
@@ -1841,7 +1833,7 @@ export default function SalesProcessView() {
                               <Calendar
                                 mode="single"
                                 selected={
-                                  parseDateSafe(e.follow_up_date ?? null) ??
+                                  parseIsoToLocal(e.follow_up_date ?? null) ??
                                   undefined
                                 }
                                 onSelect={async (newDate) => {
@@ -1861,9 +1853,9 @@ export default function SalesProcessView() {
                                       queryKey: ["sales"],
                                     });
                                   } catch (err) {
-                                    alert(
-                                      "Fehler beim Speichern: " +
-                                        extractErrorMessage(err),
+                                    showErrorToast(
+                                      "Fehler beim Speichern",
+                                      err,
                                     );
                                   } finally {
                                     setSavingId(null);
@@ -1941,7 +1933,7 @@ export default function SalesProcessView() {
                                 setShowForm(true);
                                 setFormStep(3);
 
-                                const followUpDate = parseDateSafe(
+                                const followUpDate = parseIsoToLocal(
                                   e.follow_up_date,
                                 );
                                 const now = new Date();
@@ -1981,7 +1973,7 @@ export default function SalesProcessView() {
                                   clientId: e.client_id,
                                   zweitgespraechResult: true,
                                   abschluss: null,
-                                  zweitgespraechDate: parseDateSafe(
+                                  zweitgespraechDate: parseIsoToLocal(
                                     e.follow_up_date,
                                   ),
                                 }));
