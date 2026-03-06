@@ -14,8 +14,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Pencil, Save, X, Trash } from "lucide-react";
-import { Client, getClients, getStages, Stage, updateClient } from "@/lib/api";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import {
+  Client,
+  deleteClient,
+  getClients,
+  getStages,
+  Stage,
+  updateClient,
+} from "@/lib/api";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockClients, mockStages } from "@/lib/mockData";
@@ -24,6 +30,8 @@ import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
 import { formatDateOnly } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
+import { toast } from "@/hooks/use-toast";
+import { ConfirmActionButton } from "../components/ConfirmActionButton";
 
 const sourceLabels = {
   organic: "Organic",
@@ -104,13 +112,22 @@ export default function Clients() {
 
     // ✅ validation: require stage if Paid Ads
     if (editedClient.source === "paid" && !editedClient.source_stage_name) {
-      alert("Bitte eine Bühne auswählen (erforderlich für Paid Ads).");
+      toast({
+        title: "Bühne fehlt",
+        description: "Bitte eine Bühne auswählen (erforderlich für Paid Ads).",
+        variant: "destructive",
+      });
       return;
     }
 
     // ✅ validation: require completed_at if Kunde
     if (editedClient.status === "active" && !editedClient.completed_at) {
-      alert("Bitte das Abschlussdatum angeben (erforderlich für Kunden).");
+      toast({
+        title: "Abschlussdatum fehlt",
+        description:
+          "Bitte das Abschlussdatum angeben (erforderlich für Kunden).",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -125,11 +142,18 @@ export default function Clients() {
       await updateClient(editingClientId, payload);
     } catch (e) {
       console.warn("[Clients] save failed (expected in preview):", e);
+      toast({
+        title: "Speichern fehlgeschlagen",
+        description: "Der Kunde konnte nicht gespeichert werden.",
+        variant: "destructive",
+      });
+      return;
     }
 
     setEditingClientId(null);
     setEditedClient({});
     queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    toast({ title: "Kunde gespeichert" });
   };
 
   if (isFetching && clients.length === 0)
@@ -391,32 +415,36 @@ export default function Clients() {
                           entityId={client.id}
                           entityName={client.name}
                         />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={async () => {
-                            const confirmed = window.confirm(
-                              "Kunde wirklich löschen?",
-                            );
-                            if (!confirmed) return;
+                        <ConfirmActionButton
+                          title="Kunde löschen?"
+                          description="Dieser Kunde wird dauerhaft gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
+                          confirmLabel="Löschen"
+                          onConfirm={async () => {
+                            try {
+                              await deleteClient(client.id);
 
-                            await fetch(`/api/clients/${client.id}`, {
-                              method: "DELETE",
-                            });
-
-                            queryClient.invalidateQueries({
-                              queryKey: queryKeys.clients,
-                            });
-                            queryClient.invalidateQueries({
-                              queryKey: queryKeys.sales,
-                            });
-                            queryClient.invalidateQueries({
-                              queryKey: queryKeys.contracts,
-                            });
+                              queryClient.invalidateQueries({
+                                queryKey: queryKeys.clients,
+                              });
+                              queryClient.invalidateQueries({
+                                queryKey: queryKeys.sales,
+                              });
+                              queryClient.invalidateQueries({
+                                queryKey: queryKeys.contracts,
+                              });
+                              toast({ title: "Kunde gelöscht" });
+                            } catch {
+                              toast({
+                                title: "Kunde konnte nicht gelöscht werden",
+                                variant: "destructive",
+                              });
+                            }
                           }}
                         >
-                          <Trash className="w-4 h-4" />
-                        </Button>
+                          <Button size="sm" variant="destructive">
+                            <Trash className="w-4 h-4" />
+                          </Button>
+                        </ConfirmActionButton>
                       </>
                     )}
                   </TableCell>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NLQResponse } from "@/lib/api";
+import { runNLQ, type NLQResponse } from "@/lib/api";
 
 export default function NLQConsole() {
   const [question, setQuestion] = useState("");
@@ -10,17 +10,7 @@ export default function NLQConsole() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch("/api/nlq", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await runNLQ(question);
 
       // ✅ Normalize to match NLQResponse (handle fallback messages)
       setResult({
@@ -92,7 +82,7 @@ export default function NLQConsole() {
                       >
                         {col}
                       </th>
-                    )
+                    ),
                   )}
                 </tr>
               </thead>

@@ -19,6 +19,9 @@ import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockLeads } from "@/lib/mockData";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
+import { queryKeys } from "@/lib/queryKeys";
+import { toast } from "@/hooks/use-toast";
+import { ConfirmActionButton } from "../components/ConfirmActionButton";
 
 const sourceLabels: Record<string, string> = {
   organic: "Organic",
@@ -30,7 +33,7 @@ export default function Leads() {
   const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Lead[]>({
-    queryKey: ["leads"],
+    queryKey: queryKeys.leads,
     queryFn: getLeads,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -182,20 +185,29 @@ export default function Leads() {
                   </TableCell>
                   <TableCell>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={async () => {
-                        const confirmed = window.confirm(
-                          "Lead wirklich löschen?",
-                        );
-                        if (!confirmed) return;
-                        await deleteLead(lead.id);
-                        queryClient.invalidateQueries({ queryKey: ["leads"] });
+                    <ConfirmActionButton
+                      title="Lead löschen?"
+                      description="Dieser Lead wird dauerhaft gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
+                      confirmLabel="Löschen"
+                      onConfirm={async () => {
+                        try {
+                          await deleteLead(lead.id);
+                          queryClient.invalidateQueries({
+                            queryKey: queryKeys.leads,
+                          });
+                          toast({ title: "Lead gelöscht" });
+                        } catch {
+                          toast({
+                            title: "Lead konnte nicht gelöscht werden",
+                            variant: "destructive",
+                          });
+                        }
                       }}
                     >
-                      <Trash className="w-4 h-4" />
-                    </Button>
+                      <Button size="sm" variant="destructive">
+                        <Trash className="w-4 h-4" />
+                      </Button>
+                    </ConfirmActionButton>
                   </TableCell>
                 </TableRow>
               ))}

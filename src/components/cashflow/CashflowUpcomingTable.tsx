@@ -13,6 +13,7 @@ import {
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
@@ -23,9 +24,8 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     isFetching: isFetchingForecast,
     isError: isErrorForecast,
   } = useQuery<CashflowRow[]>({
-    queryKey: ["cashflow-forecast", contractId],
-    queryFn: ({ queryKey }) =>
-      getCashflowForecast(queryKey[1] as number | undefined),
+    queryKey: queryKeys.cashflowForecastByContract(contractId),
+    queryFn: () => getCashflowForecast(contractId),
     enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -37,7 +37,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     isFetching: isFetchingEntries,
     isError: isErrorEntries,
   } = useQuery<CashflowEntry[]>({
-    queryKey: ["cashflow-entries", contractId],
+    queryKey: queryKeys.cashflowEntriesByContract(contractId),
     queryFn: () => getCashflowEntries(contractId),
     enabled: enabled && isContractView,
     retry: false,
@@ -46,14 +46,14 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   });
 
   const { data: potentialMonths = 6 } = useQuery<number>({
-    queryKey: ["setting", "potential_months"],
+    queryKey: queryKeys.numericSetting("potential_months"),
     queryFn: () => getNumericSetting("potential_months", 6),
     enabled,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: avgRevenue = 600 } = useQuery<number>({
-    queryKey: ["setting", "avg_revenue_per_contract"],
+    queryKey: queryKeys.numericSetting("avg_revenue_per_contract"),
     queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     enabled,
     staleTime: 10 * 60 * 1000,

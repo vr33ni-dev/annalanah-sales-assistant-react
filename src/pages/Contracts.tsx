@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 
 import { UpsellModal } from "@/components/upsell/UpsellModal";
-import { CashflowHistoryTable } from "./CashflowHistoryTable";
+import { CashflowHistoryTable } from "../components/cashflow/CashflowHistoryTable";
 import {
   Contract,
   getContracts,
@@ -58,7 +58,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
+import { CashflowUpcomingTable } from "../components/cashflow/CashflowUpcomingTable";
 import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
@@ -169,7 +169,7 @@ export default function Contracts() {
     isError: errorContracts,
     refetch: refetchContracts,
   } = useMockableQuery<Contract[]>({
-    queryKey: ["contracts"],
+    queryKey: queryKeys.contracts,
     queryFn: getContracts,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -183,7 +183,7 @@ export default function Contracts() {
     isFetching: loadingForecast,
     isError: errorForecast,
   } = useMockableQuery<CashflowRow[]>({
-    queryKey: ["cashflow-forecast"],
+    queryKey: queryKeys.cashflowForecast,
     queryFn: () => getCashflowForecast(),
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -194,7 +194,7 @@ export default function Contracts() {
   // NEW: Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
   const { data: metrics, isFetching: loadingMetrics } =
     useMockableQuery<CashflowMetrics | null>({
-      queryKey: ["cashflow-metrics"],
+      queryKey: queryKeys.cashflowMetrics,
       queryFn: () => getCashflowMetrics(),
       retry: false,
       staleTime: 5 * 60 * 1000,
@@ -204,7 +204,7 @@ export default function Contracts() {
 
   // Sales processes (used to compute earliest contact date for reset)
   const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
-    queryKey: ["sales-processes"],
+    queryKey: queryKeys.salesProcesses,
     queryFn: getSalesProcesses,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -955,9 +955,15 @@ export default function Contracts() {
               }
             });
 
-            queryClient.invalidateQueries({ queryKey: ["cashflow-history"] });
-            queryClient.invalidateQueries({ queryKey: ["cashflow-forecast"] });
-            queryClient.invalidateQueries({ queryKey: ["cashflow-metrics"] });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowEntries,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowForecast,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowMetrics,
+            });
           }}
         />
       )}

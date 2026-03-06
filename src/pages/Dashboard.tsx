@@ -38,7 +38,7 @@ import {
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 
-import StageCard from "./StageCard";
+import StageCard from "../components/dashboard/StageCard";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";

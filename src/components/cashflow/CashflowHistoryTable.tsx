@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
 import { extractYmd, formatYmdToLocale, toYmdLocal } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 
 function calcNextDueAmount(c: Contract): number {
   switch (c.payment_frequency) {
@@ -47,7 +48,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
     isFetching: fetchingEntries,
     isError: entriesError,
   } = useMockableQuery<CashflowEntry[]>({
-    queryKey: ["cashflow-entries", contractId],
+    queryKey: queryKeys.cashflowEntriesByContract(contractId),
     queryFn: () => getCashflowEntries(contractId),
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -60,7 +61,7 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
     isFetching: fetchingContracts,
     isError: contractsError,
   } = useMockableQuery<Contract[]>({
-    queryKey: ["contracts"],
+    queryKey: queryKeys.contracts,
     queryFn: getContracts,
     retry: false,
     staleTime: 5 * 60 * 1000,

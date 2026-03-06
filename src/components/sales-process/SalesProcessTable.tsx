@@ -1,0 +1,505 @@
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
+import { Filter, Pencil } from "lucide-react";
+import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
+import { parseIsoToLocal } from "@/helpers/date";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CommentsDialog } from "@/components/comments/CommentsDialog";
+import { TablePagination } from "@/components/TablePagination";
+import { STATUS_FILTER_OPTIONS } from "@/hooks/useSalesProcessFilters";
+import type {
+  DateFilterType,
+  StatusFilter,
+} from "@/hooks/useSalesProcessFilters";
+import type { SalesProcessTableProps } from "./types";
+
+const stageBadgeClass: Record<
+  (typeof SALES_STAGE)[keyof typeof SALES_STAGE],
+  string
+> = {
+  [SALES_STAGE.INITIAL_CONTACT]:
+    "bg-blue-100 text-blue-800 border border-blue-200",
+  [SALES_STAGE.FOLLOW_UP]: "bg-warning text-warning-foreground",
+  [SALES_STAGE.CLOSED]: "bg-success text-success-foreground",
+  [SALES_STAGE.LOST]: "bg-destructive text-destructive-foreground",
+};
+
+export function SalesProcessTable({
+  statusFilter,
+  setActiveStatusFilters,
+  activeStatusFilters,
+  activeSourceFilters,
+  setActiveSourceFilters,
+  toggleStatusFilter,
+  toggleSourceFilter,
+  dateFilter,
+  setDateFilter,
+  paginatedSales,
+  stages,
+  highlightId,
+  editingId,
+  setEditingId,
+  editingInitialId,
+  setEditingInitialId,
+  popoverSide,
+  setPopoverSide,
+  savingId,
+  setSavingId,
+  onSaveInitialContactDate,
+  onSaveFollowUpDate,
+  onPlanFollowUp,
+  onEnterResult,
+  onEnterClosing,
+  onShowContract,
+  page,
+  totalPages,
+  onPageChange,
+}: SalesProcessTableProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center">
+          <Select
+            value={statusFilter}
+            onValueChange={(value: StatusFilter) =>
+              setActiveStatusFilters(value === "all" ? [] : [value])
+            }
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Status filtern" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle Status</SelectItem>
+              <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
+              <SelectItem value="erstgespräch abgeschlossen">
+                Erstgespräch abgeschlossen
+              </SelectItem>
+              <SelectItem value="zweitgespräch geplant">
+                Zweitgespräch geplant
+              </SelectItem>
+              <SelectItem value="zweitgespräch abgeschlossen">
+                Zweitgespräch abgeschlossen
+              </SelectItem>
+              <SelectItem value="abgeschlossen">Abgeschlossen</SelectItem>
+              <SelectItem value="verloren">Verloren</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Kunde</TableHead>
+              <TableHead>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                      Status
+                      <Filter className="w-3 h-3 opacity-70" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-52">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                        <Checkbox
+                          id="filter-all"
+                          checked={activeStatusFilters.length === 0}
+                          onCheckedChange={() => setActiveStatusFilters([])}
+                        />
+                        <label
+                          htmlFor="filter-all"
+                          className="text-sm font-medium"
+                        >
+                          Alle
+                        </label>
+                      </div>
+
+                      {STATUS_FILTER_OPTIONS.map((status) => {
+                        const capitalized =
+                          status.charAt(0).toUpperCase() + status.slice(1);
+                        return (
+                          <div
+                            key={status}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`filter-${status}`}
+                              checked={activeStatusFilters.includes(status)}
+                              onCheckedChange={() => toggleStatusFilter(status)}
+                            />
+                            <label
+                              htmlFor={`filter-${status}`}
+                              className="text-sm"
+                            >
+                              {capitalized}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </TableHead>
+              <TableHead>Erstgespräch</TableHead>
+              <TableHead>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                      Zweitgespräch
+                      <Filter className="w-3 h-3 opacity-70" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 space-y-2">
+                    <div className="space-y-1">
+                      <Label className="text-sm font-medium">Zeitraum</Label>
+                      <Select
+                        value={dateFilter}
+                        onValueChange={(val) =>
+                          setDateFilter(val as DateFilterType)
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Zeitraum wählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Alle</SelectItem>
+                          <SelectItem value="past">Vergangene</SelectItem>
+                          <SelectItem value="upcoming">Zukünftige</SelectItem>
+                          <SelectItem value="today">Heute</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </TableHead>
+              <TableHead>Ergebnis</TableHead>
+              <TableHead>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                      Quelle
+                      <Filter className="w-3 h-3 opacity-70" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-52">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                        <Checkbox
+                          id="filter-source-all"
+                          checked={activeSourceFilters.length === 0}
+                          onCheckedChange={() => setActiveSourceFilters([])}
+                        />
+                        <label
+                          htmlFor="filter-source-all"
+                          className="text-sm font-medium"
+                        >
+                          Alle
+                        </label>
+                      </div>
+
+                      {[
+                        { value: "paid", label: "Bezahlt" },
+                        { value: "organic", label: "Organisch" },
+                      ].map(({ value, label }) => (
+                        <div
+                          key={value}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`filter-source-${value}`}
+                            checked={activeSourceFilters.includes(value)}
+                            onCheckedChange={() => toggleSourceFilter(value)}
+                          />
+                          <label
+                            htmlFor={`filter-source-${value}`}
+                            className="text-sm"
+                          >
+                            {label}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </TableHead>
+              <TableHead>Bühne</TableHead>
+              <TableHead>Umsatz</TableHead>
+              <TableHead>Aktionen</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedSales.map((entry) => {
+              const linkedStage =
+                typeof entry.stage_id === "number"
+                  ? (stages.find((stage) => stage.id === entry.stage_id)
+                      ?.name ?? null)
+                  : null;
+              return (
+                <TableRow
+                  key={entry.id}
+                  id={`sales-${entry.id}`}
+                  className={
+                    highlightId === entry.id ? "ring-2 ring-primary" : undefined
+                  }
+                >
+                  <TableCell>{entry.client_name}</TableCell>
+                  <TableCell>
+                    <Badge className={stageBadgeClass[entry.stage]}>
+                      {entry.stage === SALES_STAGE.INITIAL_CONTACT
+                        ? "Erstgespräch"
+                        : STAGE_LABELS[entry.stage]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2 relative">
+                      <span className="text-sm">
+                        {entry.initial_contact_date
+                          ? format(
+                              parseIsoToLocal(entry.initial_contact_date)!,
+                              "dd.MM.yyyy",
+                              { locale: de },
+                            )
+                          : "–"}
+                      </span>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={savingId === entry.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const buffer = 320;
+                          const preferTop =
+                            event.clientY > window.innerHeight - buffer;
+                          setPopoverSide(preferTop ? "top" : "bottom");
+                          setEditingInitialId(entry.id);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+
+                      {editingInitialId === entry.id && (
+                        <Popover
+                          open
+                          onOpenChange={() => setEditingInitialId(null)}
+                        >
+                          <PopoverTrigger asChild>
+                            <button
+                              className="absolute inset-0"
+                              style={{ pointerEvents: "none" }}
+                              aria-hidden="true"
+                            />
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
+                            align="start"
+                            side={popoverSide}
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                          >
+                            <Calendar
+                              mode="single"
+                              selected={
+                                parseIsoToLocal(
+                                  entry.initial_contact_date ?? null,
+                                ) ?? undefined
+                              }
+                              onSelect={async (newDate) => {
+                                if (!newDate) return;
+                                try {
+                                  setSavingId(entry.id);
+                                  await onSaveInitialContactDate(
+                                    entry.id,
+                                    newDate,
+                                  );
+                                } finally {
+                                  setSavingId(null);
+                                  setEditingInitialId(null);
+                                }
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2 relative">
+                      <span className="text-sm">
+                        {entry.follow_up_date &&
+                        entry.stage !== SALES_STAGE.INITIAL_CONTACT
+                          ? format(
+                              parseIsoToLocal(entry.follow_up_date)!,
+                              "dd.MM.yyyy",
+                              { locale: de },
+                            )
+                          : "–"}
+                      </span>
+                      {entry.stage !== SALES_STAGE.INITIAL_CONTACT &&
+                        entry.follow_up_date && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={savingId === entry.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const buffer = 320;
+                              const preferTop =
+                                event.clientY > window.innerHeight - buffer;
+                              setPopoverSide(preferTop ? "top" : "bottom");
+                              setEditingId(entry.id);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        )}
+
+                      {editingId === entry.id && (
+                        <Popover open onOpenChange={() => setEditingId(null)}>
+                          <PopoverTrigger asChild>
+                            <button
+                              className="absolute inset-0"
+                              style={{ pointerEvents: "none" }}
+                              aria-hidden="true"
+                            />
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
+                            align="start"
+                            side={popoverSide}
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                          >
+                            <Calendar
+                              mode="single"
+                              selected={
+                                parseIsoToLocal(entry.follow_up_date ?? null) ??
+                                undefined
+                              }
+                              onSelect={async (newDate) => {
+                                if (!newDate) return;
+                                try {
+                                  setSavingId(entry.id);
+                                  await onSaveFollowUpDate(entry.id, newDate);
+                                } finally {
+                                  setSavingId(null);
+                                  setEditingId(null);
+                                }
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {entry.stage === SALES_STAGE.INITIAL_CONTACT
+                      ? "–"
+                      : entry.follow_up_result === true
+                        ? "Erschienen"
+                        : entry.follow_up_result === false
+                          ? "Nicht erschienen"
+                          : "Ausstehend"}
+                  </TableCell>
+                  <TableCell>
+                    {entry.client_source
+                      ? entry.client_source === "paid"
+                        ? "Bezahlt"
+                        : "Organisch"
+                      : "-"}
+                  </TableCell>
+                  <TableCell>{linkedStage ?? "-"}</TableCell>
+                  <TableCell>
+                    {entry.revenue ? `€${entry.revenue.toLocaleString()}` : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2 flex-wrap">
+                      <CommentsDialog
+                        entityType="salesprocess"
+                        entityId={entry.id}
+                        entityName={entry.client_name}
+                      />
+
+                      {entry.stage === SALES_STAGE.INITIAL_CONTACT && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onPlanFollowUp(entry)}
+                        >
+                          Zweitgespräch planen
+                        </Button>
+                      )}
+
+                      {entry.stage === SALES_STAGE.FOLLOW_UP &&
+                        entry.follow_up_result == null && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEnterResult(entry)}
+                          >
+                            Ergebnis eintragen
+                          </Button>
+                        )}
+
+                      {entry.stage === SALES_STAGE.FOLLOW_UP &&
+                        entry.follow_up_result === true && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onEnterClosing(entry)}
+                          >
+                            Abschluss eingeben
+                          </Button>
+                        )}
+
+                      {entry.stage === SALES_STAGE.CLOSED && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onShowContract(entry)}
+                        >
+                          Vertrag anzeigen
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        <TablePagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      </CardContent>
+    </Card>
+  );
+}
