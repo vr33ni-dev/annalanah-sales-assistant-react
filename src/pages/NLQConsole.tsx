@@ -12,13 +12,13 @@ export default function NLQConsole() {
     try {
       const data = await runNLQ(question);
 
-      // ✅ Normalize to match NLQResponse (handle fallback messages)
+      // Normalize to match NLQResponse (handle fallback messages)
       setResult({
         sql: data.sql ?? "",
         columns: data.columns ?? [],
         rows: data.rows ?? [],
         error: data.error,
-        answer: data.answer, // 👈 make sure we keep friendly answers
+        answer: data.answer, // make sure we keep friendly answers
       });
     } catch (err) {
       setResult({
@@ -53,7 +53,7 @@ export default function NLQConsole() {
 
       {result && (
         <div className="mt-4 space-y-2">
-          {/* 💬 Friendly fallback (non-SQL answers) */}
+          {/* Friendly fallback (non-SQL answers) */}
           {result.answer && (
             <div className="bg-gray-50 border border-gray-200 rounded p-3 text-gray-700 italic">
               {result.answer}

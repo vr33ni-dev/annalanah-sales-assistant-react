@@ -191,7 +191,7 @@ export default function Contracts() {
     mockData: mockCashflowForecast as CashflowRow[],
   });
 
-  // NEW: Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
+  // Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
   const { data: metrics, isFetching: loadingMetrics } =
     useMockableQuery<CashflowMetrics | null>({
       queryKey: queryKeys.cashflowMetrics,
@@ -951,7 +951,7 @@ export default function Contracts() {
                 (c) => c.id === selectedContract?.id,
               );
               if (updated) {
-                setSelectedContract(updated); //  refreshes the drawer details
+                setSelectedContract(updated); // refreshes the drawer details
               }
             });
 

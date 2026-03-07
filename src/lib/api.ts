@@ -459,7 +459,7 @@ export const deleteStageParticipant = async (
   await api.delete(`/stages/${stageId}/participants/${participantId}`);
 };
 
-/* Stage participants (frontend shape) */
+/* Stage participants */
 export interface StageParticipant {
   id: number;
   stage_id: number;
@@ -620,7 +620,7 @@ export interface CashflowRow {
   contract_id?: number;
 }
 
-// Optional: individual cashflow entries (past & scheduled payments)
+// Individual cashflow entries (past & scheduled payments)
 export interface CashflowEntry {
   id: number;
   contract_id?: number;

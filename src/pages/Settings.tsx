@@ -22,7 +22,7 @@ type Setting = {
   value_text?: string | null;
 };
 
-// Stable mock data references (defined outside component to avoid re-render loops)
+// Mock data references (defined outside component to avoid re-render loops)
 const MOCK_MONTHS: Setting = {
   key: "potential_months",
   value_numeric: 6,
