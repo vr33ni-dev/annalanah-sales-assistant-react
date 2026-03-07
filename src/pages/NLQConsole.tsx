@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NLQResponse } from "@/lib/api";
+import { runNLQ, type NLQResponse } from "@/lib/api";
 
 export default function NLQConsole() {
   const [question, setQuestion] = useState("");
@@ -10,25 +10,15 @@ export default function NLQConsole() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch("/api/nlq", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-      });
+      const data = await runNLQ(question);
 
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      // ✅ Normalize to match NLQResponse (handle fallback messages)
+      // Normalize to match NLQResponse (handle fallback messages)
       setResult({
         sql: data.sql ?? "",
         columns: data.columns ?? [],
         rows: data.rows ?? [],
         error: data.error,
-        answer: data.answer, // 👈 make sure we keep friendly answers
+        answer: data.answer, // make sure we keep friendly answers
       });
     } catch (err) {
       setResult({
@@ -63,7 +53,7 @@ export default function NLQConsole() {
 
       {result && (
         <div className="mt-4 space-y-2">
-          {/* 💬 Friendly fallback (non-SQL answers) */}
+          {/* Friendly fallback (non-SQL answers) */}
           {result.answer && (
             <div className="bg-gray-50 border border-gray-200 rounded p-3 text-gray-700 italic">
               {result.answer}
@@ -92,7 +82,7 @@ export default function NLQConsole() {
                       >
                         {col}
                       </th>
-                    )
+                    ),
                   )}
                 </tr>
               </thead>

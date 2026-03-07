@@ -42,7 +42,7 @@ export function MergeConflictDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {/* 🚫 Active contract → info only */}
+        {/* Active contract → info only */}
         {hasActiveContract && (
           <p className="text-sm text-muted-foreground">
             Für diesen Kunden existiert bereits ein aktiver Vertrag. Änderungen
@@ -51,17 +51,17 @@ export function MergeConflictDialog({
           </p>
         )}
 
-        {/* 🔁 No active contract */}
+        {/* No active contract */}
         {!hasActiveContract && (
           <>
-            {/* ❌ Overwrite not allowed → explanation */}
+            {/* Overwrite not allowed → explanation */}
             {disableOverwrite && overwriteDisabledReason && (
               <div className="rounded-md border border-muted bg-muted/30 p-3 text-xs text-muted-foreground">
                 {overwriteDisabledReason}
               </div>
             )}
 
-            {/* 🟡 No field conflicts */}
+            {/* No field conflicts */}
             {!hasConflicts && (
               <p className="text-sm text-muted-foreground">
                 Für diesen Kunden existiert bereits ein laufender
@@ -70,7 +70,7 @@ export function MergeConflictDialog({
               </p>
             )}
 
-            {/* 🔍 Field conflicts */}
+            {/* Field conflicts */}
             {hasConflicts && (
               <div className="space-y-4 text-sm">
                 {Object.entries(conflicts).map(([field, value]) => {
@@ -110,8 +110,8 @@ export function MergeConflictDialog({
                 hasActiveContract
                   ? "Überschreiben ist bei aktivem Vertrag nicht erlaubt"
                   : disableOverwrite
-                  ? overwriteDisabledReason
-                  : undefined
+                    ? overwriteDisabledReason
+                    : undefined
               }
             >
               Neue Daten übernehmen

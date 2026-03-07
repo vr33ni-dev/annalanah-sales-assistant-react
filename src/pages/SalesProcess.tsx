@@ -1,89 +1,37 @@
 // src/pages/SalesProcess.tsx
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
-import { useState, useMemo, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockSalesProcesses, mockStages } from "@/lib/mockData";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { parseIsoToLocal } from "@/helpers/date";
 import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { de } from "date-fns/locale";
-import { cn } from "@/lib/utils";
-import { Pencil, Save, X } from "lucide-react";
+import { CalendarPlus } from "lucide-react";
 
 import {
-  Client,
-  SalesProcess,
-  Stage,
-  getSalesProcesses,
-  getStages,
-  startSalesProcess,
-  updateSalesProcess,
   SalesProcessUpdateRequest,
   createLead,
-  StartSalesProcessResponse,
   StartSalesProcessRequest,
 } from "@/lib/api";
 
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { asArray } from "@/lib/safe";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { TrendingUp, CalendarPlus, Users, CalendarIcon } from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Filter } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Calendar } from "@/components/ui/calendar";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { MergeConflicts } from "@/types/merge";
 import { isFetchError, StartSalesProcessError } from "@/types/apiError";
 import { MergeConflictDialog } from "@/components/MergeConflictDialog";
-import { LeadSearch } from "@/components/LeadSearch";
 import { Lead } from "@/lib/api";
-import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { useToast } from "@/hooks/use-toast";
 import { usePagination } from "@/hooks/usePagination";
-import { TablePagination } from "@/components/TablePagination";
-
-type SalesProcessWithStageId = SalesProcess & {
-  stage_id?: number | null;
-};
-
-const stageBadgeClass: Record<
-  (typeof SALES_STAGE)[keyof typeof SALES_STAGE],
-  string
-> = {
-  [SALES_STAGE.INITIAL_CONTACT]:
-    "bg-blue-100 text-blue-800 border border-blue-200",
-  [SALES_STAGE.FOLLOW_UP]: "bg-warning text-warning-foreground",
-  [SALES_STAGE.CLOSED]: "bg-success text-success-foreground",
-  [SALES_STAGE.LOST]: "bg-destructive text-destructive-foreground",
-};
-
-// gespräch type: which flow the user chose
-type GespraechType = "erstgespraech" | "zweitgespraech";
+import { queryKeys } from "@/lib/queryKeys";
+import { useSalesProcessFilters } from "@/hooks/useSalesProcessFilters";
+import { useSalesProcessData } from "@/hooks/useSalesProcessData";
+import type { SalesProcessWithStageId } from "@/hooks/useSalesProcessFilters";
+import { SalesProcessWorkflowForm } from "@/components/sales-process/SalesProcessWorkflowForm";
+import { SalesProcessTable } from "@/components/sales-process/SalesProcessTable";
+import type {
+  GespraechType,
+  SalesProcessFormData,
+  SalesProcessFormStep,
+} from "@/components/sales-process/types";
 
 export default function SalesProcessView() {
   const { toast } = useToast();
@@ -100,40 +48,19 @@ export default function SalesProcessView() {
     return d > t;
   }
 
-  // Queries
-  const {
-    data: sales = [],
-    isFetching: loadingSales,
-    isError: errorSales,
-  } = useMockableQuery<SalesProcessWithStageId[]>({
-    queryKey: ["sales"],
-    queryFn: getSalesProcesses as unknown as () => Promise<
-      SalesProcessWithStageId[]
-    >,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: asArray<SalesProcessWithStageId>,
-    mockData: mockSalesProcesses as SalesProcessWithStageId[],
-  });
-
-  const {
-    data: stages = [],
-    isFetching: loadingStages,
-    isError: errorStages,
-  } = useMockableQuery<Stage[]>({
-    queryKey: ["stages"],
-    queryFn: getStages,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: asArray<Stage>,
-    mockData: mockStages,
-  });
+  function showErrorToast(title: string, err: unknown) {
+    toast({
+      title,
+      description: extractErrorMessage(err),
+      variant: "destructive",
+    });
+  }
 
   // Form state
   const [showForm, setShowForm] = useState(false);
   // formStep: 0 = type selection, 1 = Erstgespräch, 2 = Zweitgespräch (from Aktionen or old flow),
   //           3 = Ergebnis, 4 = Abschluss, 5 = old Zweitgespräch full flow step 1
-  const [formStep, setFormStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
+  const [formStep, setFormStep] = useState<SalesProcessFormStep>(0);
   const [gespraechType, setGespraechType] =
     useState<GespraechType>("erstgespraech");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -150,18 +77,7 @@ export default function SalesProcessView() {
   const [pendingPayload, setPendingPayload] =
     useState<StartSalesProcessRequest | null>(null);
 
-  type StatusFilter =
-    | "all"
-    | "erstgespräch"
-    | "erstgespräch abgeschlossen"
-    | "zweitgespräch geplant"
-    | "zweitgespräch abgeschlossen"
-    | "abgeschlossen"
-    | "verloren";
-
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SalesProcessFormData>({
     name: "",
     email: "",
     phone: "",
@@ -187,93 +103,66 @@ export default function SalesProcessView() {
     completedAt: null as string | null,
   });
 
-  const mStart = useMutation({
-    mutationFn: startSalesProcess,
+  const resetAll = () => {
+    setShowForm(false);
+    setFormStep(0);
+    setGespraechType("erstgespraech");
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      source: "",
+      stageId: null,
+      erstgespraechDate: null,
+      zweitgespraechDate: null,
+      salesProcessId: undefined,
+      zweitgespraechResult: null,
+      abschluss: null,
+      revenue: "",
+      contractDuration: "",
+      contractStart: null,
+      contractFrequency: "",
+      clientId: undefined,
+      leadId: undefined,
+      completedAt: null,
+    });
+  };
 
-    onSuccess: (data: StartSalesProcessResponse) => {
-      // Keep client list in sync (SalesProcess start can create/update client)
-      try {
-        if (data.client) {
-          qc.setQueryData<Client[]>(["clients"], (old) => {
-            const prev = (old ?? []) as Client[];
-            const idx = prev.findIndex((c) => c.id === data.client.id);
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = { ...next[idx], ...data.client };
-              return next;
-            }
-            return [data.client, ...prev];
-          });
-        }
-      } catch {
-        // ignore cache update errors
-      }
-
-      // immediately update sales cache so the new entry shows up without a full refresh
-      try {
-        const sp = data.sales_process;
-        if (sp) {
-          type SalesCacheItem = SalesProcess & { stage_label: string };
-          qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
-            const prev: SalesCacheItem[] = old ?? [];
-            const item: SalesCacheItem = {
-              ...sp,
-              stage_label: STAGE_LABELS[sp.stage] || sp.stage,
-            };
-            // prepend the new item if it's not already present
-            if (!prev.find((p) => p.id === item.id)) {
-              return [item, ...prev];
-            }
-            return prev;
-          });
-        }
-      } catch {
-        // ignore cache update errors
-      }
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["contracts"] });
-      qc.invalidateQueries({ queryKey: ["clients"] });
+  const {
+    sales,
+    loadingSales,
+    errorSales,
+    stages,
+    loadingStages,
+    errorStages,
+    mStart,
+    mPatch,
+  } = useSalesProcessData({
+    onStartSuccess: () => {
       setMergeConflicts(null);
       setPendingPayload(null);
       setExistingClientId(null);
       setHasActiveContract(false);
       resetAll();
     },
-
-    onError: (err: unknown) => {
-      if (!isFetchError(err)) {
-        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
-        return;
-      }
-
-      const { status, data } = err.response;
-
-      if (status !== 409 || typeof data !== "object" || data === null) {
-        alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
-        return;
-      }
-
-      const apiError = data as StartSalesProcessError;
-
-      if (apiError.error === "client_has_active_contract") {
-        setHasActiveContract(true);
-        setMergeConflicts({});
-        setPendingPayload(null);
-        setExistingClientId(apiError.client_id);
-        return;
-      }
-
-      if (apiError.error === "client_exists") {
-        setExistingClientId(apiError.client_id);
-        setHasActiveContract(apiError.has_active_contract ?? false);
-        setMergeConflicts(apiError.conflicts ?? {});
-        setPendingPayload(apiError.original_payload);
-        return;
-      }
-
-      alert(`Fehler beim Anlegen: ${extractErrorMessage(err)}`);
+    onClientHasActiveContract: (clientId) => {
+      setHasActiveContract(true);
+      setMergeConflicts({});
+      setPendingPayload(null);
+      setExistingClientId(clientId);
     },
+    onClientExists: ({
+      clientId,
+      hasActiveContract,
+      conflicts,
+      originalPayload,
+    }) => {
+      setExistingClientId(clientId);
+      setHasActiveContract(hasActiveContract);
+      setMergeConflicts(conflicts);
+      setPendingPayload(originalPayload);
+    },
+    showErrorToast,
   });
 
   // If navigated here with ?sales_process=<id>, scroll to and briefly highlight that row
@@ -293,86 +182,18 @@ export default function SalesProcessView() {
     }
   }, [sales, searchParams]);
 
-  const mPatch = useMutation<
-    Awaited<ReturnType<typeof updateSalesProcess>>,
-    unknown,
-    { id: number; payload: SalesProcessUpdateRequest }
-  >({
-    mutationFn: ({ id, payload }) => updateSalesProcess(id, payload),
-    onSuccess: (data, vars) => {
-      try {
-        // Debug: inspect server response and existing cache item
-        console.debug("mPatch.onSuccess - response:", data);
-
-        type SalesCacheItem = SalesProcess & { stage_label: string };
-        qc.setQueryData<SalesCacheItem[]>(["sales"], (old) => {
-          const prev: SalesCacheItem[] = (old as SalesCacheItem[]) ?? [];
-          const updated = prev.map((item) => {
-            if (item.id !== data.id) return item;
-            const resolvedStage = data.stage ?? item.stage;
-            const merged: SalesCacheItem = {
-              ...item,
-              ...data,
-              stage: resolvedStage,
-              stage_label: STAGE_LABELS[resolvedStage] ?? resolvedStage,
-            } as SalesCacheItem;
-            console.debug("mPatch.onSuccess - merging item", {
-              before: item,
-              response: data,
-              after: merged,
-            });
-            return merged;
-          });
-          return updated;
-        });
-      } catch (err) {
-        // fall back to full refetch if cache update fails
-        console.debug(
-          "mPatch.onSuccess - cache update failed, invalidating",
-          err,
-        );
-        qc.invalidateQueries({ queryKey: ["sales"] });
-      }
-
-      if (vars.payload.closed === true) {
-        qc.invalidateQueries({ queryKey: ["contracts"] });
-        qc.invalidateQueries({ queryKey: ["contracts", vars.id] });
-      }
-
-      // Sales process updates can change the derived client status; refresh client list.
-      qc.invalidateQueries({ queryKey: ["clients"] });
-    },
-    onError: (err: unknown) =>
-      alert(`Fehler beim Aktualisieren: ${extractErrorMessage(err)}`),
-  });
-
-  const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
-  const [activeSourceFilters, setActiveSourceFilters] = useState<string[]>([]);
-
-  const toggleStatusFilter = (value: string) => {
-    setActiveStatusFilters((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
-    );
-  };
-  const toggleSourceFilter = (value: string) => {
-    setActiveSourceFilters((prev) =>
-      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
-    );
-  };
-
-  function parseDateSafe(input?: string | null): Date | null {
-    if (!input) return null;
-    try {
-      const date = new Date(input);
-      return new Date(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-      );
-    } catch {
-      return null;
-    }
-  }
+  const {
+    activeStatusFilters,
+    setActiveStatusFilters,
+    activeSourceFilters,
+    setActiveSourceFilters,
+    statusFilter,
+    toggleStatusFilter,
+    toggleSourceFilter,
+    dateFilter,
+    setDateFilter,
+    filteredEntries,
+  } = useSalesProcessFilters(sales);
 
   function normalizeStartPayload(
     p: StartSalesProcessRequest,
@@ -385,64 +206,6 @@ export default function SalesProcessView() {
           : format(p.initial_contact_date!, "yyyy-MM-dd"),
     };
   }
-
-  type DateFilterType = "all" | "past" | "upcoming" | "today";
-  const [dateFilter, setDateFilter] = useState<DateFilterType>("all");
-
-  const filteredEntries = useMemo(() => {
-    let result = sales;
-
-    if (activeStatusFilters.length > 0) {
-      result = result.filter((e) => {
-        let label: string;
-        const now = new Date();
-        const erstDate = parseDateSafe(e.initial_contact_date);
-        const zweitDate = parseDateSafe(e.follow_up_date);
-
-        if (e.stage === SALES_STAGE.INITIAL_CONTACT) {
-          if (erstDate && erstDate > now) {
-            label = "erstgespräch";
-          } else if (erstDate && (!zweitDate || zweitDate > now)) {
-            label = "erstgespräch abgeschlossen";
-          } else {
-            label = "erstgespräch";
-          }
-        } else if (e.stage === SALES_STAGE.FOLLOW_UP) {
-          if ((e.follow_up_result ?? null) == null) {
-            label = "zweitgespräch geplant";
-          } else {
-            label = "zweitgespräch abgeschlossen";
-          }
-        } else if (e.stage === SALES_STAGE.CLOSED) {
-          label = "abgeschlossen";
-        } else {
-          label = "verloren";
-        }
-        return activeStatusFilters.includes(label);
-      });
-    }
-
-    if (activeSourceFilters.length > 0) {
-      result = result.filter((e) =>
-        e.client_source ? activeSourceFilters.includes(e.client_source) : false,
-      );
-    }
-
-    if (dateFilter !== "all") {
-      const today = new Date();
-      result = result.filter((e) => {
-        const d = parseDateSafe(e.follow_up_date);
-        if (!d) return false;
-        if (dateFilter === "past") return d < today;
-        if (dateFilter === "upcoming") return d > today;
-        if (dateFilter === "today")
-          return d.toDateString() === today.toDateString();
-        return true;
-      });
-    }
-
-    return result;
-  }, [sales, activeStatusFilters, activeSourceFilters, dateFilter]);
 
   const {
     page: salesPage,
@@ -477,31 +240,6 @@ export default function SalesProcessView() {
 
   const canSubmit = formData.abschluss !== true || isContractValid;
 
-  const resetAll = () => {
-    setShowForm(false);
-    setFormStep(0);
-    setGespraechType("erstgespraech");
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      source: "",
-      stageId: null,
-      erstgespraechDate: null,
-      zweitgespraechDate: null,
-      salesProcessId: undefined,
-      zweitgespraechResult: null,
-      abschluss: null,
-      revenue: "",
-      contractDuration: "",
-      contractStart: null,
-      contractFrequency: "",
-      clientId: undefined,
-      leadId: undefined,
-      completedAt: null,
-    });
-  };
-
   // ── Erstgespräch: Step 1 save & close ──────────────────────────────
   const handleErstgespraechSave = async () => {
     if (!formData.name || !formData.source) return;
@@ -521,7 +259,7 @@ export default function SalesProcessView() {
         });
         resolvedLeadId = lead.id;
       } catch (err: unknown) {
-        alert("Fehler beim Anlegen des Leads: " + extractErrorMessage(err));
+        showErrorToast("Fehler beim Anlegen des Leads", err);
         return;
       }
     }
@@ -540,8 +278,6 @@ export default function SalesProcessView() {
       stage: SALES_STAGE.INITIAL_CONTACT,
     };
 
-    // log payload for debugging to confirm source and source_stage_id
-    console.log("handleZweitgespraechStart payload:", payload);
     await mStart.mutateAsync(payload);
   };
 
@@ -694,6 +430,108 @@ export default function SalesProcessView() {
     );
   };
 
+  const handleSelectLead = (lead: Lead | null) => {
+    if (lead) {
+      setFormData((prev) => ({
+        ...prev,
+        leadId: lead.id,
+        name: lead.name,
+        email: lead.email ?? "",
+        phone: lead.phone ?? "",
+        source: (lead.source as "organic" | "paid") ?? "",
+        stageId: lead.source_stage_id ?? null,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        leadId: undefined,
+      }));
+    }
+  };
+
+  const handleSaveInitialContactDate = async (id: number, newDate: Date) => {
+    try {
+      await mPatch.mutateAsync({
+        id,
+        payload: {
+          initial_contact_date: format(newDate, "yyyy-MM-dd"),
+        } as SalesProcessUpdateRequest,
+      });
+      await qc.invalidateQueries({ queryKey: queryKeys.sales });
+    } catch (err) {
+      showErrorToast("Fehler beim Speichern", err);
+      throw err;
+    }
+  };
+
+  const handleSaveFollowUpDate = async (id: number, newDate: Date) => {
+    try {
+      await mPatch.mutateAsync({
+        id,
+        payload: {
+          follow_up_date: format(newDate, "yyyy-MM-dd"),
+        } as SalesProcessUpdateRequest,
+      });
+      await qc.invalidateQueries({ queryKey: queryKeys.sales });
+    } catch (err) {
+      showErrorToast("Fehler beim Speichern", err);
+      throw err;
+    }
+  };
+
+  const handlePlanFollowUp = (entry: SalesProcessWithStageId) => {
+    setShowForm(true);
+    setFormStep(2);
+    setFormData((prev) => ({
+      ...prev,
+      name: entry.client_name,
+      salesProcessId: entry.id,
+      clientId: entry.client_id,
+      zweitgespraechDate: null,
+    }));
+  };
+
+  const handleEnterResult = (entry: SalesProcessWithStageId) => {
+    setShowForm(true);
+    setFormStep(3);
+
+    const followUpDate = parseIsoToLocal(entry.follow_up_date);
+    const now = new Date();
+    const defaultResult =
+      followUpDate && followUpDate > now
+        ? null
+        : (entry.follow_up_result ?? null);
+
+    setFormData((prev) => ({
+      ...prev,
+      name: entry.client_name,
+      salesProcessId: entry.id,
+      clientId: entry.client_id,
+      zweitgespraechResult: defaultResult,
+      zweitgespraechDate: followUpDate,
+    }));
+  };
+
+  const handleEnterClosing = (entry: SalesProcessWithStageId) => {
+    setShowForm(true);
+    setFormStep(4);
+    setFormData((prev) => ({
+      ...prev,
+      name: entry.client_name,
+      salesProcessId: entry.id,
+      clientId: entry.client_id,
+      zweitgespraechResult: true,
+      abschluss: null,
+      zweitgespraechDate: parseIsoToLocal(entry.follow_up_date),
+    }));
+  };
+
+  const handleShowContract = (entry: SalesProcessWithStageId) => {
+    const base = `/contracts?client=${entry.client_id}&open=1`;
+    const url = entry.id ? `${base}&sales_process=${entry.id}` : base;
+    navigate(url);
+  };
+
   // Card title per step
   const cardTitle = () => {
     if (formStep === 0) return "Verkaufsgespräch planen";
@@ -741,1285 +579,58 @@ export default function SalesProcessView() {
         </Button>
       </div>
 
-      {/* Workflow Form */}
-      {showForm && (
-        <Card className="border-2 border-primary/20 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              {cardTitle()}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Step 0: Type selection */}
-            {formStep === 0 && (
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <Label className="text-base font-medium">
-                    Welche Art von Gespräch möchten Sie planen?
-                  </Label>
-                  <RadioGroup
-                    value={gespraechType}
-                    onValueChange={(v) => setGespraechType(v as GespraechType)}
-                    className="flex flex-col gap-3"
-                  >
-                    <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
-                      <RadioGroupItem
-                        value="erstgespraech"
-                        id="type-erst"
-                        className="mt-0.5"
-                      />
-                      <label
-                        htmlFor="type-erst"
-                        className="cursor-pointer flex-1"
-                      >
-                        <div className="font-medium">Erstgespräch</div>
-                        <div className="text-sm text-muted-foreground mt-0.5">
-                          Erster Kontakt mit einem neuen Interessenten. Ein Lead
-                          wird automatisch angelegt.
-                        </div>
-                      </label>
-                    </div>
-                    <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-background cursor-pointer hover:bg-accent/50 transition-colors">
-                      <RadioGroupItem
-                        value="zweitgespraech"
-                        id="type-zweit"
-                        className="mt-0.5"
-                      />
-                      <label
-                        htmlFor="type-zweit"
-                        className="cursor-pointer flex-1"
-                      >
-                        <div className="font-medium">Zweitgespräch</div>
-                        <div className="text-sm text-muted-foreground mt-0.5">
-                          Folgegespräch mit einem bestehenden Lead. Sie können
-                          einen vorhandenen Lead auswählen.
-                        </div>
-                      </label>
-                    </div>
-                  </RadioGroup>
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() =>
-                      setFormStep(gespraechType === "erstgespraech" ? 1 : 5)
-                    }
-                  >
-                    Weiter
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
+      <SalesProcessWorkflowForm
+        showForm={showForm}
+        title={cardTitle()}
+        formStep={formStep}
+        setFormStep={setFormStep}
+        gespraechType={gespraechType}
+        setGespraechType={setGespraechType}
+        formData={formData}
+        setFormData={setFormData}
+        stages={stages}
+        isStartPending={mStart.isPending}
+        isPatchPending={mPatch.isPending}
+        canSubmit={canSubmit}
+        isFollowUpFuture={isFollowUpFuture}
+        onClose={() => setShowForm(false)}
+        onErstgespraechSave={handleErstgespraechSave}
+        onZweitgespraechStart={handleZweitgespraechStart}
+        onSubmit={handleSubmit}
+        onSelectLead={handleSelectLead}
+      />
 
-            {/* Step 1: Erstgespräch planen — saves & closes */}
-            {formStep === 1 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name (Vor- und Nachname) *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="Max Mustermann"
-                    className="bg-success/5 border-success/30 focus:border-success"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="max@example.com"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefon</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="+49 123 456789"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Datum des Erstgesprächs</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.erstgespraechDate &&
-                            "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.erstgespraechDate
-                          ? format(formData.erstgespraechDate, "PPP", {
-                              locale: de,
-                            })
-                          : "Datum auswählen"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={formData.erstgespraechDate ?? undefined}
-                        onSelect={(date) =>
-                          setFormData({
-                            ...formData,
-                            erstgespraechDate: date ?? null,
-                          })
-                        }
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Quelle *</Label>
-                  <Select
-                    value={formData.source ?? ""}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        source: value as "organic" | "paid",
-                        stageId: value !== "paid" ? null : formData.stageId,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                      <SelectValue placeholder="Quelle auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="organic">Organisch</SelectItem>
-                      <SelectItem value="paid">Bezahlt</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.source === "paid" && (
-                  <div className="space-y-2">
-                    <Label>Bühne auswählen</Label>
-                    <Select
-                      value={String(formData.stageId ?? "")}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, stageId: Number(value) })
-                      }
-                    >
-                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                        <SelectValue placeholder="Bühne auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stages.map((st) => (
-                          <SelectItem key={st.id} value={String(st.id)}>
-                            {st.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="col-span-full flex gap-3">
-                  <Button variant="outline" onClick={() => setFormStep(0)}>
-                    Zurück
-                  </Button>
-                  <Button
-                    onClick={handleErstgespraechSave}
-                    disabled={
-                      !formData.name || !formData.source || mStart.isPending
-                    }
-                  >
-                    {mStart.isPending ? "Speichern…" : "Speichern & Schließen"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowForm(false)}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Zweitgespräch planen (opened from table Aktionen) */}
-            {formStep === 2 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="col-span-full p-3 bg-muted/30 rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    Zweitgespräch planen für{" "}
-                    <span className="font-medium text-foreground">
-                      {formData.name}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="space-y-2 col-span-full md:col-span-1">
-                  <Label>Datum des Zweitgesprächs *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.zweitgespraechDate &&
-                            "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.zweitgespraechDate
-                          ? format(formData.zweitgespraechDate, "PPP", {
-                              locale: de,
-                            })
-                          : "Datum auswählen"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={formData.zweitgespraechDate ?? undefined}
-                        onSelect={(date) =>
-                          setFormData({
-                            ...formData,
-                            zweitgespraechDate: date ?? null,
-                          })
-                        }
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="col-span-full flex gap-3">
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={!formData.zweitgespraechDate || mPatch.isPending}
-                  >
-                    {mPatch.isPending ? "Speichern…" : "Speichern"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowForm(false)}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Zweitgespräch Ergebnis */}
-            {formStep === 3 && (
-              <div className="space-y-6">
-                <div className="p-4 bg-muted/30 rounded-lg">
-                  <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Zweitgespräch am:{" "}
-                    {formData.zweitgespraechDate
-                      ? format(formData.zweitgespraechDate, "PPP", {
-                          locale: de,
-                        })
-                      : "—"}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Ergebnis des Zweitgesprächs</Label>
-                  <Select
-                    value={
-                      formData.zweitgespraechResult === true
-                        ? "erschienen"
-                        : formData.zweitgespraechResult === false
-                          ? "nicht_erschienen"
-                          : "ausstehend"
-                    }
-                    onValueChange={(value) => {
-                      setFormData({
-                        ...formData,
-                        zweitgespraechResult:
-                          value === "erschienen"
-                            ? true
-                            : value === "nicht_erschienen"
-                              ? false
-                              : null,
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="bg-muted/5 border-muted/30 focus:border-success">
-                      <SelectValue placeholder="Ergebnis auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ausstehend">Ausstehend</SelectItem>
-                      <SelectItem value="erschienen">Erschienen</SelectItem>
-                      <SelectItem value="nicht_erschienen">
-                        Nicht erschienen
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {isFollowUpFuture && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Das Zweitgespräch liegt in der Zukunft. Wurde bereits
-                      vorzeitig ein Abschluss erzielt?
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  <Button onClick={handleSubmit}>Speichern</Button>
-                  <Button variant="ghost" onClick={() => setShowForm(false)}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Abschluss */}
-            {formStep === 4 && (
-              <div className="space-y-6">
-                <div className="p-4 bg-muted/30 rounded-lg">
-                  <h3 className="font-medium mb-2">Kunde: {formData.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Erschienen:{" "}
-                    {formData.zweitgespraechResult === true
-                      ? "Ja"
-                      : formData.zweitgespraechResult === false
-                        ? "Nein"
-                        : "—"}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Abschluss</Label>
-                  <RadioGroup
-                    value={
-                      formData.abschluss === true
-                        ? "erfolgreich"
-                        : formData.abschluss === false
-                          ? "nicht_erfolgreich"
-                          : "unset"
-                    }
-                    onValueChange={(value) => {
-                      setFormData({
-                        ...formData,
-                        abschluss:
-                          value === "erfolgreich"
-                            ? true
-                            : value === "nicht_erfolgreich"
-                              ? false
-                              : null,
-                      });
-                    }}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="unset" id="abschluss-unset" />
-                      <Label htmlFor="abschluss-unset">Noch offen</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem
-                        value="erfolgreich"
-                        id="abschluss-erfolgreich"
-                      />
-                      <Label htmlFor="abschluss-erfolgreich">
-                        Erfolgreich (Vertrag abgeschlossen)
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem
-                        value="nicht_erfolgreich"
-                        id="abschluss-nicht-erfolgreich"
-                      />
-                      <Label htmlFor="abschluss-nicht-erfolgreich">
-                        Nicht erfolgreich (kein Abschluss)
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                {formData.abschluss && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-success/10 rounded-lg">
-                    <div className="space-y-2">
-                      <Label>Umsatz (€)</Label>
-                      <Input
-                        type="number"
-                        value={formData.revenue}
-                        onChange={(e) =>
-                          setFormData({ ...formData, revenue: e.target.value })
-                        }
-                        placeholder="4800"
-                        className="bg-success/5 border-success/30"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Vertragsdauer (Monate)</Label>
-                      <Select
-                        value={formData.contractDuration ?? ""}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, contractDuration: value })
-                        }
-                      >
-                        <SelectTrigger className="bg-success/5 border-success/30">
-                          <SelectValue placeholder="Dauer auswählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="3">3</SelectItem>
-                          <SelectItem value="6">6</SelectItem>
-                          <SelectItem value="12">12</SelectItem>
-                          <SelectItem value="24">24</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Startdatum</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.contractStart &&
-                                "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {formData.contractStart
-                              ? format(formData.contractStart, "PPP", {
-                                  locale: de,
-                                })
-                              : "Startdatum auswählen"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={formData.contractStart ?? undefined}
-                            onSelect={(date) =>
-                              setFormData({
-                                ...formData,
-                                contractStart: date ?? null,
-                              })
-                            }
-                            initialFocus
-                            className="pointer-events-auto"
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Zahlungsfrequenz</Label>
-                      <Select
-                        value={formData.contractFrequency ?? ""}
-                        onValueChange={(value) =>
-                          setFormData({
-                            ...formData,
-                            contractFrequency: value as
-                              | "monthly"
-                              | "bi-monthly"
-                              | "quarterly"
-                              | "one-time"
-                              | "bi-yearly",
-                          })
-                        }
-                      >
-                        <SelectTrigger className="bg-success/5 border-success/30">
-                          <SelectValue placeholder="Frequenz auswählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="monthly">Monatlich</SelectItem>
-                          <SelectItem value="bi-monthly">
-                            Zweimonatlich
-                          </SelectItem>
-                          <SelectItem value="quarterly">
-                            Quartalsweise
-                          </SelectItem>
-                          {(Number(formData.contractDuration) || 0) >= 12 ||
-                          formData.contractFrequency === "bi-yearly" ? (
-                            <SelectItem value="bi-yearly">
-                              Halbjährlich
-                            </SelectItem>
-                          ) : null}
-                          <SelectItem value="one-time">Einmalig</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Abschlussdatum</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal bg-success/5 border-success/30",
-                              !formData.completedAt && "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {formData.completedAt
-                              ? format(formData.completedAt, "PPP", {
-                                  locale: de,
-                                })
-                              : "Datum auswählen"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={
-                              formData.completedAt
-                                ? new Date(formData.completedAt)
-                                : undefined
-                            }
-                            onSelect={(date) =>
-                              setFormData({
-                                ...formData,
-                                completedAt: date ? date.toISOString() : null,
-                              })
-                            }
-                            initialFocus
-                            className="pointer-events-auto"
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={!canSubmit}
-                    className="mt-4"
-                  >
-                    Speichern & Abschließen
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowForm(false)}
-                    className="mt-4"
-                  >
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 5: Zweitgespräch — full new entry (old first-step flow) */}
-            {formStep === 5 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Lead search */}
-                <div className="col-span-full space-y-2">
-                  <Label>Bestehenden Lead auswählen (optional)</Label>
-                  <LeadSearch
-                    selectedLeadId={formData.leadId ?? null}
-                    onSelectLead={(lead: Lead | null) => {
-                      if (lead) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          leadId: lead.id,
-                          name: lead.name,
-                          email: lead.email ?? "",
-                          phone: lead.phone ?? "",
-                          source: (lead.source as "organic" | "paid") ?? "",
-                          stageId: lead.source_stage_id ?? null,
-                        }));
-                      } else {
-                        setFormData((prev) => ({
-                          ...prev,
-                          leadId: undefined,
-                        }));
-                      }
-                    }}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="name-zweit">Name (Vor- und Nachname) *</Label>
-                  <Input
-                    id="name-zweit"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="Max Mustermann"
-                    className="bg-success/5 border-success/30 focus:border-success"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email-zweit">Email</Label>
-                  <Input
-                    id="email-zweit"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="max@example.com"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone-zweit">Telefon</Label>
-                  <Input
-                    id="phone-zweit"
-                    value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
-                    placeholder="+49 123 456789"
-                    className="bg-success/5 border-success/30"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Datum des Zweitgesprächs *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal bg-success/5 border-success/30 focus:border-success",
-                          !formData.zweitgespraechDate &&
-                            "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.zweitgespraechDate
-                          ? format(formData.zweitgespraechDate, "PPP", {
-                              locale: de,
-                            })
-                          : "Datum auswählen"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={formData.zweitgespraechDate ?? undefined}
-                        onSelect={(date) =>
-                          setFormData({
-                            ...formData,
-                            zweitgespraechDate: date ?? null,
-                          })
-                        }
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Quelle *</Label>
-                  <Select
-                    value={formData.source ?? ""}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        source: value as "organic" | "paid",
-                        stageId: value !== "paid" ? null : formData.stageId,
-                      })
-                    }
-                  >
-                    <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                      <SelectValue placeholder="Quelle auswählen" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="organic">Organisch</SelectItem>
-                      <SelectItem value="paid">Bezahlt</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.source === "paid" && (
-                  <div className="space-y-2">
-                    <Label>Bühne auswählen</Label>
-                    <Select
-                      value={String(formData.stageId ?? "")}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, stageId: Number(value) })
-                      }
-                    >
-                      <SelectTrigger className="bg-success/5 border-success/30 focus:border-success">
-                        <SelectValue placeholder="Bühne auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stages.map((st) => (
-                          <SelectItem key={st.id} value={String(st.id)}>
-                            {st.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="col-span-full flex gap-3">
-                  <Button variant="outline" onClick={() => setFormStep(0)}>
-                    Zurück
-                  </Button>
-                  <Button
-                    onClick={handleZweitgespraechStart}
-                    disabled={
-                      !formData.name ||
-                      !formData.source ||
-                      !formData.zweitgespraechDate ||
-                      mStart.isPending
-                    }
-                  >
-                    {mStart.isPending ? "Speichern…" : "Speichern"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setShowForm(false)}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* table */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <Select
-              value={statusFilter}
-              onValueChange={(v: StatusFilter) => setStatusFilter(v)}
-            >
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Status filtern" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle Status</SelectItem>
-                <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
-                <SelectItem value="erstgespräch abgeschlossen">
-                  Erstgespräch abgeschlossen
-                </SelectItem>
-                <SelectItem value="zweitgespräch geplant">
-                  Zweitgespräch geplant
-                </SelectItem>
-                <SelectItem value="zweitgespräch abgeschlossen">
-                  Zweitgespräch abgeschlossen
-                </SelectItem>
-                <SelectItem value="abgeschlossen">Abgeschlossen</SelectItem>
-                <SelectItem value="verloren">Verloren</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Kunde</TableHead>
-                <TableHead>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
-                        Status
-                        <Filter className="w-3 h-3 opacity-70" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-52">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
-                          <Checkbox
-                            id="filter-all"
-                            checked={activeStatusFilters.length === 0}
-                            onCheckedChange={() => setActiveStatusFilters([])}
-                          />
-                          <label
-                            htmlFor="filter-all"
-                            className="text-sm font-medium"
-                          >
-                            Alle
-                          </label>
-                        </div>
-
-                        {[
-                          "erstgespräch",
-                          "erstgespräch abgeschlossen",
-                          "zweitgespräch geplant",
-                          "zweitgespräch abgeschlossen",
-                          "abgeschlossen",
-                          "verloren",
-                        ].map((status) => {
-                          const capitalized =
-                            status.charAt(0).toUpperCase() + status.slice(1);
-                          return (
-                            <div
-                              key={status}
-                              className="flex items-center space-x-2"
-                            >
-                              <Checkbox
-                                id={`filter-${status}`}
-                                checked={activeStatusFilters.includes(status)}
-                                onCheckedChange={() =>
-                                  toggleStatusFilter(status)
-                                }
-                              />
-                              <label
-                                htmlFor={`filter-${status}`}
-                                className="text-sm"
-                              >
-                                {capitalized}
-                              </label>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </TableHead>
-                <TableHead>Erstgespräch</TableHead>
-                <TableHead>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
-                        Zweitgespräch
-                        <Filter className="w-3 h-3 opacity-70" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-56 space-y-2">
-                      <div className="space-y-1">
-                        <Label className="text-sm font-medium">Zeitraum</Label>
-                        <Select
-                          value={dateFilter}
-                          onValueChange={(val) =>
-                            setDateFilter(val as DateFilterType)
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Zeitraum wählen" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">Alle</SelectItem>
-                            <SelectItem value="past">Vergangene</SelectItem>
-                            <SelectItem value="upcoming">Zukünftige</SelectItem>
-                            <SelectItem value="today">Heute</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </TableHead>
-                <TableHead>Ergebnis</TableHead>
-                <TableHead>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
-                        Quelle
-                        <Filter className="w-3 h-3 opacity-70" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-52">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
-                          <Checkbox
-                            id="filter-source-all"
-                            checked={activeSourceFilters.length === 0}
-                            onCheckedChange={() => setActiveSourceFilters([])}
-                          />
-                          <label
-                            htmlFor="filter-source-all"
-                            className="text-sm font-medium"
-                          >
-                            Alle
-                          </label>
-                        </div>
-
-                        {[
-                          { value: "paid", label: "Bezahlt" },
-                          { value: "organic", label: "Organisch" },
-                        ].map(({ value, label }) => (
-                          <div
-                            key={value}
-                            className="flex items-center space-x-2"
-                          >
-                            <Checkbox
-                              id={`filter-source-${value}`}
-                              checked={activeSourceFilters.includes(value)}
-                              onCheckedChange={() => toggleSourceFilter(value)}
-                            />
-                            <label
-                              htmlFor={`filter-source-${value}`}
-                              className="text-sm"
-                            >
-                              {label}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </TableHead>
-                <TableHead>Bühne</TableHead>
-                <TableHead>Umsatz</TableHead>
-                <TableHead>Aktionen</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedSales.map((e) => {
-                const linkedStage =
-                  typeof e.stage_id === "number"
-                    ? (stages.find((s) => s.id === e.stage_id)?.name ?? null)
-                    : null;
-                return (
-                  <TableRow
-                    key={e.id}
-                    id={`sales-${e.id}`}
-                    className={
-                      highlightId === e.id ? "ring-2 ring-primary" : undefined
-                    }
-                  >
-                    <TableCell>{e.client_name}</TableCell>
-
-                    {/* Status badge */}
-                    <TableCell>
-                      <Badge className={stageBadgeClass[e.stage]}>
-                        {e.stage === SALES_STAGE.INITIAL_CONTACT
-                          ? "Erstgespräch"
-                          : STAGE_LABELS[e.stage]}
-                      </Badge>
-                    </TableCell>
-
-                    {/* Erstgespräch date (inline editable) */}
-                    <TableCell>
-                      <div className="flex items-center gap-2 relative">
-                        <span className="text-sm">
-                          {e.initial_contact_date
-                            ? format(
-                                parseDateSafe(e.initial_contact_date)!,
-                                "dd.MM.yyyy",
-                                { locale: de },
-                              )
-                            : "–"}
-                        </span>
-
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={savingId === e.id}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            const buffer = 320;
-                            const preferTop =
-                              ev.clientY > window.innerHeight - buffer;
-                            setPopoverSide(preferTop ? "top" : "bottom");
-                            setEditingInitialId(e.id);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 text-muted-foreground" />
-                        </Button>
-
-                        {editingInitialId === e.id && (
-                          <Popover
-                            open
-                            onOpenChange={() => setEditingInitialId(null)}
-                          >
-                            <PopoverTrigger asChild>
-                              <button
-                                className="absolute inset-0"
-                                style={{ pointerEvents: "none" }}
-                                aria-hidden="true"
-                              />
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
-                              align="start"
-                              side={popoverSide}
-                              onOpenAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={
-                                  parseDateSafe(
-                                    e.initial_contact_date ?? null,
-                                  ) ?? undefined
-                                }
-                                onSelect={async (newDate) => {
-                                  if (!newDate) return;
-                                  try {
-                                    setSavingId(e.id);
-                                    await mPatch.mutateAsync({
-                                      id: e.id,
-                                      payload: {
-                                        initial_contact_date: format(
-                                          newDate,
-                                          "yyyy-MM-dd",
-                                        ),
-                                      } as SalesProcessUpdateRequest,
-                                    });
-                                    await qc.invalidateQueries({
-                                      queryKey: ["sales"],
-                                    });
-                                  } catch (err) {
-                                    alert(
-                                      "Fehler beim Speichern: " +
-                                        extractErrorMessage(err),
-                                    );
-                                  } finally {
-                                    setSavingId(null);
-                                    setEditingInitialId(null);
-                                  }
-                                }}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* Zweitgespräch date with inline edit */}
-                    <TableCell>
-                      <div className="flex items-center gap-2 relative">
-                        <span className="text-sm">
-                          {e.follow_up_date &&
-                          e.stage !== SALES_STAGE.INITIAL_CONTACT
-                            ? format(
-                                parseDateSafe(e.follow_up_date)!,
-                                "dd.MM.yyyy",
-                                { locale: de },
-                              )
-                            : "–"}
-                        </span>
-                        {e.stage !== SALES_STAGE.INITIAL_CONTACT &&
-                          e.follow_up_date && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              disabled={savingId === e.id}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                // Choose popover side based on click position so
-                                // the calendar opens upwards when near bottom
-                                const buffer = 320; // estimated popover height
-                                const preferTop =
-                                  ev.clientY > window.innerHeight - buffer;
-                                setPopoverSide(preferTop ? "top" : "bottom");
-                                setEditingId(e.id);
-                              }}
-                            >
-                              <Pencil className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                          )}
-
-                        {editingId === e.id && (
-                          <Popover open onOpenChange={() => setEditingId(null)}>
-                            <PopoverTrigger asChild>
-                              <button
-                                className="absolute inset-0"
-                                style={{ pointerEvents: "none" }}
-                                aria-hidden="true"
-                              />
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
-                              align="start"
-                              side={popoverSide}
-                              onOpenAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <Calendar
-                                mode="single"
-                                selected={
-                                  parseDateSafe(e.follow_up_date ?? null) ??
-                                  undefined
-                                }
-                                onSelect={async (newDate) => {
-                                  if (!newDate) return;
-                                  try {
-                                    setSavingId(e.id);
-                                    await mPatch.mutateAsync({
-                                      id: e.id,
-                                      payload: {
-                                        follow_up_date: format(
-                                          newDate,
-                                          "yyyy-MM-dd",
-                                        ),
-                                      } as SalesProcessUpdateRequest,
-                                    });
-                                    await qc.invalidateQueries({
-                                      queryKey: ["sales"],
-                                    });
-                                  } catch (err) {
-                                    alert(
-                                      "Fehler beim Speichern: " +
-                                        extractErrorMessage(err),
-                                    );
-                                  } finally {
-                                    setSavingId(null);
-                                    setEditingId(null);
-                                  }
-                                }}
-                                initialFocus
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    {/* Result */}
-                    <TableCell>
-                      {e.stage === SALES_STAGE.INITIAL_CONTACT
-                        ? "–"
-                        : e.follow_up_result === true
-                          ? "Erschienen"
-                          : e.follow_up_result === false
-                            ? "Nicht erschienen"
-                            : "Ausstehend"}
-                    </TableCell>
-
-                    <TableCell>
-                      {e.client_source
-                        ? e.client_source === "paid"
-                          ? "Bezahlt"
-                          : "Organisch"
-                        : "-"}
-                    </TableCell>
-                    <TableCell>{linkedStage ?? "-"}</TableCell>
-                    <TableCell>
-                      {e.revenue ? `€${e.revenue.toLocaleString()}` : "-"}
-                    </TableCell>
-
-                    {/* Actions column */}
-                    <TableCell>
-                      <div className="flex gap-2 flex-wrap">
-                        <CommentsDialog
-                          entityType="salesprocess"
-                          entityId={e.id}
-                          entityName={e.client_name}
-                        />
-
-                        {/* Zweitgespräch planen — only for Erstgespräch stage */}
-                        {e.stage === SALES_STAGE.INITIAL_CONTACT && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setShowForm(true);
-                              setFormStep(2);
-                              setFormData((prev) => ({
-                                ...prev,
-                                name: e.client_name,
-                                salesProcessId: e.id,
-                                clientId: e.client_id,
-                                zweitgespraechDate: null,
-                              }));
-                            }}
-                          >
-                            Zweitgespräch planen
-                          </Button>
-                        )}
-
-                        {/* Ergebnis eintragen — only for follow_up with no result yet */}
-                        {e.stage === SALES_STAGE.FOLLOW_UP &&
-                          e.follow_up_result == null && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setShowForm(true);
-                                setFormStep(3);
-
-                                const followUpDate = parseDateSafe(
-                                  e.follow_up_date,
-                                );
-                                const now = new Date();
-
-                                const defaultResult =
-                                  followUpDate && followUpDate > now
-                                    ? null
-                                    : (e.follow_up_result ?? null);
-
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  name: e.client_name,
-                                  salesProcessId: e.id,
-                                  clientId: e.client_id,
-                                  zweitgespraechResult: defaultResult,
-                                  zweitgespraechDate: followUpDate,
-                                }));
-                              }}
-                            >
-                              Ergebnis eintragen
-                            </Button>
-                          )}
-
-                        {/* Abschluss eingeben */}
-                        {e.stage === SALES_STAGE.FOLLOW_UP &&
-                          e.follow_up_result === true && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setShowForm(true);
-                                setFormStep(4);
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  name: e.client_name,
-                                  salesProcessId: e.id,
-                                  clientId: e.client_id,
-                                  zweitgespraechResult: true,
-                                  abschluss: null,
-                                  zweitgespraechDate: parseDateSafe(
-                                    e.follow_up_date,
-                                  ),
-                                }));
-                              }}
-                            >
-                              Abschluss eingeben
-                            </Button>
-                          )}
-
-                        {e.stage === SALES_STAGE.CLOSED && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const base = `/contracts?client=${e.client_id}&open=1`;
-                              const url = e?.id
-                                ? `${base}&sales_process=${e.id}`
-                                : base;
-                              navigate(url);
-                            }}
-                          >
-                            Vertrag anzeigen
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          <TablePagination
-            page={salesPage}
-            totalPages={salesTotalPages}
-            onPageChange={setSalesPage}
-          />
-        </CardContent>
-      </Card>
+      <SalesProcessTable
+        statusFilter={statusFilter}
+        setActiveStatusFilters={setActiveStatusFilters}
+        activeStatusFilters={activeStatusFilters}
+        activeSourceFilters={activeSourceFilters}
+        setActiveSourceFilters={setActiveSourceFilters}
+        toggleStatusFilter={toggleStatusFilter}
+        toggleSourceFilter={toggleSourceFilter}
+        dateFilter={dateFilter}
+        setDateFilter={setDateFilter}
+        paginatedSales={paginatedSales}
+        stages={stages}
+        highlightId={highlightId}
+        editingId={editingId}
+        setEditingId={setEditingId}
+        editingInitialId={editingInitialId}
+        setEditingInitialId={setEditingInitialId}
+        popoverSide={popoverSide}
+        setPopoverSide={setPopoverSide}
+        savingId={savingId}
+        setSavingId={setSavingId}
+        onSaveInitialContactDate={handleSaveInitialContactDate}
+        onSaveFollowUpDate={handleSaveFollowUpDate}
+        onPlanFollowUp={handlePlanFollowUp}
+        onEnterResult={handleEnterResult}
+        onEnterClosing={handleEnterClosing}
+        onShowContract={handleShowContract}
+        page={salesPage}
+        totalPages={salesTotalPages}
+        onPageChange={setSalesPage}
+      />
     </div>
   );
 }

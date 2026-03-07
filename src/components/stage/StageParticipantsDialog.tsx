@@ -1,6 +1,6 @@
 // src/components/stage/StageParticipantsDialog.tsx
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,8 @@ import {
   Stage,
   StageParticipant,
 } from "@/lib/api";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface Props {
   stage: Stage;
@@ -34,11 +36,14 @@ export function StageParticipantsDialog({ stage }: Props) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
 
-  const { data: participants = [], isLoading } = useQuery({
-    queryKey: ["stage-participants", stage.id],
+  const { data: participants = [], isLoading } = useMockableQuery<
+    StageParticipant[]
+  >({
+    queryKey: queryKeys.stageParticipants(stage.id),
     queryFn: () => getStageParticipants(stage.id),
     enabled: open,
     refetchOnWindowFocus: false,
+    mockData: [],
   });
 
   const deleteMutation = useMutation({
@@ -46,16 +51,17 @@ export function StageParticipantsDialog({ stage }: Props) {
       deleteStageParticipant(stage.id, participantId),
 
     onMutate: async (participantId) => {
-      await qc.cancelQueries({ queryKey: ["stage-participants", stage.id] });
+      await qc.cancelQueries({
+        queryKey: queryKeys.stageParticipants(stage.id),
+      });
 
-      const prev = qc.getQueryData<StageParticipant[]>([
-        "stage-participants",
-        stage.id,
-      ]);
+      const prev = qc.getQueryData<StageParticipant[]>(
+        queryKeys.stageParticipants(stage.id),
+      );
 
       qc.setQueryData<StageParticipant[]>(
-        ["stage-participants", stage.id],
-        (old) => old?.filter((p) => p.id !== participantId) ?? []
+        queryKeys.stageParticipants(stage.id),
+        (old) => old?.filter((p) => p.id !== participantId) ?? [],
       );
 
       return { prev };
@@ -63,18 +69,17 @@ export function StageParticipantsDialog({ stage }: Props) {
 
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) {
-        qc.setQueryData(["stage-participants", stage.id], ctx.prev);
+        qc.setQueryData(queryKeys.stageParticipants(stage.id), ctx.prev);
       }
     },
 
     onSuccess: async () => {
-      // 🔥 THIS was missing
       await qc.invalidateQueries({
-        queryKey: ["stage-participants", stage.id],
+        queryKey: queryKeys.stageParticipants(stage.id),
       });
 
       await qc.invalidateQueries({
-        queryKey: ["stages"], // updates recorded_contacts
+        queryKey: queryKeys.stages, // updates recorded_contacts
       });
     },
   });

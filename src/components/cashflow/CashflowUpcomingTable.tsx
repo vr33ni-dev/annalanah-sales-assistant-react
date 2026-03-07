@@ -12,14 +12,8 @@ import {
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { asArray } from "@/lib/safe";
-
-function labelFromYm(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  return new Intl.DateTimeFormat("de-DE", {
-    month: "short",
-    year: "numeric",
-  }).format(new Date(y, m - 1, 1));
-}
+import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   const { enabled } = useAuthEnabled();
@@ -30,9 +24,8 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     isFetching: isFetchingForecast,
     isError: isErrorForecast,
   } = useQuery<CashflowRow[]>({
-    queryKey: ["cashflow-forecast", contractId],
-    queryFn: ({ queryKey }) =>
-      getCashflowForecast(queryKey[1] as number | undefined),
+    queryKey: queryKeys.cashflowForecastByContract(contractId),
+    queryFn: () => getCashflowForecast(contractId),
     enabled,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -44,7 +37,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     isFetching: isFetchingEntries,
     isError: isErrorEntries,
   } = useQuery<CashflowEntry[]>({
-    queryKey: ["cashflow-entries", contractId],
+    queryKey: queryKeys.cashflowEntriesByContract(contractId),
     queryFn: () => getCashflowEntries(contractId),
     enabled: enabled && isContractView,
     retry: false,
@@ -53,14 +46,14 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   });
 
   const { data: potentialMonths = 6 } = useQuery<number>({
-    queryKey: ["setting", "potential_months"],
+    queryKey: queryKeys.numericSetting("potential_months"),
     queryFn: () => getNumericSetting("potential_months", 6),
     enabled,
     staleTime: 10 * 60 * 1000,
   });
 
   const { data: avgRevenue = 600 } = useQuery<number>({
-    queryKey: ["setting", "avg_revenue_per_contract"],
+    queryKey: queryKeys.numericSetting("avg_revenue_per_contract"),
     queryFn: () => getNumericSetting("avg_revenue_per_contract", 600),
     enabled,
     staleTime: 10 * 60 * 1000,
@@ -75,7 +68,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayYmd = toYmdLocal(today);
 
     const byMonth = new Map<string, number>();
 
@@ -93,7 +86,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
         continue;
       }
 
-      const dueYmd = String(entry.due_date).match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+      const dueYmd = extractYmd(entry.due_date);
       if (!dueYmd) continue;
       if (dueYmd <= todayYmd) continue;
 
@@ -150,7 +143,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
                 <div key={row.month} className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="font-medium">
-                      {labelFromYm(row.month)}
+                      {formatMonthLabel(row.month)}
                     </span>
                   </div>
                   <div className="space-y-1">

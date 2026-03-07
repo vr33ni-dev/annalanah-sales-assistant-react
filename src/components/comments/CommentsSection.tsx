@@ -15,7 +15,9 @@ import {
   deleteComment,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { getMockCommentsForEntity, isLovablePreview } from "@/lib/mockData";
+import { getMockCommentsForEntity } from "@/lib/mockData";
+import { ConfirmActionButton } from "../ConfirmActionButton";
+import { toast } from "@/hooks/use-toast";
 
 interface CommentsSectionProps {
   entityType: CommentEntityType;
@@ -65,6 +67,13 @@ export function CommentsSection({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       setNewComment("");
+      toast({ title: "Kommentar gespeichert" });
+    },
+    onError: () => {
+      toast({
+        title: "Kommentar konnte nicht gespeichert werden",
+        variant: "destructive",
+      });
     },
   });
 
@@ -72,6 +81,13 @@ export function CommentsSection({
     mutationFn: (commentId: number) => deleteComment(commentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      toast({ title: "Kommentar gelöscht" });
+    },
+    onError: () => {
+      toast({
+        title: "Kommentar konnte nicht gelöscht werden",
+        variant: "destructive",
+      });
     },
   });
 
@@ -91,17 +107,17 @@ export function CommentsSection({
       };
       setLocalMockComments((prev) => [...prev, mockComment]);
       setNewComment("");
+      toast({ title: "Kommentar gespeichert" });
     } else {
       createMutation.mutate(trimmed);
     }
   };
 
   const handleDelete = (commentId: number) => {
-    if (!window.confirm("Kommentar wirklich löschen?")) return;
-
     if (useMockData) {
       // In mock mode, remove from local state
       setLocalMockComments((prev) => prev.filter((c) => c.id !== commentId));
+      toast({ title: "Kommentar gelöscht" });
     } else {
       deleteMutation.mutate(commentId);
     }
@@ -153,15 +169,21 @@ export function CommentsSection({
                         : "—"}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(comment.id)}
-                    disabled={deleteMutation.isPending}
+                  <ConfirmActionButton
+                    title="Kommentar löschen?"
+                    description="Dieser Kommentar wird dauerhaft gelöscht."
+                    confirmLabel="Löschen"
+                    onConfirm={() => handleDelete(comment.id)}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </ConfirmActionButton>
                 </div>
               </div>
             ))}

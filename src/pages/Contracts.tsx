@@ -29,8 +29,7 @@ import {
 } from "lucide-react";
 
 import { UpsellModal } from "@/components/upsell/UpsellModal";
-import { CashflowHistoryTable } from "./CashflowHistoryTable";
-import { useQuery } from "@tanstack/react-query";
+import { CashflowHistoryTable } from "../components/cashflow/CashflowHistoryTable";
 import {
   Contract,
   getContracts,
@@ -50,6 +49,7 @@ import {
   mockContracts,
   mockCashflowForecast,
   mockSalesProcesses,
+  mockUpsells,
 } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
@@ -58,10 +58,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { CashflowUpcomingTable } from "./CashflowUpcomingTable";
-import { formatDateOnly } from "@/helpers/date";
+import { CashflowUpcomingTable } from "../components/cashflow/CashflowUpcomingTable";
+import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+import { queryKeys } from "@/lib/queryKeys";
 
 /* ---------------- helpers ---------------- */
 
@@ -82,12 +83,6 @@ function parseIso(iso: string) {
   const datePart = iso.split("T")[0];
   const [y, m, d] = datePart.split("-").map(Number);
   return new Date(y, m - 1, d);
-}
-
-function toYmdLocal(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
 }
 
 // Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
@@ -124,14 +119,6 @@ function monthsOverlap(a1: Date, a2: Date, b1: Date, b2: Date): number {
   return Math.max(0, months + includeE);
 }
 
-function labelFromYm(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    year: "numeric",
-  }).format(new Date(y, m - 1, 1));
-}
-
 function euro(n: number) {
   return `€${Math.round(n).toLocaleString()}`;
 }
@@ -156,14 +143,23 @@ export default function Contracts() {
   );
 
   // Upsell for selected contract
-  const { data: upsell, refetch: refetchUpsell } = useQuery({
-    queryKey: ["upsell", selectedContract?.sales_process_id],
+  const { data: upsell, refetch: refetchUpsell } = useMockableQuery<
+    ContractUpsell[],
+    ContractUpsell | null,
+    ReturnType<typeof queryKeys.upsell>
+  >({
+    queryKey: queryKeys.upsell(selectedContract?.sales_process_id),
     queryFn: () =>
       selectedContract
         ? getUpsellForSalesProcess(selectedContract.sales_process_id)
         : null,
     enabled: !!selectedContract,
     select: (list) => (list && list.length > 0 ? list[0] : null),
+    mockData: selectedContract
+      ? mockUpsells.filter(
+          (item) => item.sales_process_id === selectedContract.sales_process_id,
+        )
+      : [],
   });
 
   // Contracts for table + KPIs
@@ -173,7 +169,7 @@ export default function Contracts() {
     isError: errorContracts,
     refetch: refetchContracts,
   } = useMockableQuery<Contract[]>({
-    queryKey: ["contracts"],
+    queryKey: queryKeys.contracts,
     queryFn: getContracts,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -187,7 +183,7 @@ export default function Contracts() {
     isFetching: loadingForecast,
     isError: errorForecast,
   } = useMockableQuery<CashflowRow[]>({
-    queryKey: ["cashflow-forecast"],
+    queryKey: queryKeys.cashflowForecast,
     queryFn: () => getCashflowForecast(),
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -195,10 +191,10 @@ export default function Contracts() {
     mockData: mockCashflowForecast as CashflowRow[],
   });
 
-  // NEW: Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
+  // Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
   const { data: metrics, isFetching: loadingMetrics } =
     useMockableQuery<CashflowMetrics | null>({
-      queryKey: ["cashflow-metrics"],
+      queryKey: queryKeys.cashflowMetrics,
       queryFn: () => getCashflowMetrics(),
       retry: false,
       staleTime: 5 * 60 * 1000,
@@ -208,7 +204,7 @@ export default function Contracts() {
 
   // Sales processes (used to compute earliest contact date for reset)
   const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
-    queryKey: ["sales-processes"],
+    queryKey: queryKeys.salesProcesses,
     queryFn: getSalesProcesses,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -394,7 +390,15 @@ export default function Contracts() {
     if (openParam && filteredContracts.length > 0) {
       setSelectedContract(filteredContracts[0]);
     }
-  }, [searchParams, filteredContracts]);
+  }, [
+    clientFilter,
+    contracts,
+    dateEnd,
+    dateStart,
+    filteredContracts,
+    navigate,
+    searchParams,
+  ]);
 
   // Reset to page 1 on filter change
   useEffect(() => {
@@ -470,7 +474,7 @@ export default function Contracts() {
     const total = r.confirmed; // confirmed-only KPI
     return {
       ym: r.month,
-      label: labelFromYm(r.month),
+      label: formatMonthLabel(r.month),
       confirmed: r.confirmed,
       potential: r.potential,
       total,
@@ -947,13 +951,19 @@ export default function Contracts() {
                 (c) => c.id === selectedContract?.id,
               );
               if (updated) {
-                setSelectedContract(updated); //  refreshes the drawer details
+                setSelectedContract(updated); // refreshes the drawer details
               }
             });
 
-            queryClient.invalidateQueries({ queryKey: ["cashflow-history"] });
-            queryClient.invalidateQueries({ queryKey: ["cashflow-forecast"] });
-            queryClient.invalidateQueries({ queryKey: ["cashflow-metrics"] });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowEntries,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowForecast,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.cashflowMetrics,
+            });
           }}
         />
       )}

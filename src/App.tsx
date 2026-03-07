@@ -104,7 +104,7 @@ const App = () => {
               <Route path="/sales" element={<SalesProcess />} />
               <Route path="/contracts" element={<Contracts />} />
               <Route path="/stages" element={<Stages />} />
-              {/* 🧠 Natural Language Query Console */}
+              {/* Natural Language Query Console */}
               <Route path="/nlq" element={<NLQConsole />} />
               <Route path="/exports" element={<DataExport />} />
               <Route path="/settings" element={<Settings />} />

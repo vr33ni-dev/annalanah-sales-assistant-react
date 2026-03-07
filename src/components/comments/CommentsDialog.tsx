@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/dialog";
 import { CommentsSection } from "./CommentsSection";
 import { CommentEntityType, getComments } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { getMockCommentsForEntity } from "@/lib/mockData";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface CommentsDialogProps {
   entityType: CommentEntityType;
@@ -29,18 +29,13 @@ export function CommentsDialog({
   triggerVariant = "icon",
 }: CommentsDialogProps) {
   const [open, setOpen] = useState(false);
-  const { useMockData } = useAuthEnabled();
 
-  const { data: apiComments = [] } = useQuery({
-    queryKey: ["comments", entityType, entityId],
+  const { data: comments = [] } = useMockableQuery({
+    queryKey: queryKeys.comments(entityType, entityId),
     queryFn: () => getComments(entityType, entityId),
-    enabled: open && !!entityId && !useMockData,
+    enabled: open && !!entityId,
+    mockData: getMockCommentsForEntity(entityType, entityId),
   });
-
-  // Use mock data in Lovable preview
-  const comments = useMockData
-    ? getMockCommentsForEntity(entityType, entityId)
-    : apiComments;
 
   const commentCount = comments.length;
 

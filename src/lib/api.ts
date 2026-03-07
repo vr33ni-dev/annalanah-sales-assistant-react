@@ -15,9 +15,6 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Helpful log
-console.log("[api] axios baseURL =", api.defaults.baseURL);
-
 function suppressAuthRedirectNow(): boolean {
   const params = new URLSearchParams(window.location.search);
   if (params.get("auth") === "logged_out") return true;
@@ -155,16 +152,7 @@ export interface SalesProcess {
 export async function getSalesProcesses(): Promise<
   (SalesProcess & { stage_label: string })[]
 > {
-  const res = await fetch("/api/sales");
-  if (!res.ok)
-    throw new Error(`Failed to fetch sales processes: ${res.status}`);
-
-  let data: unknown;
-  try {
-    data = await res.json();
-  } catch {
-    throw new Error("Invalid JSON response from server");
-  }
+  const { data } = await api.get<unknown>("/sales");
   if (!Array.isArray(data)) throw new Error("Invalid data format");
 
   return (data as Partial<SalesProcess>[]).map((sp) => {
@@ -249,32 +237,23 @@ export interface StartSalesProcessResponse {
 export async function startSalesProcess(
   payload: StartSalesProcessRequest,
 ): Promise<StartSalesProcessResponse> {
-  const res = await fetch("/api/sales/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  let data: unknown;
-  const contentType = res.headers.get("content-type") ?? "";
   try {
-    data = contentType.includes("application/json")
-      ? await res.json()
-      : await res.text();
-  } catch {
-    data = null;
+    const { data } = await api.post<StartSalesProcessResponse>(
+      "/sales/start",
+      payload,
+    );
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      throw {
+        response: {
+          status: error.response.status,
+          data: error.response.data,
+        },
+      };
+    }
+    throw error;
   }
-
-  if (!res.ok) {
-    throw {
-      response: {
-        status: res.status,
-        data,
-      },
-    };
-  }
-
-  return data as StartSalesProcessResponse;
 }
 
 /* Upsells */
@@ -380,6 +359,11 @@ export interface Stage {
   registrations?: number | null;
   participants?: number | null;
   recorded_contacts?: number; // read-only, derived
+  closed_contracts?: number;
+  actual_revenue?: number;
+  attendance_rate?: number;
+  closing_rate?: number;
+  roi?: number;
 }
 
 export const getStages = async (): Promise<Stage[]> => {
@@ -475,7 +459,7 @@ export const deleteStageParticipant = async (
   await api.delete(`/stages/${stageId}/participants/${participantId}`);
 };
 
-/* Stage participants (frontend shape) */
+/* Stage participants */
 export interface StageParticipant {
   id: number;
   stage_id: number;
@@ -636,7 +620,7 @@ export interface CashflowRow {
   contract_id?: number;
 }
 
-// Optional: individual cashflow entries (past & scheduled payments)
+// Individual cashflow entries (past & scheduled payments)
 export interface CashflowEntry {
   id: number;
   contract_id?: number;
