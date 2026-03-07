@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { KPICard } from "@/components/KPICard";
+import { KPICard } from "@/components/dashboard/KPICard";
 import { Badge } from "@/components/ui/badge";
-import { MonthlyKPITable } from "@/components/MonthlyKPITable";
+import { MonthlyKPITable } from "@/components/dashboard/MonthlyKPITable";
 
 import {
   DollarSign,
