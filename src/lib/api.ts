@@ -354,6 +354,8 @@ export const updateContract = async (
 export interface Stage {
   id: number;
   name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   date?: string | null;
   ad_budget?: number | null;
   registrations?: number | null;
@@ -632,6 +634,16 @@ export interface CashflowEntry {
 
 export const getCashflowEntries = async (
   contractId?: number,
+  options?: {
+    /**
+     * If the aggregate endpoint (/cashflow/entries) is not available,
+     * optionally fall back to fetching per-contract cashflow schedules.
+     *
+     * NOTE: This can generate 1 request per contract and should generally be
+     * avoided when working against a real backend.
+     */
+    allowFanoutFallback?: boolean;
+  },
 ): Promise<CashflowEntry[]> => {
   if (contractId) {
     try {
@@ -653,8 +665,22 @@ export const getCashflowEntries = async (
     return [];
   }
 
-  // Prefer per-contract schedules as source of truth for all-contract history,
-  // because some backends expose incomplete /cashflow/entries aggregates.
+  // All-contract view: prefer the aggregate endpoint to avoid an HTTP N+1.
+  // (The per-contract fan-out can be enabled explicitly via options.)
+  try {
+    const { data } = await api.get<CashflowEntry[]>(`/cashflow/entries`);
+    if (Array.isArray(data)) return data;
+  } catch (err: unknown) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const canFallback =
+      !!options?.allowFanoutFallback &&
+      (status === 404 || status === 405 || status === 501);
+
+    if (!canFallback) return [];
+  }
+
+  // Optional fallback for older/incomplete backends: derive a full list by
+  // fetching each contract's schedule.
   try {
     const contracts = await getContracts();
     const lists = await Promise.all(
@@ -677,17 +703,7 @@ export const getCashflowEntries = async (
       }),
     );
 
-    const flattened = lists.flat();
-    if (flattened.length > 0) return flattened;
-  } catch {
-    // Continue to aggregate endpoint fallback below
-  }
-
-  // Legacy aggregate endpoint fallback
-  try {
-    const { data } = await api.get<CashflowEntry[]>(`/cashflow/entries`);
-    if (!Array.isArray(data)) return [];
-    return data;
+    return lists.flat();
   } catch {
     return [];
   }

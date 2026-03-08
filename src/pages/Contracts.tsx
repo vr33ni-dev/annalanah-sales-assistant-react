@@ -35,6 +35,7 @@ import {
   getContracts,
   getCashflowForecast,
   getCashflowMetrics,
+  getUpsells,
   type CashflowRow,
   type CashflowMetrics,
   getSalesProcesses,
@@ -102,6 +103,38 @@ function addMonthsDate(d: Date, months: number) {
   return dt;
 }
 
+function getElapsedContractMonths(
+  startDate: string | null | undefined,
+  today: Date,
+  durationMonths?: number | null,
+) {
+  const start = toDateStartOfDay(startDate);
+  if (!start) return 0;
+
+  const current = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  if (start > current) return 0;
+
+  let completedMonths =
+    (current.getFullYear() - start.getFullYear()) * 12 +
+    (current.getMonth() - start.getMonth());
+
+  if (current.getDate() < start.getDate()) {
+    completedMonths -= 1;
+  }
+
+  const currentContractMonth = Math.max(1, completedMonths + 1);
+
+  if (typeof durationMonths === "number") {
+    return Math.min(currentContractMonth, durationMonths);
+  }
+
+  return currentContractMonth;
+}
+
 // Inclusive overlap check between two closed date ranges [aStart, aEnd] and [bStart, bEnd]
 function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart <= bEnd && bStart <= aEnd;
@@ -162,6 +195,28 @@ export default function Contracts() {
       : [],
   });
 
+  const { data: allUpsells = [], refetch: refetchAllUpsells } =
+    useMockableQuery<ContractUpsell[]>({
+      queryKey: ["upsells-all-contracts"],
+      queryFn: () => getUpsells(),
+      enabled: !!selectedContract,
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+      select: asArray<ContractUpsell>,
+      mockData: mockUpsells,
+    });
+
+  const relatedUpsell =
+    upsell ??
+    (selectedContract
+      ? (allUpsells.find(
+          (item) =>
+            item.previous_contract_id === selectedContract.id ||
+            item.new_contract_id === selectedContract.id ||
+            item.sales_process_id === selectedContract.sales_process_id,
+        ) ?? null)
+      : null);
+
   // Contracts for table + KPIs
   const {
     data: contracts = [],
@@ -176,6 +231,42 @@ export default function Contracts() {
     select: asArray<Contract>,
     mockData: mockContracts,
   });
+
+  const linkedPreviousContract =
+    relatedUpsell && typeof relatedUpsell.previous_contract_id === "number"
+      ? contracts.find(
+          (contract) => contract.id === relatedUpsell.previous_contract_id,
+        )
+      : undefined;
+
+  const linkedNewContract =
+    relatedUpsell && typeof relatedUpsell.new_contract_id === "number"
+      ? contracts.find(
+          (contract) => contract.id === relatedUpsell.new_contract_id,
+        )
+      : undefined;
+
+  const isUpsellSourceContract =
+    !!selectedContract &&
+    !!relatedUpsell &&
+    (relatedUpsell.previous_contract_id == null
+      ? true
+      : relatedUpsell.previous_contract_id === selectedContract.id);
+
+  const isUpsellResultContract =
+    !!selectedContract &&
+    !!relatedUpsell &&
+    relatedUpsell.new_contract_id === selectedContract.id &&
+    relatedUpsell.previous_contract_id !== selectedContract.id;
+
+  const openLinkedContract = (contract: Contract) => {
+    setSelectedContract(contract);
+    navigate(
+      contract.sales_process_id
+        ? `/contracts?client=${contract.client_id}&open=1&sales_process=${contract.sales_process_id}`
+        : `/contracts?client=${contract.client_id}&open=1`,
+    );
+  };
 
   // Cashflow forecast (server-side aggregation)
   const {
@@ -676,13 +767,14 @@ export default function Contracts() {
             </TableHeader>
             <TableBody>
               {paginatedContracts.map((contract) => {
-                // Use safe access to `paid_months` (backend may or may not provide it)
-                const paidMonths =
-                  (contract as Contract & { paid_months?: number })
-                    .paid_months ?? 0;
+                const elapsedMonths = getElapsedContractMonths(
+                  contract.start_date,
+                  now,
+                  contract.duration_months,
+                );
                 const progressPercent =
                   contract.duration_months > 0
-                    ? (paidMonths / contract.duration_months) * 100
+                    ? (elapsedMonths / contract.duration_months) * 100
                     : 0;
                 return (
                   <TableRow key={contract.id}>
@@ -707,7 +799,7 @@ export default function Contracts() {
                       <div className="space-y-1">
                         <Progress value={progressPercent} className="h-2" />
                         <p className="text-xs text-muted-foreground">
-                          {paidMonths}/{contract.duration_months} Monate
+                          {elapsedMonths}/{contract.duration_months} Monate
                           {contract.next_due_date
                             ? ` • Nächste: ${formatDateOnly(
                                 contract.next_due_date,
@@ -837,44 +929,87 @@ export default function Contracts() {
                   Upsell / Vertragsverlängerung
                 </h3>
 
-                {/* If upsell exists → show card */}
-                {upsell && (
+                {/* Renewal result contract: show origin info only */}
+                {isUpsellResultContract && relatedUpsell && (
+                  <div className="p-3 mt-4 border rounded-md bg-muted/30">
+                    <div className="font-medium text-sm">
+                      Dieser Vertrag entstand aus einer Vertragsverlängerung.
+                    </div>
+                    {linkedPreviousContract && (
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        Ursprünglicher Vertrag:{" "}
+                        {linkedPreviousContract.client_name}
+                      </div>
+                    )}
+                    {linkedPreviousContract && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openLinkedContract(linkedPreviousContract)
+                        }
+                        className="mt-3 px-3 py-1.5 border rounded-md text-sm hover:bg-muted"
+                      >
+                        Ursprünglichen Vertrag öffnen
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Source/original contract: show editable upsell card */}
+                {isUpsellSourceContract && relatedUpsell && (
                   <div
                     className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
                     onClick={() => {
-                      setEditingUpsell(upsell); // upsell (of type ContractUpsell)
+                      setEditingUpsell(relatedUpsell);
                       setShowUpsellModal(true);
                     }}
                   >
                     {/* If result is verlängerung → show contract details */}
-                    {upsell.upsell_result === "verlaengerung" ? (
+                    {relatedUpsell.upsell_result === "verlaengerung" ? (
                       <div className="space-y-1">
                         <div className="font-medium text-green-600">
                           Ergebnis: Vertragsverlängerung
                         </div>
 
-                        {upsell.contract_start_date && (
+                        {relatedUpsell.contract_start_date && (
                           <div className="text-sm">
                             Neuer Vertrag ab:{" "}
-                            {formatDateOnly(upsell.contract_start_date)}
+                            {formatDateOnly(relatedUpsell.contract_start_date)}
                           </div>
                         )}
 
-                        {upsell.contract_duration_months && (
+                        {relatedUpsell.contract_duration_months && (
                           <div className="text-sm">
-                            Dauer: {upsell.contract_duration_months} Monate
+                            Dauer: {relatedUpsell.contract_duration_months}{" "}
+                            Monate
                           </div>
                         )}
 
-                        {upsell.contract_frequency && (
+                        {relatedUpsell.contract_frequency && (
                           <div className="text-sm">
-                            Zahlungsfrequenz: {upsell.contract_frequency}
+                            Zahlungsfrequenz: {relatedUpsell.contract_frequency}
                           </div>
                         )}
 
-                        {upsell.upsell_revenue && (
+                        {relatedUpsell.upsell_revenue && (
                           <div className="text-sm">
-                            Umsatz: €{upsell.upsell_revenue.toLocaleString()}
+                            Umsatz: €
+                            {relatedUpsell.upsell_revenue.toLocaleString()}
+                          </div>
+                        )}
+
+                        {linkedNewContract && (
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openLinkedContract(linkedNewContract);
+                              }}
+                              className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted"
+                            >
+                              Neuen Vertrag öffnen
+                            </button>
                           </div>
                         )}
                       </div>
@@ -883,20 +1018,20 @@ export default function Contracts() {
                       <div>
                         <div className="font-medium">
                           Upsellgespräch:{" "}
-                          {upsell.upsell_date
-                            ? formatDateOnly(upsell.upsell_date)
+                          {relatedUpsell.upsell_date
+                            ? formatDateOnly(relatedUpsell.upsell_date)
                             : "–"}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          Status: {upsell.upsell_result ?? "offen"}
+                          Status: {relatedUpsell.upsell_result ?? "offen"}
                         </div>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* If no upsell exists → show button */}
-                {!upsell && (
+                {/* If no upsell exists on the source contract → show button */}
+                {!relatedUpsell && !isUpsellResultContract && (
                   <button
                     onClick={() => {
                       setEditingUpsell(null);
@@ -921,7 +1056,6 @@ export default function Contracts() {
           )}
         </SheetContent>
       </Sheet>
-
       {showUpsellModal && (
         <UpsellModal
           contract={selectedContract}
@@ -930,6 +1064,7 @@ export default function Contracts() {
           onSaved={() => {
             setShowUpsellModal(false);
             refetchUpsell(); // or invalidateQueries()
+            refetchAllUpsells();
           }}
         />
       )}
