@@ -344,12 +344,69 @@ export default function Dashboard() {
   // -----------------------------
   type RecentItem = {
     id: string;
-    kind: "contract" | "sales";
+    kind: "contract" | "sales" | "upsell" | "stage";
     date: Date | null;
     label: string;
     revenue?: number | null;
     url: string;
   };
+
+  const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
+
+  const recentUpsellItems: RecentItem[] = upsellsAll.map((u) => {
+    const created = parseIsoToLocal(u.created_at);
+    const updated = parseIsoToLocal(u.updated_at);
+    const changedAt = updated ?? created;
+    const wasUpdated =
+      !!created && !!updated && updated.getTime() - created.getTime() > 60_000;
+
+    const clientName =
+      clientNameById.get(u.client_id) ?? `Kunde ${u.client_id}`;
+    const updateLabel =
+      u.upsell_result === "verlaengerung"
+        ? "Upsell aktualisiert: Verlängerung"
+        : u.upsell_result === "keine_verlaengerung"
+          ? "Upsell aktualisiert: Keine Verlängerung"
+          : "Upsell aktualisiert";
+
+    return {
+      id: `upsell-${u.id}`,
+      kind: "upsell" as const,
+      date: changedAt,
+      label: wasUpdated
+        ? `${updateLabel} - ${clientName}`
+        : `Upsell-Gespräch geplant - ${clientName}`,
+      revenue: u.upsell_revenue ?? null,
+      url: u.sales_process_id
+        ? `/contracts?client=${u.client_id}&open=1&sales_process=${u.sales_process_id}`
+        : `/contracts?client=${u.client_id}&open=1`,
+    };
+  });
+
+  const recentStageItems: RecentItem[] = stages.flatMap((stage) => {
+    const created = parseIsoToLocal(stage.created_at ?? null);
+    const updated = parseIsoToLocal(stage.updated_at ?? null);
+    const fallback = parseIsoToLocal(stage.date ?? null);
+    const changedAt = updated ?? created ?? fallback;
+
+    if (!changedAt) return [];
+
+    const wasUpdated =
+      !!created && !!updated && updated.getTime() - created.getTime() > 60_000;
+
+    return [
+      {
+        id: `stage-${stage.id}`,
+        kind: "stage" as const,
+        date: changedAt,
+        label: wasUpdated
+          ? `Workshop aktualisiert - ${stage.name}`
+          : `Workshop erstellt - ${stage.name}`,
+        revenue: null,
+        url: "/stages",
+      },
+    ];
+  });
 
   const recentItems: RecentItem[] = [
     ...contracts.map((c) => ({
@@ -370,6 +427,8 @@ export default function Dashboard() {
       revenue: null,
       url: `/sales?sales_process=${s.id}`,
     })),
+    ...recentUpsellItems,
+    ...recentStageItems,
   ];
 
   recentItems.sort((a, b) => {

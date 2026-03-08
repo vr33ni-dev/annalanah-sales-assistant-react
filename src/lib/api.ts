@@ -354,6 +354,8 @@ export const updateContract = async (
 export interface Stage {
   id: number;
   name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   date?: string | null;
   ad_budget?: number | null;
   registrations?: number | null;
