@@ -357,25 +357,22 @@ export default function Dashboard() {
     const created = parseIsoToLocal(u.created_at);
     const updated = parseIsoToLocal(u.updated_at);
     const changedAt = updated ?? created;
-    const wasUpdated =
-      !!created && !!updated && updated.getTime() - created.getTime() > 60_000;
 
     const clientName =
       clientNameById.get(u.client_id) ?? `Kunde ${u.client_id}`;
-    const updateLabel =
+
+    const label =
       u.upsell_result === "verlaengerung"
-        ? "Upsell aktualisiert: Verlängerung"
+        ? `Upsell abgeschlossen: Verlängerung - ${clientName}`
         : u.upsell_result === "keine_verlaengerung"
-          ? "Upsell aktualisiert: Keine Verlängerung"
-          : "Upsell aktualisiert";
+          ? `Upsell abgeschlossen: Keine Verlängerung - ${clientName}`
+          : `Upsell-Gespräch geplant - ${clientName}`;
 
     return {
       id: `upsell-${u.id}`,
       kind: "upsell" as const,
       date: changedAt,
-      label: wasUpdated
-        ? `${updateLabel} - ${clientName}`
-        : `Upsell-Gespräch geplant - ${clientName}`,
+      label,
       revenue: u.upsell_revenue ?? null,
       url: u.sales_process_id
         ? `/contracts?client=${u.client_id}&open=1&sales_process=${u.sales_process_id}`

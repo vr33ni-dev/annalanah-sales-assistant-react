@@ -44,7 +44,10 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const handleSubmit = async () => {
     if (!contract) return;
 
-    await createOrUpdateUpsell(contract.sales_process_id, {
+    const targetSalesProcessId =
+      upsell?.sales_process_id ?? contract.sales_process_id;
+
+    await createOrUpdateUpsell(targetSalesProcessId, {
       upsell_date: date,
       upsell_result: result || null,
       upsell_revenue: revenue ? Number(revenue) : null,
