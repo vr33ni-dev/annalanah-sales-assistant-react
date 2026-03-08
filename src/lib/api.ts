@@ -321,6 +321,7 @@ export interface Contract {
   payment_frequency: string;
   base_monthly_amount: number;
   next_due_date?: string | null;
+  cashflow?: CashflowEntry[];
 }
 
 export const getContracts = async (): Promise<Contract[]> => {

@@ -4,13 +4,15 @@ import { TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
+  Contract,
   getCashflowForecast,
-  getCashflowEntries,
+  getContracts,
   getNumericSetting,
-  type CashflowEntry,
   type CashflowRow,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { useMockableQuery } from "@/hooks/useMockableQuery";
+import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
@@ -26,23 +28,23 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   } = useQuery<CashflowRow[]>({
     queryKey: queryKeys.cashflowForecastByContract(contractId),
     queryFn: () => getCashflowForecast(contractId),
-    enabled,
+    enabled: enabled && !isContractView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
   });
 
   const {
-    data: entries = [],
-    isFetching: isFetchingEntries,
-    isError: isErrorEntries,
-  } = useQuery<CashflowEntry[]>({
-    queryKey: queryKeys.cashflowEntriesByContract(contractId),
-    queryFn: () => getCashflowEntries(contractId),
-    enabled: enabled && isContractView,
+    data: contracts = [],
+    isFetching: isFetchingContracts,
+    isError: isErrorContracts,
+  } = useMockableQuery<Contract[]>({
+    queryKey: queryKeys.contracts,
+    queryFn: getContracts,
     retry: false,
     staleTime: 5 * 60 * 1000,
-    select: asArray<CashflowEntry>,
+    select: asArray<Contract>,
+    mockData: mockContracts,
   });
 
   const { data: potentialMonths = 6 } = useQuery<number>({
@@ -60,11 +62,19 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   });
 
   const showPotential = !contractId; // only show potential if all contracts view
+  const selectedContract =
+    typeof contractId === "number"
+      ? contracts.find((contract) => contract.id === contractId)
+      : undefined;
 
   const rows = useMemo(() => {
     if (!isContractView) return forecast;
 
-    if (!entries || entries.length === 0) return [];
+    const entries = Array.isArray(selectedContract?.cashflow)
+      ? selectedContract.cashflow
+      : [];
+
+    if (entries.length === 0) return [];
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -72,15 +82,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
 
     const byMonth = new Map<string, number>();
 
-    const scopedEntries = entries.filter((entry) => {
-      if (typeof contractId !== "number") return true;
-      if (typeof entry?.contract_id === "number") {
-        return entry.contract_id === contractId;
-      }
-      return true;
-    });
-
-    for (const entry of scopedEntries) {
+    for (const entry of entries) {
       const amount = Number(entry?.amount ?? NaN);
       if (!entry?.due_date || !Number.isFinite(amount) || amount <= 0) {
         continue;
@@ -97,10 +99,10 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     return Array.from(byMonth.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
-  }, [contractId, entries, forecast, isContractView]);
+  }, [forecast, isContractView, selectedContract?.cashflow]);
 
-  const isFetching = isContractView ? isFetchingEntries : isFetchingForecast;
-  const isError = isContractView ? isErrorEntries : isErrorForecast;
+  const isFetching = isContractView ? isFetchingContracts : isFetchingForecast;
+  const isError = isContractView ? isErrorContracts : isErrorForecast;
 
   return (
     <Card>
