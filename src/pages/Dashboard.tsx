@@ -386,8 +386,7 @@ export default function Dashboard() {
   const recentStageItems: RecentItem[] = stages.flatMap((stage) => {
     const created = parseIsoToLocal(stage.created_at ?? null);
     const updated = parseIsoToLocal(stage.updated_at ?? null);
-    const fallback = parseIsoToLocal(stage.date ?? null);
-    const changedAt = updated ?? created ?? fallback;
+    const changedAt = updated ?? created;
 
     if (!changedAt) return [];
 
