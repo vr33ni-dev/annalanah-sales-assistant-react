@@ -8,12 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Calendar } from "lucide-react";
-import {
-  Contract,
-  getContracts,
-  getCashflowEntries,
-  type CashflowEntry,
-} from "@/lib/api";
+import { Contract, getContracts, type CashflowEntry } from "@/lib/api";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
@@ -41,21 +36,6 @@ function calcNextDueAmount(c: Contract): number {
 }
 
 export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
-  // Prefer a dedicated cashflow entries endpoint; fall back to deriving
-  // entries from contracts when the endpoint is not available or returns none.
-  const {
-    data: entriesFromApi = [],
-    isFetching: fetchingEntries,
-    isError: entriesError,
-  } = useMockableQuery<CashflowEntry[]>({
-    queryKey: queryKeys.cashflowEntriesByContract(contractId),
-    queryFn: () => getCashflowEntries(contractId),
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: asArray<CashflowEntry>,
-    mockData: [],
-  });
-
   const {
     data: contracts = [],
     isFetching: fetchingContracts,
@@ -79,50 +59,43 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
 
   const now = new Date();
 
-  // Derive "entries" from contracts that have a next due date
-  // If the API returned entries, use them. Otherwise derive entries from
-  // contracts (as a fallback for older backends or mocks).
-  const derivedEntries = contracts
-    .map((c) => {
-      const due = c.next_due_date ?? c.start_date ?? null;
-      return {
-        id: c.id,
-        contractId: c.id,
-        contractLabel: `${c.client_name} - ${c.duration_months} Monate`,
-        dueDate: due as string | null,
-        amount: calcNextDueAmount(c),
-      };
+  const entries = contracts
+    .flatMap((contract) => {
+      const contractLabel = `${contract.client_name} - ${contract.duration_months} Monate`;
+      const embeddedEntries = Array.isArray(contract.cashflow)
+        ? contract.cashflow
+            .filter((entry) => Number(entry.amount ?? 0) > 0)
+            .map((entry) => ({
+              id: entry.id,
+              contractId:
+                typeof entry.contract_id === "number"
+                  ? entry.contract_id
+                  : contract.id,
+              contractLabel,
+              dueDate: entry.due_date,
+              amount: entry.amount,
+            }))
+        : [];
+
+      if (embeddedEntries.length > 0) return embeddedEntries;
+
+      const due = contract.next_due_date ?? contract.start_date ?? null;
+      if (!due) return [];
+
+      return [
+        {
+          id: contract.id,
+          contractId: contract.id,
+          contractLabel,
+          dueDate: due,
+          amount: calcNextDueAmount(contract),
+        },
+      ].filter((entry) => entry.amount > 0);
     })
-    .filter((e) => !!e.dueDate && e.amount > 0)
     .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
 
-  const entries =
-    entriesFromApi && entriesFromApi.length > 0
-      ? entriesFromApi
-          .filter((r) => r.amount > 0)
-          .map((r) => {
-            const contract =
-              typeof r.contract_id === "number"
-                ? contracts.find((c) => c.id === r.contract_id)
-                : undefined;
-
-            const contractLabel = contract
-              ? `${contract.client_name} - ${contract.duration_months} Monate`
-              : (r.contract_label ?? `Vertrag ${r.contract_id ?? r.id}`);
-
-            return {
-              id: r.id,
-              contractId: r.contract_id,
-              contractLabel,
-              dueDate: r.due_date,
-              amount: r.amount,
-            };
-          })
-          .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""))
-      : derivedEntries;
-
-  const isFetching = fetchingEntries || fetchingContracts;
-  const isError = entriesError || contractsError;
+  const isFetching = fetchingContracts;
+  const isError = contractsError;
 
   // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
   const filteredEntries = entries

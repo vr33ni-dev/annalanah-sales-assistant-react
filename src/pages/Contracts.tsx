@@ -335,6 +335,34 @@ export default function Contracts() {
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt) — use metrics if available ---- */
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
+  const todayYmd = toYmdLocal(now);
+  const startOfYearYmd = toYmdLocal(startOfYear);
+
+  const embeddedCashflowEntries = contracts.flatMap((contract) =>
+    Array.isArray(contract.cashflow)
+      ? contract.cashflow
+          .filter((entry) => Number(entry.amount ?? 0) > 0)
+          .map((entry) => ({
+            ...entry,
+            contract_id:
+              typeof entry.contract_id === "number"
+                ? entry.contract_id
+                : contract.id,
+          }))
+      : [],
+  );
+  const hasEmbeddedCashflow = embeddedCashflowEntries.length > 0;
+
+  const ytdCashInFromEntries = embeddedCashflowEntries.reduce((sum, entry) => {
+    const due = entry.due_date?.slice(0, 10);
+    const amount = Number(entry.amount ?? NaN);
+
+    if (!due || !Number.isFinite(amount) || amount <= 0) return sum;
+    if (due < startOfYearYmd || due > todayYmd) return sum;
+    if (entry.confirmed === false) return sum;
+
+    return sum + amount;
+  }, 0);
 
   // keep a client-side fallback calculation (was previous behaviour) — used only if server metrics missing
   let ytdCashInComputed = 0;
@@ -353,8 +381,19 @@ export default function Contracts() {
   const avgMonthlyYtdComputed =
     monthsElapsedYtd > 0 ? Math.round(ytdCashInComputed / monthsElapsedYtd) : 0;
 
-  // Final KPI: prefer server metric when present, else fallback to computed value
-  const avgMonthlyYtd = metrics?.avg_monthly_ytd ?? avgMonthlyYtdComputed;
+  const avgMonthlyYtdFromEntries =
+    monthsElapsedYtd > 0
+      ? Math.round(ytdCashInFromEntries / monthsElapsedYtd)
+      : 0;
+
+  // Final KPI: prefer embedded contract cashflow when available, then server
+  // metrics, then the old paid_months-based fallback.
+  const avgMonthlyYtd = hasEmbeddedCashflow
+    ? avgMonthlyYtdFromEntries
+    : (metrics?.avg_monthly_ytd ?? avgMonthlyYtdComputed);
+  const ytdPaidAmountDisplay = hasEmbeddedCashflow
+    ? ytdCashInFromEntries
+    : (metrics?.ytd_paid_amount ?? ytdCashInComputed);
 
   /* ---- Filtered Contracts for Active Contracts table ---- */
   const [dateStart, setDateStart] = useState<string>(toYmdLocal(startOfYear));
@@ -541,6 +580,33 @@ export default function Contracts() {
     "0",
   )}`;
 
+  const next3MonthKeys = Array.from({ length: 3 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() + index, 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  });
+
+  const embeddedNext3Map = embeddedCashflowEntries.reduce((acc, entry) => {
+    const due = entry.due_date?.slice(0, 10);
+    const amount = Number(entry.amount ?? NaN);
+
+    if (!due || !Number.isFinite(amount) || amount <= 0) return acc;
+    if (entry.confirmed === false) return acc;
+
+    const month = due.slice(0, 7);
+    if (!next3MonthKeys.includes(month)) return acc;
+
+    acc.set(month, (acc.get(month) ?? 0) + amount);
+    return acc;
+  }, new Map<string, number>());
+
+  const next3FromEmbedded = next3MonthKeys
+    .map((month) => ({
+      month,
+      confirmed: Math.round(embeddedNext3Map.get(month) ?? 0),
+      potential: 0,
+    }))
+    .filter((row) => row.confirmed > 0);
+
   // If server metrics available, prefer them; else compute from `forecast`
   const next3FromMetrics =
     metrics?.confirmed_next3?.map((m) => ({
@@ -559,7 +625,9 @@ export default function Contracts() {
       potential: Math.round(r.potential ?? 0),
     }));
 
-  const next3Data = next3FromMetrics ?? next3FromForecast;
+  const next3Data =
+    next3FromMetrics ??
+    (next3FromForecast.length > 0 ? next3FromForecast : next3FromEmbedded);
 
   const next3Display = next3Data.map((r) => {
     const total = r.confirmed; // confirmed-only KPI
@@ -573,12 +641,11 @@ export default function Contracts() {
   });
 
   const avgNext3 =
-    metrics?.avg_confirmed_next3 ??
-    (next3Display.length > 0
+    next3Display.length > 0
       ? Math.round(
           next3Display.reduce((s, r) => s + r.total, 0) / next3Display.length,
         )
-      : 0);
+      : (metrics?.avg_confirmed_next3 ?? 0);
 
   /* ----------------- Render ----------------- */
 
@@ -636,32 +703,9 @@ export default function Contracts() {
           value={euro(avgMonthlyYtd)}
           label="Ø monatlicher Cashflow YTD"
           popover={
-            metrics
-              ? `YTD: ${euro(metrics.ytd_paid_amount)} über ${metrics.months_elapsed_ytd} Monate\nØ/Monat = ${euro(metrics.avg_monthly_ytd)}`
-              : `Zeitraum: 01.01.–heute (${monthsElapsedYtd} Monate)\nYTD Cash-In (realisiert) ≈ Σ(min(paid_months, Monate aktiv) × monthly_amount)\n= ${
-                  contracts.length
-                    ? contracts
-                        .map((c) => {
-                          const start = parseIso(c.start_date);
-                          const end = parseIso(
-                            addMonthsIso(c.start_date, c.duration_months),
-                          );
-                          const monthsActiveThisYear = monthsOverlap(
-                            start,
-                            end,
-                            new Date(now.getFullYear(), 0, 1),
-                            now,
-                          );
-                          const paidInThisYear = Math.min(
-                            (c as Contract & { paid_months?: number })
-                              .paid_months ?? 0,
-                            monthsActiveThisYear,
-                          );
-                          return `${paidInThisYear}×${euro(c.base_monthly_amount)}`;
-                        })
-                        .join(" + ")
-                    : "0"
-                }\n= ${euro(ytdCashInComputed)}\nØ/Monat YTD = ${euro(ytdCashInComputed)} / ${monthsElapsedYtd} = ${euro(avgMonthlyYtdComputed)}`
+            `Zeitraum: 01.01.–heute (${monthsElapsedYtd} Monate)\n` +
+            `YTD Cashflow: ${euro(ytdPaidAmountDisplay)}\n` +
+            `Ø pro Monat: ${euro(avgMonthlyYtd)}`
           }
         />
 
