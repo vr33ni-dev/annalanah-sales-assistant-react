@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { Filter, Pencil } from "lucide-react";
+import { Filter, Info } from "lucide-react";
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Table,
   TableBody,
@@ -29,7 +28,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { TablePagination } from "@/components/TablePagination";
 import { STATUS_FILTER_OPTIONS } from "@/hooks/useSalesProcessFilters";
 import type {
@@ -62,20 +60,10 @@ export function SalesProcessTable({
   paginatedSales,
   stages,
   highlightId,
-  editingId,
-  setEditingId,
-  editingInitialId,
-  setEditingInitialId,
-  popoverSide,
-  setPopoverSide,
-  savingId,
-  setSavingId,
-  onSaveInitialContactDate,
-  onSaveFollowUpDate,
+  onShowDetails,
   onPlanFollowUp,
   onEnterResult,
   onEnterClosing,
-  onShowContract,
   page,
   totalPages,
   onPageChange,
@@ -259,7 +247,7 @@ export function SalesProcessTable({
                 typeof entry.stage_id === "number"
                   ? (stages.find((stage) => stage.id === entry.stage_id)
                       ?.name ?? null)
-                  : null;
+                  : (entry.source_stage_name ?? null);
               return (
                 <TableRow
                   key={entry.id}
@@ -277,146 +265,27 @@ export function SalesProcessTable({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2 relative">
-                      <span className="text-sm">
-                        {entry.initial_contact_date
-                          ? format(
-                              parseIsoToLocal(entry.initial_contact_date)!,
-                              "dd.MM.yyyy",
-                              { locale: de },
-                            )
-                          : "–"}
-                      </span>
-
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={savingId === entry.id}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          const buffer = 320;
-                          const preferTop =
-                            event.clientY > window.innerHeight - buffer;
-                          setPopoverSide(preferTop ? "top" : "bottom");
-                          setEditingInitialId(entry.id);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-
-                      {editingInitialId === entry.id && (
-                        <Popover
-                          open
-                          onOpenChange={() => setEditingInitialId(null)}
-                        >
-                          <PopoverTrigger asChild>
-                            <button
-                              className="absolute inset-0"
-                              style={{ pointerEvents: "none" }}
-                              aria-hidden="true"
-                            />
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
-                            align="start"
-                            side={popoverSide}
-                            onOpenAutoFocus={(e) => e.preventDefault()}
-                          >
-                            <Calendar
-                              mode="single"
-                              selected={
-                                parseIsoToLocal(
-                                  entry.initial_contact_date ?? null,
-                                ) ?? undefined
-                              }
-                              onSelect={async (newDate) => {
-                                if (!newDate) return;
-                                try {
-                                  setSavingId(entry.id);
-                                  await onSaveInitialContactDate(
-                                    entry.id,
-                                    newDate,
-                                  );
-                                } finally {
-                                  setSavingId(null);
-                                  setEditingInitialId(null);
-                                }
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    </div>
+                    <span className="text-sm">
+                      {entry.initial_contact_date
+                        ? format(
+                            parseIsoToLocal(entry.initial_contact_date)!,
+                            "dd.MM.yyyy",
+                            { locale: de },
+                          )
+                        : "–"}
+                    </span>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2 relative">
-                      <span className="text-sm">
-                        {entry.follow_up_date &&
-                        entry.stage !== SALES_STAGE.INITIAL_CONTACT
-                          ? format(
-                              parseIsoToLocal(entry.follow_up_date)!,
-                              "dd.MM.yyyy",
-                              { locale: de },
-                            )
-                          : "–"}
-                      </span>
-                      {entry.stage !== SALES_STAGE.INITIAL_CONTACT &&
-                        entry.follow_up_date && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={savingId === entry.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              const buffer = 320;
-                              const preferTop =
-                                event.clientY > window.innerHeight - buffer;
-                              setPopoverSide(preferTop ? "top" : "bottom");
-                              setEditingId(entry.id);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 text-muted-foreground" />
-                          </Button>
-                        )}
-
-                      {editingId === entry.id && (
-                        <Popover open onOpenChange={() => setEditingId(null)}>
-                          <PopoverTrigger asChild>
-                            <button
-                              className="absolute inset-0"
-                              style={{ pointerEvents: "none" }}
-                              aria-hidden="true"
-                            />
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-auto p-2 z-50 bg-background border rounded-md shadow-md"
-                            align="start"
-                            side={popoverSide}
-                            onOpenAutoFocus={(e) => e.preventDefault()}
-                          >
-                            <Calendar
-                              mode="single"
-                              selected={
-                                parseIsoToLocal(entry.follow_up_date ?? null) ??
-                                undefined
-                              }
-                              onSelect={async (newDate) => {
-                                if (!newDate) return;
-                                try {
-                                  setSavingId(entry.id);
-                                  await onSaveFollowUpDate(entry.id, newDate);
-                                } finally {
-                                  setSavingId(null);
-                                  setEditingId(null);
-                                }
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    </div>
+                    <span className="text-sm">
+                      {entry.follow_up_date &&
+                      entry.stage !== SALES_STAGE.INITIAL_CONTACT
+                        ? format(
+                            parseIsoToLocal(entry.follow_up_date)!,
+                            "dd.MM.yyyy",
+                            { locale: de },
+                          )
+                        : "–"}
+                    </span>
                   </TableCell>
                   <TableCell>
                     {entry.stage === SALES_STAGE.INITIAL_CONTACT
@@ -439,19 +308,9 @@ export function SalesProcessTable({
                     {entry.revenue ? `€${entry.revenue.toLocaleString()}` : "-"}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2 flex-wrap">
-                      <CommentsDialog
-                        entityType="salesprocess"
-                        entityId={entry.id}
-                        entityName={entry.client_name}
-                      />
-
+                    <div className="flex flex-col items-start gap-1">
                       {entry.stage === SALES_STAGE.INITIAL_CONTACT && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onPlanFollowUp(entry)}
-                        >
+                        <Button size="sm" onClick={() => onPlanFollowUp(entry)}>
                           Zweitgespräch planen
                         </Button>
                       )}
@@ -460,7 +319,6 @@ export function SalesProcessTable({
                         entry.follow_up_result == null && (
                           <Button
                             size="sm"
-                            variant="outline"
                             onClick={() => onEnterResult(entry)}
                           >
                             Ergebnis eintragen
@@ -471,22 +329,20 @@ export function SalesProcessTable({
                         entry.follow_up_result === true && (
                           <Button
                             size="sm"
-                            variant="outline"
                             onClick={() => onEnterClosing(entry)}
                           >
                             Abschluss eingeben
                           </Button>
                         )}
 
-                      {entry.stage === SALES_STAGE.CLOSED && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onShowContract(entry)}
-                        >
-                          Vertrag anzeigen
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="px-2"
+                        onClick={() => onShowDetails(entry)}
+                      >
+                        <Info className="w-4 h-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>

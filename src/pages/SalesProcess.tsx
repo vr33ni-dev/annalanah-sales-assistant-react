@@ -9,9 +9,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { CalendarPlus } from "lucide-react";
 
 import {
+  Client,
   SalesProcessUpdateRequest,
   createLead,
   StartSalesProcessRequest,
+  updateClient,
 } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,8 @@ import { useSalesProcessData } from "@/hooks/useSalesProcessData";
 import type { SalesProcessWithStageId } from "@/hooks/useSalesProcessFilters";
 import { SalesProcessWorkflowForm } from "@/components/sales-process/SalesProcessWorkflowForm";
 import { SalesProcessTable } from "@/components/sales-process/SalesProcessTable";
+import { SalesProcessDetailSheet } from "@/components/sales-process/SalesProcessDetailSheet";
+import type { DetailSavePayload } from "@/components/sales-process/SalesProcessDetailSheet";
 import type {
   GespraechType,
   SalesProcessFormData,
@@ -63,10 +67,8 @@ export default function SalesProcessView() {
   const [formStep, setFormStep] = useState<SalesProcessFormStep>(0);
   const [gespraechType, setGespraechType] =
     useState<GespraechType>("erstgespraech");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingInitialId, setEditingInitialId] = useState<number | null>(null);
-  const [popoverSide, setPopoverSide] = useState<"top" | "bottom">("bottom");
-  const [savingId, setSavingId] = useState<number | null>(null);
+  const [selectedDetailEntry, setSelectedDetailEntry] =
+    useState<SalesProcessWithStageId | null>(null);
   const [existingClientId, setExistingClientId] = useState<number | null>(null);
   const [hasActiveContract, setHasActiveContract] = useState(false);
 
@@ -244,6 +246,29 @@ export default function SalesProcessView() {
   const handleErstgespraechSave = async () => {
     if (!formData.name || !formData.source) return;
 
+    if (formData.leadId != null) {
+      const hasActive = sales.some(
+        (s) =>
+          s.stage !== SALES_STAGE.CLOSED &&
+          s.stage !== SALES_STAGE.LOST &&
+          ((s.lead_id != null && s.lead_id === formData.leadId) ||
+            (s.client_id != null &&
+              sales.some(
+                (s2) =>
+                  s2.lead_id === formData.leadId &&
+                  s2.client_id === s.client_id,
+              ))),
+      );
+      if (hasActive) {
+        toast({
+          title: "Bereits in aktivem Verkaufsprozess",
+          description: `Dieser Lead hat bereits einen laufenden Verkaufsprozess.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     let resolvedLeadId: number | undefined = formData.leadId;
 
     // Always create a lead for Erstgespräch
@@ -285,6 +310,26 @@ export default function SalesProcessView() {
   const handleZweitgespraechStart = async () => {
     if (!formData.name || !formData.source) return;
 
+    let resolvedLeadId: number | undefined = formData.leadId;
+
+    // Create a lead if not already linked (same as Erstgespräch flow)
+    if (!resolvedLeadId) {
+      try {
+        const lead = await createLead({
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          source: formData.source,
+          source_stage_id:
+            formData.source === "paid" ? (formData.stageId ?? null) : null,
+        });
+        resolvedLeadId = lead.id;
+      } catch (err: unknown) {
+        showErrorToast("Fehler beim Anlegen des Leads", err);
+        return;
+      }
+    }
+
     const payload: StartSalesProcessRequest = {
       name: formData.name,
       email: formData.email ?? "",
@@ -292,7 +337,7 @@ export default function SalesProcessView() {
       source: formData.source,
       source_stage_id:
         formData.source === "paid" ? (formData.stageId ?? null) : null,
-      lead_id: formData.leadId,
+      lead_id: resolvedLeadId,
       initial_contact_date: formData.zweitgespraechDate
         ? format(formData.zweitgespraechDate, "yyyy-MM-dd")
         : format(new Date(), "yyyy-MM-dd"),
@@ -432,6 +477,24 @@ export default function SalesProcessView() {
 
   const handleSelectLead = (lead: Lead | null) => {
     if (lead) {
+      const hasActive = sales.some(
+        (s) =>
+          s.stage !== SALES_STAGE.CLOSED &&
+          s.stage !== SALES_STAGE.LOST &&
+          ((s.lead_id != null && s.lead_id === lead.id) ||
+            (lead.converted_client_id != null &&
+              s.client_id === lead.converted_client_id)),
+      );
+
+      if (hasActive) {
+        toast({
+          title: "Bereits in aktivem Verkaufsprozess",
+          description: `"${lead.name}" hat bereits einen laufenden Verkaufsprozess.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       setFormData((prev) => ({
         ...prev,
         leadId: lead.id,
@@ -446,36 +509,6 @@ export default function SalesProcessView() {
         ...prev,
         leadId: undefined,
       }));
-    }
-  };
-
-  const handleSaveInitialContactDate = async (id: number, newDate: Date) => {
-    try {
-      await mPatch.mutateAsync({
-        id,
-        payload: {
-          initial_contact_date: format(newDate, "yyyy-MM-dd"),
-        } as SalesProcessUpdateRequest,
-      });
-      await qc.invalidateQueries({ queryKey: queryKeys.sales });
-    } catch (err) {
-      showErrorToast("Fehler beim Speichern", err);
-      throw err;
-    }
-  };
-
-  const handleSaveFollowUpDate = async (id: number, newDate: Date) => {
-    try {
-      await mPatch.mutateAsync({
-        id,
-        payload: {
-          follow_up_date: format(newDate, "yyyy-MM-dd"),
-        } as SalesProcessUpdateRequest,
-      });
-      await qc.invalidateQueries({ queryKey: queryKeys.sales });
-    } catch (err) {
-      showErrorToast("Fehler beim Speichern", err);
-      throw err;
     }
   };
 
@@ -526,10 +559,138 @@ export default function SalesProcessView() {
     }));
   };
 
-  const handleShowContract = (entry: SalesProcessWithStageId) => {
-    const base = `/contracts?client=${entry.client_id}&open=1`;
-    const url = entry.id ? `${base}&sales_process=${entry.id}` : base;
-    navigate(url);
+  const handleShowDetails = (entry: SalesProcessWithStageId) => {
+    setSelectedDetailEntry(entry);
+  };
+
+  const handleSaveDetails = async (id: number, payload: DetailSavePayload) => {
+    const entry = sales.find((item) => item.id === id);
+    if (!entry) return;
+
+    const selectedStage =
+      payload.source === "paid"
+        ? stages.find((stage) => stage.id === payload.source_stage_id)
+        : null;
+
+    const clientPayload: Partial<Client> = {
+      email: payload.client_email || undefined,
+      phone: payload.client_phone || undefined,
+      source: payload.source || undefined,
+      source_stage_id:
+        payload.source === "paid" ? (selectedStage?.id ?? null) : null,
+      source_stage_name: payload.source === "paid" ? undefined : null,
+    };
+
+    const optimisticClient: Client = {
+      id: entry.client_id,
+      name: entry.client_name,
+      email: payload.client_email || entry.client_email || "",
+      phone: payload.client_phone || entry.client_phone || "",
+      source: payload.source || null,
+      source_stage_id:
+        payload.source === "paid" ? (selectedStage?.id ?? null) : null,
+      source_stage_name:
+        payload.source === "paid" ? (selectedStage?.name ?? null) : null,
+      status: "",
+      completed_at: payload.completed_at ?? entry.completed_at ?? null,
+    };
+
+    try {
+      const [, savedClient] = await Promise.all([
+        mPatch.mutateAsync({
+          id,
+          payload: {
+            initial_contact_date: payload.initial_contact_date,
+            follow_up_date:
+              entry.stage !== SALES_STAGE.INITIAL_CONTACT
+                ? payload.follow_up_date
+                : undefined,
+            follow_up_result: payload.follow_up_result,
+            completed_at: payload.completed_at || undefined,
+          },
+        }),
+        updateClient(entry.client_id, clientPayload),
+      ]);
+
+      const mergedClient: Client = {
+        ...optimisticClient,
+        ...savedClient,
+        source: savedClient.source ?? optimisticClient.source,
+        source_stage_id:
+          (savedClient.source ?? optimisticClient.source) === "paid"
+            ? (savedClient.source_stage_id ?? optimisticClient.source_stage_id)
+            : null,
+        source_stage_name:
+          (savedClient.source ?? optimisticClient.source) === "paid"
+            ? (savedClient.source_stage_name ??
+              optimisticClient.source_stage_name)
+            : null,
+      };
+
+      qc.setQueryData<SalesProcessWithStageId[]>(queryKeys.sales, (current) =>
+        (current ?? []).map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                client_email: optimisticClient.email || item.client_email,
+                client_phone: optimisticClient.phone || item.client_phone,
+                initial_contact_date:
+                  payload.initial_contact_date ?? item.initial_contact_date,
+                follow_up_date:
+                  entry.stage !== SALES_STAGE.INITIAL_CONTACT
+                    ? (payload.follow_up_date ?? item.follow_up_date)
+                    : item.follow_up_date,
+                follow_up_result:
+                  payload.follow_up_result !== undefined
+                    ? payload.follow_up_result
+                    : item.follow_up_result,
+                completed_at: payload.completed_at ?? item.completed_at,
+                client_source:
+                  mergedClient.source === "paid" ||
+                  mergedClient.source === "organic"
+                    ? mergedClient.source
+                    : item.client_source,
+                stage_id: mergedClient.source_stage_id ?? null,
+                source_stage_name: mergedClient.source_stage_name ?? null,
+              }
+            : item,
+        ),
+      );
+
+      qc.setQueryData<Client[]>(queryKeys.clients, (current) =>
+        (current ?? []).map((client) =>
+          client.id === savedClient.id
+            ? {
+                ...client,
+                ...optimisticClient,
+                ...savedClient,
+                source_stage_id:
+                  savedClient.source_stage_id ??
+                  optimisticClient.source_stage_id,
+                source_stage_name:
+                  savedClient.source_stage_name ??
+                  optimisticClient.source_stage_name,
+              }
+            : client,
+        ),
+      );
+
+      await qc.invalidateQueries({ queryKey: queryKeys.clients });
+      await qc.invalidateQueries({ queryKey: queryKeys.leads });
+
+      toast({
+        title: "Eintrag aktualisiert",
+        description: "Änderungen wurden gespeichert.",
+        variant: "default",
+        duration: 3500,
+      });
+    } catch (err) {
+      toast({
+        title: "Fehler beim Speichern",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
   };
 
   // Card title per step
@@ -613,23 +774,19 @@ export default function SalesProcessView() {
         paginatedSales={paginatedSales}
         stages={stages}
         highlightId={highlightId}
-        editingId={editingId}
-        setEditingId={setEditingId}
-        editingInitialId={editingInitialId}
-        setEditingInitialId={setEditingInitialId}
-        popoverSide={popoverSide}
-        setPopoverSide={setPopoverSide}
-        savingId={savingId}
-        setSavingId={setSavingId}
-        onSaveInitialContactDate={handleSaveInitialContactDate}
-        onSaveFollowUpDate={handleSaveFollowUpDate}
+        onShowDetails={handleShowDetails}
         onPlanFollowUp={handlePlanFollowUp}
         onEnterResult={handleEnterResult}
         onEnterClosing={handleEnterClosing}
-        onShowContract={handleShowContract}
         page={salesPage}
         totalPages={salesTotalPages}
         onPageChange={setSalesPage}
+      />
+      <SalesProcessDetailSheet
+        entry={selectedDetailEntry}
+        stages={stages}
+        onClose={() => setSelectedDetailEntry(null)}
+        onSave={handleSaveDetails}
       />
     </div>
   );

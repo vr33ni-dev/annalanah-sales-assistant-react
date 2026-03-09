@@ -14,17 +14,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Pencil, Save, X, Trash } from "lucide-react";
-import {
-  Client,
-  deleteClient,
-  getClients,
-  getStages,
-  Stage,
-  updateClient,
-} from "@/lib/api";
+import { Client, deleteClient, getClients, updateClient } from "@/lib/api";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockClients, mockStages } from "@/lib/mockData";
+import { mockClients } from "@/lib/mockData";
 import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { usePagination } from "@/hooks/usePagination";
 import { TablePagination } from "@/components/TablePagination";
@@ -73,16 +66,6 @@ export default function Clients() {
     mockData: mockClients,
   });
 
-  const { data: stagesData } = useMockableQuery<Stage[]>({
-    queryKey: queryKeys.stages,
-    queryFn: getStages,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: (d) => asArray<Stage>(d),
-    mockData: mockStages,
-  });
-
-  const stages = stagesData ?? [];
   const clients = data ?? [];
 
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
@@ -104,42 +87,37 @@ export default function Clients() {
 
   const handleEdit = (client: Client) => {
     setEditingClientId(client.id);
-    setEditedClient(client);
+    setEditedClient({ ...client });
   };
 
   const handleSave = async () => {
     if (!editingClientId) return;
 
-    // ✅ validation: require stage if Paid Ads
-    if (editedClient.source === "paid" && !editedClient.source_stage_name) {
-      toast({
-        title: "Bühne fehlt",
-        description: "Bitte eine Bühne auswählen (erforderlich für Paid Ads).",
-        variant: "destructive",
-      });
-      return;
-    }
+    const validSource =
+      editedClient.source === "organic" || editedClient.source === "paid"
+        ? editedClient.source
+        : null;
 
-    // ✅ validation: require completed_at if Kunde
-    if (editedClient.status === "active" && !editedClient.completed_at) {
-      toast({
-        title: "Abschlussdatum fehlt",
-        description:
-          "Bitte das Abschlussdatum angeben (erforderlich für Kunden).",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Clear stage if switching to organic
-    const payload: Partial<Client> = {
-      ...editedClient,
-      source_stage_name:
-        editedClient.source === "paid" ? editedClient.source_stage_name : null,
+    const optimisticClient: Client = {
+      id: editingClientId,
+      name: editedClient.name ?? "",
+      email: editedClient.email ?? "",
+      phone: editedClient.phone ?? "",
+      source: validSource,
+      source_stage_id: editedClient.source_stage_id ?? null,
+      source_stage_name: editedClient.source_stage_name ?? null,
+      status: editedClient.status ?? "",
+      completed_at: editedClient.completed_at ?? null,
     };
 
+    const payload: Partial<Client> = { ...editedClient, source: validSource };
+
+    let savedClient: Client;
+
     try {
-      await updateClient(editingClientId, payload);
+      savedClient = await updateClient(editingClientId, payload);
+      // Invalidate sales process queries so table updates with new client data
+      queryClient.invalidateQueries({ queryKey: queryKeys.sales });
     } catch (e) {
       console.warn("[Clients] save failed (expected in preview):", e);
       toast({
@@ -150,9 +128,27 @@ export default function Clients() {
       return;
     }
 
+    queryClient.setQueryData<Client[]>(queryKeys.clients, (current = []) =>
+      current.map((client) =>
+        client.id === editingClientId
+          ? {
+              ...client,
+              ...optimisticClient,
+              ...savedClient,
+              source_stage_id:
+                savedClient.source_stage_id ?? optimisticClient.source_stage_id,
+              source_stage_name:
+                savedClient.source_stage_name ??
+                optimisticClient.source_stage_name,
+            }
+          : client,
+      ),
+    );
+
     setEditingClientId(null);
     setEditedClient({});
     queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    queryClient.invalidateQueries({ queryKey: queryKeys.leads });
     toast({ title: "Kunde gespeichert" });
   };
 
@@ -258,134 +254,49 @@ export default function Clients() {
                       client.phone
                     )}
                   </TableCell>
-                  <TableCell>
-                    {editingClientId === client.id ? (
-                      <select
-                        className="border rounded px-2 py-1"
-                        value={editedClient.source || ""}
-                        onChange={(e) =>
-                          setEditedClient({
-                            ...editedClient,
-                            source: e.target.value,
-                            source_stage_name:
-                              e.target.value === "paid"
-                                ? editedClient.source_stage_name
-                                : null,
-                          })
-                        }
-                      >
-                        <option value="organic">Organic</option>
-                        <option value="paid">Paid Ads</option>
-                      </select>
-                    ) : (
-                      (sourceLabels[
-                        client.source as keyof typeof sourceLabels
-                      ] ?? client.source)
-                    )}
+                  <TableCell
+                    className={
+                      editingClientId === client.id ? "opacity-40" : ""
+                    }
+                  >
+                    {sourceLabels[client.source as keyof typeof sourceLabels] ??
+                      client.source}
                   </TableCell>
 
-                  <TableCell>
-                    {editingClientId === client.id ? (
-                      editedClient.source === "paid" ? (
-                        <select
-                          className="border rounded px-2 py-1"
-                          value={editedClient.source_stage_name || ""}
-                          onChange={(e) =>
-                            setEditedClient({
-                              ...editedClient,
-                              source_stage_name: e.target.value || null,
-                            })
-                          }
-                        >
-                          <option value="">Bühne wählen…</option>
-                          {stages.map((stage) => (
-                            <option key={stage.id} value={stage.name}>
-                              {stage.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-muted-foreground">–</span>
-                      )
-                    ) : (
-                      client.source_stage_name || "–"
-                    )}
+                  <TableCell
+                    className={
+                      editingClientId === client.id ? "opacity-40" : ""
+                    }
+                  >
+                    {client.source_stage_name || "–"}
                   </TableCell>
 
-                  <TableCell>
-                    {editingClientId === client.id ? (
-                      <select
-                        className="border rounded px-2 py-1"
-                        value={editedClient.status || ""}
-                        onChange={(e) =>
-                          setEditedClient({
-                            ...editedClient,
-                            status: e.target.value,
-                          })
-                        }
-                      >
-                        {Object.entries(statusLabels).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Badge
-                        className={
-                          statusColors[
-                            client.status as keyof typeof statusColors
-                          ] ?? "bg-muted"
-                        }
-                      >
-                        {statusLabels[
-                          client.status as keyof typeof statusLabels
-                        ] ?? client.status}
-                      </Badge>
-                    )}
+                  <TableCell
+                    className={
+                      editingClientId === client.id ? "opacity-40" : ""
+                    }
+                  >
+                    <Badge
+                      className={
+                        statusColors[
+                          client.status as keyof typeof statusColors
+                        ] ?? "bg-muted"
+                      }
+                    >
+                      {statusLabels[
+                        client.status as keyof typeof statusLabels
+                      ] ?? client.status}
+                    </Badge>
                   </TableCell>
 
-                  <TableCell>
-                    {editingClientId === client.id ? (
-                      <div className="relative w-[180px]">
-                        <Input
-                          type="date"
-                          value={editedClient.completed_at?.slice(0, 10) || ""}
-                          onChange={(e) =>
-                            setEditedClient({
-                              ...editedClient,
-                              completed_at: e.target.value || null,
-                            })
-                          }
-                          disabled={editedClient.status !== "active"}
-                          required={editedClient.status === "active"} // ✅ required if Kunde
-                          className={`pr-8 ${
-                            editedClient.status !== "active"
-                              ? "opacity-50 cursor-not-allowed"
-                              : ""
-                          }`}
-                        />
-                        {editedClient.status === "active" &&
-                          editedClient.completed_at && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditedClient({
-                                  ...editedClient,
-                                  completed_at: null,
-                                })
-                              }
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
-                      </div>
-                    ) : client.completed_at ? (
-                      formatDateOnly(client.completed_at)
-                    ) : (
-                      "-"
-                    )}
+                  <TableCell
+                    className={
+                      editingClientId === client.id ? "opacity-40" : ""
+                    }
+                  >
+                    {client.completed_at
+                      ? formatDateOnly(client.completed_at)
+                      : "-"}
                   </TableCell>
 
                   <TableCell className="flex gap-2">
