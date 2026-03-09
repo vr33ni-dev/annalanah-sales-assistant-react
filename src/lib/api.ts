@@ -392,6 +392,10 @@ export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
   return data as Stage;
 };
 
+export const deleteStage = async (id: string | number): Promise<void> => {
+  await api.delete(`/stages/${id}`);
+};
+
 export const updateStageInfo = async (
   id: string | number,
   payload: Partial<Pick<Stage, "name" | "date" | "ad_budget">>,
