@@ -7,6 +7,15 @@ export const queryKeys = {
   comments: (entityType: string, entityId: number) =>
     ["comments", entityType, entityId] as const,
   contracts: ["contracts"] as const,
+  contractsList: (options?: { includeExpired?: boolean; compact?: boolean }) =>
+    [
+      "contracts",
+      "list",
+      {
+        includeExpired: !!options?.includeExpired,
+        compact: !!options?.compact,
+      },
+    ] as const,
   contract: (id: number) => ["contracts", id] as const,
   upsell: (salesProcessId?: number) => ["upsell", salesProcessId] as const,
   settings: ["settings"] as const,

@@ -8,7 +8,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { toast, useToast } from "@/components/ui/use-toast";
+import { toast } from "@/components/ui/use-toast";
 
 import {
   Table,
@@ -19,12 +19,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   FileText,
   DollarSign,
   TrendingUp,
   Users,
   Calendar,
-  Info,
   X,
 } from "lucide-react";
 
@@ -32,6 +34,7 @@ import { UpsellModal } from "@/components/upsell/UpsellModal";
 import { CashflowHistoryTable } from "../components/cashflow/CashflowHistoryTable";
 import {
   Contract,
+  getContractById,
   getContracts,
   getCashflowForecast,
   getCashflowMetrics,
@@ -40,11 +43,9 @@ import {
   type CashflowMetrics,
   getSalesProcesses,
   type SalesProcess,
-  CreateOrUpdateUpsellRequest,
   ContractUpsell,
   getUpsellForSalesProcess,
 } from "@/lib/api";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import {
   mockContracts,
@@ -64,6 +65,7 @@ import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { queryKeys } from "@/lib/queryKeys";
+import { cn } from "@/lib/utils";
 
 /* ---------------- helpers ---------------- */
 
@@ -78,12 +80,6 @@ function addMonthsIso(iso: string, m: number): string {
     2,
     "0",
   )}-${String(dt.getDate()).padStart(2, "0")}`;
-}
-
-function parseIso(iso: string) {
-  const datePart = iso.split("T")[0];
-  const [y, m, d] = datePart.split("-").map(Number);
-  return new Date(y, m - 1, d);
 }
 
 // Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
@@ -101,6 +97,27 @@ function addMonthsDate(d: Date, months: number) {
   const dt = new Date(d.getTime());
   dt.setMonth(dt.getMonth() + months);
   return dt;
+}
+
+function getContractEndDate(contract: Contract) {
+  const start = toDateStartOfDay(contract.start_date);
+  const endFromServer = toDateStartOfDay(contract.end_date ?? null);
+
+  if (endFromServer) return endFromServer;
+  if (!start || typeof contract.duration_months !== "number") return null;
+
+  return addMonthsDate(start, contract.duration_months);
+}
+
+function isContractExpired(contract: Contract, today: Date) {
+  const current = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const end = getContractEndDate(contract);
+
+  return !!end && end < current;
 }
 
 function getElapsedContractMonths(
@@ -135,23 +152,6 @@ function getElapsedContractMonths(
   return currentContractMonth;
 }
 
-// Inclusive overlap check between two closed date ranges [aStart, aEnd] and [bStart, bEnd]
-function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
-  return aStart <= bEnd && bStart <= aEnd;
-}
-
-// count calendar months overlap between [a1, a2) and [b1, b2) (end exclusive)
-function monthsOverlap(a1: Date, a2: Date, b1: Date, b2: Date): number {
-  const s = a1 > b1 ? a1 : b1;
-  const e = a2 < b2 ? a2 : b2;
-  if (e <= s) return 0;
-  const months =
-    (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
-  // include current month if e is past the 1st
-  const includeE = e.getDate() > 1 ? 1 : 0;
-  return Math.max(0, months + includeE);
-}
-
 function euro(n: number) {
   return `€${Math.round(n).toLocaleString()}`;
 }
@@ -159,9 +159,9 @@ function euro(n: number) {
 /* --------------- page ------------------- */
 
 export default function Contracts() {
-  const { enabled } = useAuthEnabled();
   const [searchParams] = useSearchParams();
   const clientFilter = searchParams.get("client");
+  const salesProcessParam = searchParams.get("sales_process");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -174,6 +174,13 @@ export default function Contracts() {
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
     null,
   );
+  const [showExpiredContracts, setShowExpiredContracts] = useState(false);
+  const [startDateSortOrder, setStartDateSortOrder] = useState<"asc" | "desc">(
+    "desc",
+  );
+
+  const shouldFetchExpiredContracts =
+    showExpiredContracts || !!salesProcessParam;
 
   // Upsell for selected contract
   const { data: upsell, refetch: refetchUpsell } = useMockableQuery<
@@ -224,40 +231,98 @@ export default function Contracts() {
     isError: errorContracts,
     refetch: refetchContracts,
   } = useMockableQuery<Contract[]>({
-    queryKey: queryKeys.contracts,
-    queryFn: getContracts,
+    queryKey: queryKeys.contractsList({
+      includeExpired: shouldFetchExpiredContracts,
+      compact: true,
+    }),
+    queryFn: () =>
+      getContracts({
+        includeExpired: shouldFetchExpiredContracts,
+        compact: true,
+      }),
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
     mockData: mockContracts,
   });
 
-  const linkedPreviousContract =
-    relatedUpsell && typeof relatedUpsell.previous_contract_id === "number"
-      ? contracts.find(
-          (contract) => contract.id === relatedUpsell.previous_contract_id,
-        )
-      : undefined;
+  const { data: selectedContractDetail } = useMockableQuery<Contract | null>({
+    queryKey: selectedContract
+      ? queryKeys.contract(selectedContract.id)
+      : (["contract", "selected"] as const),
+    queryFn: () =>
+      selectedContract ? getContractById(selectedContract.id) : null,
+    enabled: !!selectedContract,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (contract) => contract ?? null,
+    mockData: selectedContract
+      ? (mockContracts.find(
+          (contract) => contract.id === selectedContract.id,
+        ) ?? null)
+      : null,
+  });
 
-  const linkedNewContract =
+  const drawerContract = selectedContractDetail ?? selectedContract;
+
+  const linkedPreviousContractId =
+    relatedUpsell && typeof relatedUpsell.previous_contract_id === "number"
+      ? relatedUpsell.previous_contract_id
+      : null;
+
+  const linkedNewContractId =
     relatedUpsell && typeof relatedUpsell.new_contract_id === "number"
-      ? contracts.find(
-          (contract) => contract.id === relatedUpsell.new_contract_id,
-        )
-      : undefined;
+      ? relatedUpsell.new_contract_id
+      : null;
+
+  const { data: linkedPreviousContract } = useMockableQuery<Contract | null>({
+    queryKey: linkedPreviousContractId
+      ? queryKeys.contract(linkedPreviousContractId)
+      : (["contract", "linked-previous"] as const),
+    queryFn: () =>
+      linkedPreviousContractId
+        ? getContractById(linkedPreviousContractId)
+        : null,
+    enabled: !!linkedPreviousContractId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (contract) => contract ?? null,
+    mockData: linkedPreviousContractId
+      ? (mockContracts.find(
+          (contract) => contract.id === linkedPreviousContractId,
+        ) ?? null)
+      : null,
+  });
+
+  const { data: linkedNewContract } = useMockableQuery<Contract | null>({
+    queryKey: linkedNewContractId
+      ? queryKeys.contract(linkedNewContractId)
+      : (["contract", "linked-new"] as const),
+    queryFn: () =>
+      linkedNewContractId ? getContractById(linkedNewContractId) : null,
+    enabled: !!linkedNewContractId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (contract) => contract ?? null,
+    mockData: linkedNewContractId
+      ? (mockContracts.find(
+          (contract) => contract.id === linkedNewContractId,
+        ) ?? null)
+      : null,
+  });
 
   const isUpsellSourceContract =
-    !!selectedContract &&
+    !!drawerContract &&
     !!relatedUpsell &&
     (relatedUpsell.previous_contract_id == null
       ? true
-      : relatedUpsell.previous_contract_id === selectedContract.id);
+      : relatedUpsell.previous_contract_id === drawerContract.id);
 
   const isUpsellResultContract =
-    !!selectedContract &&
+    !!drawerContract &&
     !!relatedUpsell &&
-    relatedUpsell.new_contract_id === selectedContract.id &&
-    relatedUpsell.previous_contract_id !== selectedContract.id;
+    relatedUpsell.new_contract_id === drawerContract.id &&
+    relatedUpsell.previous_contract_id !== drawerContract.id;
 
   const openLinkedContract = (contract: Contract) => {
     setSelectedContract(contract);
@@ -318,11 +383,7 @@ export default function Contracts() {
     return contracts.filter((c) => {
       const cStart = toDateStartOfDay(c.start_date as string | null);
       if (!cStart) return false;
-      const endRaw = c.end_date ?? undefined;
-      let cEnd = endRaw ? toDateStartOfDay(endRaw) : null;
-      if (!cEnd && typeof c.duration_months === "number") {
-        cEnd = addMonthsDate(cStart, c.duration_months);
-      }
+      const cEnd = getContractEndDate(c);
       // Future-start contracts are considered active (no confirmation required)
 
       if (!cEnd) return true; // open-ended → active
@@ -335,65 +396,8 @@ export default function Contracts() {
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt) — use metrics if available ---- */
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
-  const todayYmd = toYmdLocal(now);
-  const startOfYearYmd = toYmdLocal(startOfYear);
-
-  const embeddedCashflowEntries = contracts.flatMap((contract) =>
-    Array.isArray(contract.cashflow)
-      ? contract.cashflow
-          .filter((entry) => Number(entry.amount ?? 0) > 0)
-          .map((entry) => ({
-            ...entry,
-            contract_id:
-              typeof entry.contract_id === "number"
-                ? entry.contract_id
-                : contract.id,
-          }))
-      : [],
-  );
-  const hasEmbeddedCashflow = embeddedCashflowEntries.length > 0;
-
-  const ytdCashInFromEntries = embeddedCashflowEntries.reduce((sum, entry) => {
-    const due = entry.due_date?.slice(0, 10);
-    const amount = Number(entry.amount ?? NaN);
-
-    if (!due || !Number.isFinite(amount) || amount <= 0) return sum;
-    if (due < startOfYearYmd || due > todayYmd) return sum;
-    if (entry.confirmed === false) return sum;
-
-    return sum + amount;
-  }, 0);
-
-  // keep a client-side fallback calculation (was previous behaviour) — used only if server metrics missing
-  let ytdCashInComputed = 0;
-  for (const c of contracts) {
-    const start = parseIso(c.start_date);
-    const end = parseIso(addMonthsIso(c.start_date, c.duration_months)); // exclusive
-    const monthsActiveThisYear = monthsOverlap(start, end, startOfYear, now);
-    if (monthsActiveThisYear <= 0) continue;
-    // gracefully access paid_months if backend provides it, otherwise 0
-    const paidInThisYear = Math.min(
-      (c as Contract & { paid_months?: number }).paid_months ?? 0,
-      monthsActiveThisYear,
-    );
-    ytdCashInComputed += paidInThisYear * c.base_monthly_amount;
-  }
-  const avgMonthlyYtdComputed =
-    monthsElapsedYtd > 0 ? Math.round(ytdCashInComputed / monthsElapsedYtd) : 0;
-
-  const avgMonthlyYtdFromEntries =
-    monthsElapsedYtd > 0
-      ? Math.round(ytdCashInFromEntries / monthsElapsedYtd)
-      : 0;
-
-  // Final KPI: prefer embedded contract cashflow when available, then server
-  // metrics, then the old paid_months-based fallback.
-  const avgMonthlyYtd = hasEmbeddedCashflow
-    ? avgMonthlyYtdFromEntries
-    : (metrics?.avg_monthly_ytd ?? avgMonthlyYtdComputed);
-  const ytdPaidAmountDisplay = hasEmbeddedCashflow
-    ? ytdCashInFromEntries
-    : (metrics?.ytd_paid_amount ?? ytdCashInComputed);
+  const avgMonthlyYtd = metrics?.avg_monthly_ytd ?? 0;
+  const ytdPaidAmountDisplay = metrics?.ytd_paid_amount ?? 0;
 
   /* ---- Filtered Contracts for Active Contracts table ---- */
   const [dateStart, setDateStart] = useState<string>(toYmdLocal(startOfYear));
@@ -453,24 +457,40 @@ export default function Contracts() {
       });
     }
 
+    if (!showExpiredContracts) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      list = list.filter((contract) => !isContractExpired(contract, today));
+    }
+
     return list;
-  }, [contracts, clientFilter, dateStart, dateEnd]);
+  }, [contracts, clientFilter, dateEnd, dateStart, showExpiredContracts]);
+
+  const sortedContracts = useMemo(() => {
+    return [...filteredContracts].sort((a, b) => {
+      const aStart =
+        toDateStartOfDay(a.start_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bStart =
+        toDateStartOfDay(b.start_date)?.getTime() ?? Number.POSITIVE_INFINITY;
+
+      return startDateSortOrder === "asc" ? aStart - bStart : bStart - aStart;
+    });
+  }, [filteredContracts, startDateSortOrder]);
 
   /* ----------------- Pagination ---------------- */
   const [page, setPage] = useState(1);
   const pageSize = 10; // contracts per page
-  const totalPages = Math.ceil(filteredContracts.length / pageSize);
+  const totalPages = Math.ceil(sortedContracts.length / pageSize);
 
   const paginatedContracts = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredContracts.slice(start, start + pageSize);
-  }, [filteredContracts, page]);
+    return sortedContracts.slice(start, start + pageSize);
+  }, [page, sortedContracts]);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
   useEffect(() => {
     const openParam = searchParams.get("open");
-    const salesProcessParam = searchParams.get("sales_process");
 
     if (salesProcessParam) {
       const spId = Number(salesProcessParam);
@@ -527,13 +547,20 @@ export default function Contracts() {
     dateStart,
     filteredContracts,
     navigate,
+    salesProcessParam,
     searchParams,
   ]);
 
   // Reset to page 1 on filter change
   useEffect(() => {
     setPage(1);
-  }, [dateStart, dateEnd, clientFilter]);
+  }, [
+    dateStart,
+    dateEnd,
+    clientFilter,
+    showExpiredContracts,
+    startDateSortOrder,
+  ]);
 
   // Ensure the dateEnd filter at least reaches the latest contract end date,
   // but only when the end date is not set (empty). We intentionally avoid
@@ -585,28 +612,6 @@ export default function Contracts() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  const embeddedNext3Map = embeddedCashflowEntries.reduce((acc, entry) => {
-    const due = entry.due_date?.slice(0, 10);
-    const amount = Number(entry.amount ?? NaN);
-
-    if (!due || !Number.isFinite(amount) || amount <= 0) return acc;
-    if (entry.confirmed === false) return acc;
-
-    const month = due.slice(0, 7);
-    if (!next3MonthKeys.includes(month)) return acc;
-
-    acc.set(month, (acc.get(month) ?? 0) + amount);
-    return acc;
-  }, new Map<string, number>());
-
-  const next3FromEmbedded = next3MonthKeys
-    .map((month) => ({
-      month,
-      confirmed: Math.round(embeddedNext3Map.get(month) ?? 0),
-      potential: 0,
-    }))
-    .filter((row) => row.confirmed > 0);
-
   // If server metrics available, prefer them; else compute from `forecast`
   const next3FromMetrics =
     metrics?.confirmed_next3?.map((m) => ({
@@ -626,8 +631,7 @@ export default function Contracts() {
     }));
 
   const next3Data =
-    next3FromMetrics ??
-    (next3FromForecast.length > 0 ? next3FromForecast : next3FromEmbedded);
+    next3FromMetrics ?? (next3FromForecast.length > 0 ? next3FromForecast : []);
 
   const next3Display = next3Data.map((r) => {
     const total = r.confirmed; // confirmed-only KPI
@@ -734,11 +738,20 @@ export default function Contracts() {
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
-              Aktive Verträge
+              Verträge
             </CardTitle>
 
             {/* DATE RANGE FILTER */}
             <div className="flex items-center gap-2">
+              <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={showExpiredContracts}
+                  onChange={(e) => setShowExpiredContracts(e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                Abgelaufene Verträge anzeigen
+              </label>
               <input
                 type="date"
                 value={dateStart}
@@ -801,7 +814,31 @@ export default function Contracts() {
             <TableHeader>
               <TableRow>
                 <TableHead>Kunde</TableHead>
-                <TableHead>Startdatum</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStartDateSortOrder((current) =>
+                        current === "asc" ? "desc" : "asc",
+                      )
+                    }
+                    className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
+                    title={
+                      startDateSortOrder === "asc"
+                        ? "Nach Startdatum absteigend sortieren"
+                        : "Nach Startdatum aufsteigend sortieren"
+                    }
+                  >
+                    Startdatum
+                    {startDateSortOrder === "asc" ? (
+                      <ArrowUp className="h-4 w-4" />
+                    ) : startDateSortOrder === "desc" ? (
+                      <ArrowDown className="h-4 w-4" />
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead>Laufzeit</TableHead>
                 <TableHead>Umsatz</TableHead>
                 <TableHead>Zahlungsfrequenz</TableHead>
@@ -816,14 +853,26 @@ export default function Contracts() {
                   now,
                   contract.duration_months,
                 );
+                const contractExpired = isContractExpired(contract, now);
                 const progressPercent =
                   contract.duration_months > 0
                     ? (elapsedMonths / contract.duration_months) * 100
                     : 0;
                 return (
-                  <TableRow key={contract.id}>
+                  <TableRow
+                    key={contract.id}
+                    className={cn(
+                      contractExpired &&
+                        "bg-muted/20 text-muted-foreground hover:bg-muted/30",
+                    )}
+                  >
                     <TableCell className="font-medium">
-                      {contract.client_name}
+                      <div className="flex items-center gap-2">
+                        <span>{contract.client_name}</span>
+                        {contractExpired && (
+                          <Badge variant="secondary">Abgelaufen</Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {contract.start_date
@@ -841,7 +890,13 @@ export default function Contracts() {
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
-                        <Progress value={progressPercent} className="h-2" />
+                        <Progress
+                          value={progressPercent}
+                          className={cn("h-2", contractExpired && "bg-muted")}
+                          indicatorClassName={
+                            contractExpired ? "bg-slate-400" : undefined
+                          }
+                        />
                         <p className="text-xs text-muted-foreground">
                           {elapsedMonths}/{contract.duration_months} Monate
                           {contract.next_due_date
@@ -855,7 +910,12 @@ export default function Contracts() {
                     <TableCell>
                       <button
                         onClick={() => setSelectedContract(contract)}
-                        className="text-sm text-blue-600 hover:underline"
+                        className={cn(
+                          "text-sm hover:underline",
+                          contractExpired
+                            ? "text-muted-foreground"
+                            : "text-blue-600",
+                        )}
                       >
                         Vertrag anzeigen
                       </button>
@@ -909,11 +969,11 @@ export default function Contracts() {
         }}
       >
         <SheetContent className="w-[600px] sm:max-w-full overflow-y-auto">
-          {selectedContract && (
+          {drawerContract && (
             <>
               <SheetHeader>
                 <SheetTitle>
-                  Vertrag mit {selectedContract.client_name}
+                  Vertrag mit {drawerContract.client_name}
                 </SheetTitle>
               </SheetHeader>
 
@@ -922,15 +982,15 @@ export default function Contracts() {
                   <h3 className="text-sm font-semibold text-muted-foreground">
                     Laufzeit
                   </h3>
-                  <p>{selectedContract.duration_months} Monate</p>
+                  <p>{drawerContract.duration_months} Monate</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
                     Startdatum
                   </h3>
                   <p>
-                    {selectedContract.start_date
-                      ? formatDateOnly(selectedContract.start_date)
+                    {drawerContract.start_date
+                      ? formatDateOnly(drawerContract.start_date)
                       : "–"}
                   </p>
                 </div>
@@ -939,14 +999,14 @@ export default function Contracts() {
                     Zahlungsfrequenz
                   </h3>
                   <Badge variant="outline">
-                    {selectedContract.payment_frequency}
+                    {drawerContract.payment_frequency}
                   </Badge>
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
                     Umsatz
                   </h3>
-                  <p>€{selectedContract.revenue_total.toLocaleString()}</p>
+                  <p>€{drawerContract.revenue_total.toLocaleString()}</p>
                 </div>
                 {/* ---------------- Edit Contract Button ---------------- */}
                 <button
@@ -959,12 +1019,12 @@ export default function Contracts() {
                 {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
-                  <CashflowHistoryTable contractId={selectedContract.id} />
+                  <CashflowHistoryTable contractId={drawerContract.id} />
                 </div>
               </div>
               <div className="mt-6 space-y-3">
                 <h3 className="font-semibold">Prognose</h3>
-                <CashflowUpcomingTable contractId={selectedContract.id} />{" "}
+                <CashflowUpcomingTable contractId={drawerContract.id} />{" "}
               </div>
               {/* ---------------- Upsell Section ---------------- */}
               <div className="mt-8 border-t pt-6">
@@ -1092,7 +1152,7 @@ export default function Contracts() {
               <div className="mt-8 border-t pt-6">
                 <CommentsSection
                   entityType="contract"
-                  entityId={selectedContract.id}
+                  entityId={drawerContract.id}
                   maxHeight="250px"
                 />
               </div>
@@ -1114,7 +1174,7 @@ export default function Contracts() {
       )}
       {showContractEdit && (
         <ContractEditModal
-          contract={selectedContract}
+          contract={drawerContract}
           onClose={() => setShowContractEdit(false)}
           onSaved={() => {
             setShowContractEdit(false);

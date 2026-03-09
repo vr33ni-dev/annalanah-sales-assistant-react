@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
   Contract,
+  getContractById,
   getCashflowForecast,
   getContracts,
   getNumericSetting,
@@ -39,12 +40,31 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     isFetching: isFetchingContracts,
     isError: isErrorContracts,
   } = useMockableQuery<Contract[]>({
-    queryKey: queryKeys.contracts,
-    queryFn: getContracts,
+    queryKey: queryKeys.contractsList({ compact: true }),
+    queryFn: () => getContracts({ compact: true }),
+    enabled: !isContractView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
     mockData: mockContracts,
+  });
+
+  const {
+    data: contractDetail,
+    isFetching: isFetchingContractDetail,
+    isError: isErrorContractDetail,
+  } = useMockableQuery<Contract | null>({
+    queryKey: contractId ? queryKeys.contract(contractId) : ["contract", null],
+    queryFn: () =>
+      typeof contractId === "number" ? getContractById(contractId) : null,
+    enabled: isContractView,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (contract) => contract ?? null,
+    mockData:
+      typeof contractId === "number"
+        ? (mockContracts.find((contract) => contract.id === contractId) ?? null)
+        : null,
   });
 
   const { data: potentialMonths = 6 } = useQuery<number>({
@@ -63,9 +83,10 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
 
   const showPotential = !contractId; // only show potential if all contracts view
   const selectedContract =
-    typeof contractId === "number"
+    contractDetail ??
+    (typeof contractId === "number"
       ? contracts.find((contract) => contract.id === contractId)
-      : undefined;
+      : undefined);
 
   const rows = useMemo(() => {
     if (!isContractView) return forecast;
@@ -101,8 +122,10 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
       .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
   }, [forecast, isContractView, selectedContract?.cashflow]);
 
-  const isFetching = isContractView ? isFetchingContracts : isFetchingForecast;
-  const isError = isContractView ? isErrorContracts : isErrorForecast;
+  const isFetching = isContractView
+    ? isFetchingContractDetail
+    : isFetchingForecast;
+  const isError = isContractView ? isErrorContractDetail : isErrorForecast;
 
   return (
     <Card>

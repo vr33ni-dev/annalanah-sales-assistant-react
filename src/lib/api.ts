@@ -324,8 +324,16 @@ export interface Contract {
   cashflow?: CashflowEntry[];
 }
 
-export const getContracts = async (): Promise<Contract[]> => {
-  const { data } = await api.get("/contracts");
+export const getContracts = async (options?: {
+  includeExpired?: boolean;
+  compact?: boolean;
+}): Promise<Contract[]> => {
+  const { data } = await api.get("/contracts", {
+    params: {
+      ...(options?.includeExpired ? { include_expired: true } : null),
+      ...(options?.compact ? { compact: true } : null),
+    },
+  });
   return asArray<Contract>(data);
 };
 

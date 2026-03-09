@@ -102,7 +102,7 @@ export default function Dashboard() {
 
   const { data: contracts = [] } = useMockableQuery<Contract[]>({
     queryKey: ["contracts"],
-    queryFn: getContracts,
+    queryFn: () => getContracts(),
     select: asArray<Contract>,
     mockData: mockContracts,
   });
@@ -173,12 +173,17 @@ export default function Dashboard() {
   // -----------------------------
   // KPI: REVENUE
   // -----------------------------
-  // We align Dashboard revenue KPIs with the closing KPIs by using the
-  // *decision date* of the sales process (completed_at when present, otherwise
-  // the follow-up/closing call date).
-
   // Group ALL upsells per client (needed for renewal classification)
   const upsellByClient = groupBy(upsellsAll, (u) => u.client_id);
+  const successfulRenewalByNewContractId = new Set(
+    upsellsAll
+      .filter(
+        (u) =>
+          u.upsell_result === "verlaengerung" &&
+          typeof u.new_contract_id === "number",
+      )
+      .map((u) => u.new_contract_id as number),
+  );
 
   // Correct classification logic:
   // A sales process is a RENEWAL process only if an upsell
@@ -225,21 +230,6 @@ export default function Dashboard() {
     return inRange(decisionDate);
   });
 
-  const newCustomerRevenue = wonNewCustomerInRange.reduce(
-    (s, sp) => s + (sp.revenue ?? 0),
-    0,
-  );
-
-  const renewalRevenue = useMockData
-    ? upsells
-        .filter(
-          (u) => u.upsell_result === "verlaengerung" && inRange(u.upsell_date),
-        )
-        .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0)
-    : (upsellAnalytics?.umsatz_sum ?? 0);
-
-  const totalRevenue = newCustomerRevenue + renewalRevenue;
-
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
   // -----------------------------
@@ -268,7 +258,7 @@ export default function Dashboard() {
     ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate())
     : null;
 
-  const activeContracts = contracts.filter((c) => {
+  const contractsInRange = contracts.filter((c) => {
     const cStart = parseIsoToLocal(c.start_date) || new Date(0);
 
     const endRaw = c.end_date ?? undefined;
@@ -299,7 +289,23 @@ export default function Dashboard() {
     const createdInWindow = created >= viewStart && created <= viewEnd;
 
     return overlapsWindow || (isFutureStart && createdInWindow);
-  }).length;
+  });
+
+  const activeContracts = contractsInRange.length;
+
+  const contractsStartedInRange = contracts.filter((contract) =>
+    inRange(contract.start_date),
+  );
+
+  const newCustomerRevenue = contractsStartedInRange
+    .filter((contract) => !successfulRenewalByNewContractId.has(contract.id))
+    .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
+
+  const renewalRevenue = contractsStartedInRange
+    .filter((contract) => successfulRenewalByNewContractId.has(contract.id))
+    .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
+
+  const totalRevenue = newCustomerRevenue + renewalRevenue;
 
   // -----------------------------
   // KPI: ABSCHLUSSQUOTE (NEUKUNDEN)
@@ -481,8 +487,9 @@ export default function Dashboard() {
           </TooltipTrigger>
           <TooltipContent>
             <p className="max-w-xs text-xs">
-              Summe der Vertragswerte im ausgewählten Zeitraum. Spiegelt nicht
-              die bereits erfolgten Cashflow-Zahlungen wider.
+              Summe der Vertragswerte von Verträgen mit Start im ausgewählten
+              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
+              wider.
             </p>
           </TooltipContent>
         </Tooltip>
@@ -559,9 +566,9 @@ export default function Dashboard() {
           </TooltipTrigger>
           <TooltipContent>
             <p className="max-w-xs text-xs">
-              Erfolgreiche Neukunden-Abschlüsse im gewählten Zeitraum. Gezählt
-              werden bestätigte Vertragsabschlüsse sowie keine
-              zustandegekommenen Abschlüsse nach stattgefundenem Zweitgespräch.
+              Erfolgreiche Neukunden-Abschlüsse basierend auf Verkaufsprozessen
+              im ausgewählten Zeitraum. Erfordert erfasste Zweitgespräche und
+              Abschlussdaten.
             </p>
           </TooltipContent>
         </Tooltip>
