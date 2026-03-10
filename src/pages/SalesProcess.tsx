@@ -6,7 +6,8 @@ import { format } from "date-fns";
 import { parseIsoToLocal } from "@/helpers/date";
 import { extractErrorMessage } from "@/helpers/error";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CalendarPlus } from "lucide-react";
+import { CalendarPlus, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 import {
   Client,
@@ -40,6 +41,7 @@ import type {
 export default function SalesProcessView() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -189,7 +191,6 @@ export default function SalesProcessView() {
     setActiveStatusFilters,
     activeSourceFilters,
     setActiveSourceFilters,
-    statusFilter,
     toggleStatusFilter,
     toggleSourceFilter,
     dateFilter,
@@ -215,6 +216,34 @@ export default function SalesProcessView() {
     totalPages: salesTotalPages,
     paginatedItems: paginatedSales,
   } = usePagination(filteredEntries, 10);
+
+  const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
+
+  // Apply top-level search on the already-filtered sales entries
+  const searchedEntries = filteredEntries.filter((entry) => {
+    const q = toLower(searchTerm);
+    if (!q) return true;
+    return (
+      toLower(entry.client_name).includes(q) ||
+      toLower(entry.client_email).includes(q) ||
+      toLower(entry.client_phone).includes(q)
+    );
+  });
+
+  // Replace pagination source with searched entries
+  const {
+    page: salesPage2,
+    setPage: setSalesPage2,
+    totalPages: salesTotalPages2,
+    paginatedItems: paginatedSales2,
+  } = usePagination(searchedEntries, 10);
+
+  // Use the searched/paginated values below instead of the original ones
+  // (we'll shadow the earlier names to minimize other changes)
+  const page = salesPage2;
+  const setPage = setSalesPage2;
+  const totalPages = salesTotalPages2;
+  const paginatedSalesFinal = paginatedSales2;
 
   if (
     ((loadingSales || loadingStages) && (!sales.length || !stages.length)) ||
@@ -762,7 +791,6 @@ export default function SalesProcessView() {
       />
 
       <SalesProcessTable
-        statusFilter={statusFilter}
         setActiveStatusFilters={setActiveStatusFilters}
         activeStatusFilters={activeStatusFilters}
         activeSourceFilters={activeSourceFilters}
@@ -771,16 +799,18 @@ export default function SalesProcessView() {
         toggleSourceFilter={toggleSourceFilter}
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
-        paginatedSales={paginatedSales}
+        paginatedSales={paginatedSalesFinal}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
         stages={stages}
         highlightId={highlightId}
         onShowDetails={handleShowDetails}
         onPlanFollowUp={handlePlanFollowUp}
         onEnterResult={handleEnterResult}
         onEnterClosing={handleEnterClosing}
-        page={salesPage}
-        totalPages={salesTotalPages}
-        onPageChange={setSalesPage}
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
       <SalesProcessDetailSheet
         entry={selectedDetailEntry}

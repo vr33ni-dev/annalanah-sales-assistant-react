@@ -3,7 +3,6 @@ import type { Lead, SalesProcess, Stage } from "@/lib/api";
 import type {
   ActiveStatusFilter,
   DateFilterType,
-  StatusFilter,
 } from "@/hooks/useSalesProcessFilters";
 
 export type SortOrder = "asc" | "desc" | null;
@@ -65,7 +64,6 @@ export interface SalesProcessWorkflowFormProps {
 }
 
 export interface SalesProcessTableProps {
-  statusFilter: StatusFilter;
   setActiveStatusFilters: Dispatch<SetStateAction<ActiveStatusFilter[]>>;
   activeStatusFilters: ActiveStatusFilter[];
   activeSourceFilters: string[];
@@ -75,6 +73,8 @@ export interface SalesProcessTableProps {
   dateFilter: DateFilterType;
   setDateFilter: Dispatch<SetStateAction<DateFilterType>>;
   paginatedSales: SalesProcessWithStageId[];
+  searchTerm: string;
+  setSearchTerm: Dispatch<SetStateAction<string>>;
   stages: Stage[];
   highlightId: number | null;
   onShowDetails: (entry: SalesProcessWithStageId) => void;
