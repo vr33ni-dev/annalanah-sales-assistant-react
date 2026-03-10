@@ -9,17 +9,41 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Save } from "lucide-react";
+import { Settings as SettingsIcon, Save, Plus, X } from "lucide-react";
 import { queryKeys } from "@/lib/queryKeys";
 
 type Setting = {
   key: string;
   value_numeric?: number | null;
   value_text?: string | null;
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeEmails = (emails: string[]) =>
+  Array.from(new Set(emails.map((email) => email.trim()).filter(Boolean)));
+
+const parseEmailRecipients = (value?: string | null) => {
+  const raw = value?.trim();
+  if (!raw) return [] as string[];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return normalizeEmails(
+        parsed.filter((email): email is string => typeof email === "string"),
+      );
+    }
+  } catch {
+    // Backward compatible: support legacy comma/newline separated text.
+  }
+
+  return normalizeEmails(raw.split(/[\n,;]+/));
 };
 
 // Mock data references (defined outside component to avoid re-render loops)
@@ -75,7 +99,8 @@ export default function Settings() {
 
   const [months, setMonths] = useState("");
   const [flatEur, setFlatEur] = useState("");
-  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifyEmails, setNotifyEmails] = useState<string[]>([]);
+  const [notifyEmailInput, setNotifyEmailInput] = useState("");
 
   useEffect(() => {
     if (monthsSetting?.value_numeric != null)
@@ -88,25 +113,67 @@ export default function Settings() {
   }, [flatSetting]);
 
   useEffect(() => {
-    setNotifyEmail(notifyEmailSetting?.value_text ?? "");
+    setNotifyEmails(parseEmailRecipients(notifyEmailSetting?.value_text));
+    setNotifyEmailInput("");
   }, [notifyEmailSetting]);
+
+  const addNotifyEmail = () => {
+    const nextEmail = notifyEmailInput.trim();
+    if (!nextEmail) return;
+    if (!EMAIL_REGEX.test(nextEmail)) {
+      toast({
+        title: "Ungültige E-Mail-Adresse",
+        description: "Bitte eine gültige E-Mail-Adresse eingeben.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (notifyEmails.includes(nextEmail)) {
+      toast({
+        title: "E-Mail bereits vorhanden",
+        description: "Diese Adresse ist bereits in der Empfängerliste.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setNotifyEmails((current) => [...current, nextEmail]);
+    setNotifyEmailInput("");
+  };
+
+  const removeNotifyEmail = (emailToRemove: string) => {
+    setNotifyEmails((current) =>
+      current.filter((email) => email !== emailToRemove),
+    );
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const promises: Promise<void>[] = [];
       const mVal = Number(months);
       const fVal = Number(flatEur);
-      const nVal = notifyEmail.trim();
+      const recipients = normalizeEmails(notifyEmails);
       if (!Number.isFinite(mVal) || mVal <= 0)
         throw new Error("Monate muss eine positive Zahl sein");
       if (!Number.isFinite(fVal) || fVal < 0)
         throw new Error("EUR-Betrag muss ≥ 0 sein");
-      if (nVal !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nVal)) {
-        throw new Error("Bitte eine gültige E-Mail-Adresse eingeben");
+      if (notifyEmailInput.trim()) {
+        throw new Error(
+          "Bitte füge die eingegebene E-Mail zuerst mit + hinzu oder entferne sie.",
+        );
+      }
+      if (recipients.some((email) => !EMAIL_REGEX.test(email))) {
+        throw new Error("Bitte nur gültige E-Mail-Adressen speichern");
       }
       promises.push(updateNumericSetting("potential_months", mVal));
       promises.push(updateNumericSetting("avg_revenue_per_contract", fVal));
-      promises.push(updateTextSetting("new_contract_notify_email", nVal));
+      promises.push(
+        updateTextSetting(
+          "new_contract_notify_email",
+          JSON.stringify(recipients),
+        ),
+      );
       await Promise.all(promises);
     },
     onSuccess: () => {
@@ -179,19 +246,60 @@ export default function Settings() {
 
           <div className="space-y-2">
             <Label htmlFor="new_contract_notify_email">
-              Benachrichtigungs-E-Mail (neuer Vertrag)
+              Benachrichtigungs-E-Mails (neuer Vertrag)
             </Label>
-            <Input
-              id="new_contract_notify_email"
-              type="email"
-              placeholder="name@example.com"
-              value={notifyEmail}
-              onChange={(e) => setNotifyEmail(e.target.value)}
-              disabled={saving}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="new_contract_notify_email"
+                type="email"
+                placeholder="name@example.com"
+                value={notifyEmailInput}
+                onChange={(e) => setNotifyEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNotifyEmail();
+                  }
+                }}
+                disabled={saving}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={addNotifyEmail}
+                disabled={saving || !notifyEmailInput.trim()}
+                className="gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Hinzufügen
+              </Button>
+            </div>
+            {notifyEmails.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {notifyEmails.map((email) => (
+                  <Badge
+                    key={email}
+                    variant="secondary"
+                    className="flex items-center gap-1 pr-1"
+                  >
+                    <span>{email}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeNotifyEmail(email)}
+                      disabled={saving}
+                      className="rounded-sm p-0.5 hover:bg-muted"
+                      aria-label={`${email} entfernen`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Empfänger für E-Mail-Benachrichtigungen bei neuen Verträgen. Leer
-              lassen, um den Wert aus der Server-Umgebung zu verwenden.
+              Mehrere Empfänger für E-Mail-Benachrichtigungen bei neuen
+              Verträgen. Leer lassen, um den Wert aus der Server-Umgebung zu
+              verwenden.
             </p>
           </div>
 
