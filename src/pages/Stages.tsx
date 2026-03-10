@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Trash2 } from "lucide-react";
+import { Trash, Trash2 } from "lucide-react";
 import { deleteStageParticipant } from "@/lib/api";
 
 import {
@@ -45,6 +45,7 @@ import {
 import {
   getStages,
   createStage,
+  deleteStage,
   updateStageStats,
   updateStageInfo,
   addStageParticipant,
@@ -62,6 +63,7 @@ import {
 import { StageParticipantsDialog } from "@/components/stage/StageParticipantsDialog";
 import { StagePerformanceDialog } from "@/components/stage/StagePerformanceDialog";
 import { queryKeys } from "@/lib/queryKeys";
+import { ConfirmActionButton } from "@/components/ConfirmActionButton";
 
 /* ------------------------- Types & Helpers ------------------------- */
 
@@ -643,6 +645,7 @@ function EditStageDialog({ stage }: { stage: Stage }) {
 
 export default function Stages() {
   const [searchTerm, setSearchTerm] = useState("");
+  const qc = useQueryClient();
 
   const { data, isLoading, isError, error, refetch } = useMockableQuery<
     Stage[]
@@ -951,6 +954,22 @@ export default function Stages() {
                         <StagePerformanceDialog stage={stage} />
 
                         <EditStageDialog stage={stage} />
+
+                        <ConfirmActionButton
+                          title="Bühne löschen?"
+                          description="Diese Bühne wird dauerhaft gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
+                          confirmLabel="Löschen"
+                          onConfirm={async () => {
+                            await deleteStage(stage.id);
+                            await qc.invalidateQueries({
+                              queryKey: queryKeys.stages,
+                            });
+                          }}
+                        >
+                          <Button variant="ghost" size="sm" title="Löschen">
+                            <Trash className="w-4 h-4" />
+                          </Button>
+                        </ConfirmActionButton>
                       </div>
                     </TableCell>
                   </TableRow>

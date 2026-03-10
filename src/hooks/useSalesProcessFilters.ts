@@ -5,6 +5,7 @@ import { parseIsoToLocal } from "@/helpers/date";
 
 export type SalesProcessWithStageId = SalesProcess & {
   stage_id?: number | null;
+  source_stage_name?: string | null;
 };
 
 export const STATUS_FILTER_OPTIONS = [

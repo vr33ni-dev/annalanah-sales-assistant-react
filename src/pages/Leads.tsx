@@ -22,6 +22,12 @@ import { de } from "date-fns/locale";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "@/hooks/use-toast";
 import { ConfirmActionButton } from "../components/ConfirmActionButton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const sourceLabels: Record<string, string> = {
   organic: "Organic",
@@ -185,29 +191,46 @@ export default function Leads() {
                   </TableCell>
                   <TableCell>{formatDate(lead.created_at)}</TableCell>
                   <TableCell>
-                    <ConfirmActionButton
-                      title="Lead löschen?"
-                      description="Dieser Lead wird dauerhaft gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
-                      confirmLabel="Löschen"
-                      onConfirm={async () => {
-                        try {
-                          await deleteLead(lead.id);
-                          queryClient.invalidateQueries({
-                            queryKey: queryKeys.leads,
-                          });
-                          toast({ title: "Lead gelöscht" });
-                        } catch {
-                          toast({
-                            title: "Lead konnte nicht gelöscht werden",
-                            variant: "destructive",
-                          });
-                        }
-                      }}
-                    >
-                      <Button size="sm" variant="destructive">
-                        <Trash className="w-4 h-4" />
-                      </Button>
-                    </ConfirmActionButton>
+                    {lead.converted ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button size="sm" variant="destructive" disabled>
+                                <Trash className="w-4 h-4" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Konvertierte Leads können nicht gelöscht werden.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <ConfirmActionButton
+                        title="Lead löschen?"
+                        description="Dieser Lead wird dauerhaft gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."
+                        confirmLabel="Löschen"
+                        onConfirm={async () => {
+                          try {
+                            await deleteLead(lead.id);
+                            queryClient.invalidateQueries({
+                              queryKey: queryKeys.leads,
+                            });
+                            toast({ title: "Lead gelöscht" });
+                          } catch {
+                            toast({
+                              title: "Lead konnte nicht gelöscht werden",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                      >
+                        <Button size="sm" variant="destructive">
+                          <Trash className="w-4 h-4" />
+                        </Button>
+                      </ConfirmActionButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -8,7 +8,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Calendar } from "lucide-react";
-import { Contract, getContracts, type CashflowEntry } from "@/lib/api";
+import {
+  Contract,
+  getContractById,
+  getContracts,
+  type CashflowEntry,
+} from "@/lib/api";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
@@ -41,25 +46,51 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
     isFetching: fetchingContracts,
     isError: contractsError,
   } = useMockableQuery<Contract[]>({
-    queryKey: queryKeys.contracts,
-    queryFn: getContracts,
+    queryKey: queryKeys.contractsList({ compact: true }),
+    queryFn: () => getContracts({ compact: true }),
+    enabled: typeof contractId !== "number",
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
     mockData: mockContracts,
   });
 
+  const {
+    data: contractDetail,
+    isFetching: fetchingContractDetail,
+    isError: contractDetailError,
+  } = useMockableQuery<Contract | null>({
+    queryKey: contractId ? queryKeys.contract(contractId) : ["contract", null],
+    queryFn: () =>
+      typeof contractId === "number" ? getContractById(contractId) : null,
+    enabled: typeof contractId === "number",
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (contract) => contract ?? null,
+    mockData:
+      typeof contractId === "number"
+        ? (mockContracts.find((contract) => contract.id === contractId) ?? null)
+        : null,
+  });
+
   type RangeFilter = "all" | "30" | "90" | "365";
 
-  const [range, setRange] = useState<RangeFilter>(contractId ? "30" : "all");
+  const [range, setRange] = useState<RangeFilter>("30");
 
   useEffect(() => {
-    setRange(contractId ? "30" : "all");
+    setRange("30");
   }, [contractId]);
 
   const now = new Date();
 
-  const entries = contracts
+  const contractSource =
+    typeof contractId === "number"
+      ? contractDetail
+        ? [contractDetail]
+        : []
+      : contracts;
+
+  const entries = contractSource
     .flatMap((contract) => {
       const contractLabel = `${contract.client_name} - ${contract.duration_months} Monate`;
       const embeddedEntries = Array.isArray(contract.cashflow)
@@ -94,8 +125,10 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
     })
     .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
 
-  const isFetching = fetchingContracts;
-  const isError = contractsError;
+  const isFetching =
+    typeof contractId === "number" ? fetchingContractDetail : fetchingContracts;
+  const isError =
+    typeof contractId === "number" ? contractDetailError : contractsError;
 
   // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
   const filteredEntries = entries

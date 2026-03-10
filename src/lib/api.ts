@@ -62,10 +62,12 @@ const asArray = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
 /* Clients */
 export interface Client {
   id: number;
+  lead_id?: number | null;
   name: string;
   email: string;
   phone: string;
-  source: string;
+  source: "organic" | "paid" | null;
+  source_stage_id?: number | null;
   source_stage_name: string | null;
   status: string;
   completed_at?: string | null;
@@ -92,7 +94,7 @@ export const updateClient = async (
   id: string | number,
   payload: Partial<Client>,
 ): Promise<Client> => {
-  const { data } = await api.put(`/clients/${id}`, payload);
+  const { data } = await api.patch(`/clients/${id}`, payload);
   return data as Client;
 };
 
@@ -129,6 +131,14 @@ export const deleteLead = async (id: string | number): Promise<void> => {
   await api.delete(`/leads/${id}`);
 };
 
+export const updateLead = async (
+  id: string | number,
+  payload: Partial<Lead>,
+): Promise<Lead> => {
+  const { data } = await api.patch(`/leads/${id}`, payload);
+  return data as Lead;
+};
+
 /* Sales processes */
 export interface SalesProcess {
   id: number;
@@ -137,6 +147,7 @@ export interface SalesProcess {
   client_email?: string | null;
   client_phone?: string | null;
   client_source?: "organic" | "paid" | null;
+  lead_id?: number | null;
   stage: (typeof SALES_STAGE)[keyof typeof SALES_STAGE];
   initial_contact_date?: string | null;
   follow_up_date?: string | null;
@@ -191,6 +202,8 @@ export type SalesProcessUpdateRequest = {
   initial_contact_date?: string | null;
   follow_up_result?: boolean | null;
   follow_up_date?: string | null;
+  source?: "organic" | "paid" | null;
+  source_stage_id?: number | null;
   closed?: boolean | null;
   revenue?: number | null;
   contract_duration_months?: number;
@@ -210,6 +223,12 @@ export const updateSalesProcess = async (
 ): Promise<SalesProcess> => {
   const { data } = await api.patch(`/sales/${id}`, payload);
   return data as SalesProcess;
+};
+
+export const deleteSalesProcess = async (
+  id: string | number,
+): Promise<void> => {
+  await api.delete(`/sales/${id}`);
 };
 
 export type StartSalesProcessRequest = {
@@ -324,8 +343,16 @@ export interface Contract {
   cashflow?: CashflowEntry[];
 }
 
-export const getContracts = async (): Promise<Contract[]> => {
-  const { data } = await api.get("/contracts");
+export const getContracts = async (options?: {
+  includeExpired?: boolean;
+  compact?: boolean;
+}): Promise<Contract[]> => {
+  const { data } = await api.get("/contracts", {
+    params: {
+      ...(options?.includeExpired ? { include_expired: true } : null),
+      ...(options?.compact ? { compact: true } : null),
+    },
+  });
   return asArray<Contract>(data);
 };
 
@@ -382,6 +409,10 @@ export const getStageById = async (id: string | number): Promise<Stage> => {
 export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
   const { data } = await api.post("/stages", payload);
   return data as Stage;
+};
+
+export const deleteStage = async (id: string | number): Promise<void> => {
+  await api.delete(`/stages/${id}`);
 };
 
 export const updateStageInfo = async (

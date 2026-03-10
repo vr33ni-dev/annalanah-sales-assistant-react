@@ -73,6 +73,16 @@ export function MonthlyKPITable({
     upsellByClient[u.client_id].push(u);
   });
 
+  const successfulRenewalByNewContractId = new Set(
+    upsells
+      .filter(
+        (u) =>
+          u.upsell_result === "verlaengerung" &&
+          typeof u.new_contract_id === "number",
+      )
+      .map((u) => u.new_contract_id as number),
+  );
+
   function isRenewalProcess(sp: SalesProcess) {
     const clientUpsells = upsellByClient[sp.client_id] ?? [];
     if (!sp.follow_up_date) return false;
@@ -98,6 +108,18 @@ export function MonthlyKPITable({
       if (!d) return false;
       return d >= monthStart && d <= monthEnd;
     };
+
+    const contractsStartedInMonth = contracts.filter((contract) =>
+      inMonth(contract.start_date),
+    );
+
+    const newCustomerRevenue = contractsStartedInMonth
+      .filter((contract) => !successfulRenewalByNewContractId.has(contract.id))
+      .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
+
+    const renewalRevenue = contractsStartedInMonth
+      .filter((contract) => successfulRenewalByNewContractId.has(contract.id))
+      .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
 
     // Month basis:
     // - Abschlüsse (wins): completed_at month
@@ -125,21 +147,6 @@ export function MonthlyKPITable({
       if (!inMonth(decisionDate)) return false;
       return !isRenewalProcess(sp);
     });
-
-    // New-customer revenue: use the sales process revenue for won deals in this month.
-    const newCustomerRevenue = wonNewCustomerInMonth.reduce(
-      (s, sp) => s + (sp.revenue ?? 0),
-      0,
-    );
-
-    // Renewal revenue: successful upsells by upsell_date in this month.
-    const renewalRevenue = upsells
-      .filter((u) => {
-        if (u.upsell_result !== "verlaengerung") return false;
-        if (u.upsell_revenue == null) return false;
-        return inMonth(u.upsell_date);
-      })
-      .reduce((s, u) => s + (u.upsell_revenue ?? 0), 0);
 
     const revenue = newCustomerRevenue + renewalRevenue;
 

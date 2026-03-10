@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { STAGE_LABELS } from "@/constants/stages";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockSalesProcesses, mockStages } from "@/lib/mockData";
+import { mockClients, mockSalesProcesses, mockStages } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
   Client,
@@ -10,6 +10,7 @@ import {
   Stage,
   StartSalesProcessRequest,
   StartSalesProcessResponse,
+  getClients,
   getSalesProcesses,
   getStages,
   startSalesProcess,
@@ -59,6 +60,15 @@ export function useSalesProcessData({
     mockData: mockSalesProcesses as SalesProcessWithStageId[],
   });
 
+  const { data: clients = [] } = useMockableQuery<Client[]>({
+    queryKey: queryKeys.clients,
+    queryFn: getClients,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Client>,
+    mockData: mockClients,
+  });
+
   const {
     data: stages = [],
     isFetching: loadingStages,
@@ -103,6 +113,15 @@ export function useSalesProcessData({
               const prev: SalesProcessCacheItem[] = old ?? [];
               const item: SalesProcessCacheItem = {
                 ...salesProcess,
+                // Enrich with client fields the server may not denormalize
+                client_name:
+                  salesProcess.client_name || data.client?.name || "",
+                client_email:
+                  salesProcess.client_email ?? data.client?.email ?? null,
+                client_phone:
+                  salesProcess.client_phone ?? data.client?.phone ?? null,
+                client_source:
+                  salesProcess.client_source ?? data.client?.source ?? null,
                 stage_label:
                   STAGE_LABELS[salesProcess.stage] || salesProcess.stage,
               };
@@ -117,7 +136,6 @@ export function useSalesProcessData({
         // ignore cache update errors
       }
 
-      queryClient.invalidateQueries({ queryKey: queryKeys.sales });
       queryClient.invalidateQueries({ queryKey: queryKeys.leads });
       queryClient.invalidateQueries({ queryKey: queryKeys.contracts });
       queryClient.invalidateQueries({ queryKey: queryKeys.clients });
@@ -206,12 +224,38 @@ export function useSalesProcessData({
       }
 
       queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads });
     },
     onError: (err: unknown) => showErrorToast("Fehler beim Aktualisieren", err),
   });
 
+  const clientsById = new Map(clients.map((client) => [client.id, client]));
+  const salesWithClientFallback = sales.map((entry) => {
+    const client = clientsById.get(entry.client_id);
+    const fallbackSource =
+      entry.client_source ??
+      (client?.source === "paid" || client?.source === "organic"
+        ? client.source
+        : null);
+    const fallbackStageId =
+      fallbackSource === "paid"
+        ? (entry.stage_id ?? client?.source_stage_id ?? null)
+        : null;
+    const fallbackStageName =
+      fallbackSource === "paid"
+        ? (entry.source_stage_name ?? client?.source_stage_name ?? null)
+        : null;
+
+    return {
+      ...entry,
+      client_source: fallbackSource,
+      stage_id: fallbackStageId,
+      source_stage_name: fallbackStageName,
+    };
+  });
+
   return {
-    sales,
+    sales: salesWithClientFallback,
     loadingSales,
     errorSales,
     stages,
