@@ -10,6 +10,9 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { toast } from "@/components/ui/use-toast";
 
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -175,6 +178,7 @@ export default function Contracts() {
     null,
   );
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [startDateSortOrder, setStartDateSortOrder] = useState<"asc" | "desc">(
     "desc",
   );
@@ -463,8 +467,22 @@ export default function Contracts() {
       list = list.filter((contract) => !isContractExpired(contract, today));
     }
 
+    if (searchTerm && searchTerm.trim() !== "") {
+      const q = searchTerm.toLowerCase();
+      list = list.filter((c) =>
+        (c.client_name || "").toLowerCase().includes(q),
+      );
+    }
+
     return list;
-  }, [contracts, clientFilter, dateEnd, dateStart, showExpiredContracts]);
+  }, [
+    contracts,
+    clientFilter,
+    dateEnd,
+    dateStart,
+    showExpiredContracts,
+    searchTerm,
+  ]);
 
   const sortedContracts = useMemo(() => {
     return [...filteredContracts].sort((a, b) => {
@@ -560,6 +578,7 @@ export default function Contracts() {
     clientFilter,
     showExpiredContracts,
     startDateSortOrder,
+    searchTerm,
   ]);
 
   // Ensure the dateEnd filter at least reaches the latest contract end date,
@@ -730,78 +749,88 @@ export default function Contracts() {
 
       {/* Contracts Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-6">
           <div className="flex justify-between items-center">
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
               Verträge
             </CardTitle>
-
-            {/* DATE RANGE FILTER */}
-            <div className="flex items-center gap-2">
-              <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+            <div className="flex items-center gap-4">
+              {/* DATE RANGE FILTER */}
+              <div className="flex items-center gap-2">
+                <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={showExpiredContracts}
+                    onChange={(e) => setShowExpiredContracts(e.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  Abgelaufene Verträge anzeigen
+                </label>
                 <input
-                  type="checkbox"
-                  checked={showExpiredContracts}
-                  onChange={(e) => setShowExpiredContracts(e.target.checked)}
-                  className="h-4 w-4 rounded border-input"
+                  type="date"
+                  value={dateStart}
+                  onChange={(e) => setDateStart(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm"
+                  placeholder="Start"
                 />
-                Abgelaufene Verträge anzeigen
-              </label>
-              <input
-                type="date"
-                value={dateStart}
-                onChange={(e) => setDateStart(e.target.value)}
-                className="border rounded px-2 py-1 text-sm"
-                placeholder="Start"
-              />
-              <input
-                type="date"
-                value={dateEnd}
-                onChange={(e) => setDateEnd(e.target.value)}
-                className="border rounded px-2 py-1 text-sm"
-                placeholder="Ende"
-              />
-              <button
-                type="button"
-                title="Filter zurücksetzen – alle Verträge anzeigen"
-                onClick={() => {
-                  // Reset to range: earliest contact (fallback: earliest contract start)
-                  // → today. This keeps the active-contract filter meaningful.
-                  const defaultStart = toYmdLocal(startOfYear);
-                  const defaultEnd = toYmdLocal(new Date());
+                <input
+                  type="date"
+                  value={dateEnd}
+                  onChange={(e) => setDateEnd(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm"
+                  placeholder="Ende"
+                />
+                <button
+                  type="button"
+                  title="Filter zurücksetzen – alle Verträge anzeigen"
+                  onClick={() => {
+                    // Reset to range: earliest contact (fallback: earliest contract start)
+                    // → today. This keeps the active-contract filter meaningful.
+                    const defaultStart = toYmdLocal(startOfYear);
+                    const defaultEnd = toYmdLocal(new Date());
 
-                  // earliest initial_contact_date from sales processes
-                  let earliestContact: string | null = null;
-                  for (const sp of salesProcesses) {
-                    if (!sp.initial_contact_date) continue;
-                    const d = sp.initial_contact_date.split("T")[0];
-                    earliestContact =
-                      !earliestContact || d < earliestContact
-                        ? d
-                        : earliestContact;
-                  }
+                    // earliest initial_contact_date from sales processes
+                    let earliestContact: string | null = null;
+                    for (const sp of salesProcesses) {
+                      if (!sp.initial_contact_date) continue;
+                      const d = sp.initial_contact_date.split("T")[0];
+                      earliestContact =
+                        !earliestContact || d < earliestContact
+                          ? d
+                          : earliestContact;
+                    }
 
-                  // fallback to earliest contract start_date
-                  if (!earliestContact) {
-                    earliestContact = contracts.reduce<string | null>(
-                      (min, c) => {
-                        if (!c.start_date) return min;
-                        const sd = c.start_date.split("T")[0];
-                        return !min || sd < min ? sd : min;
-                      },
-                      null,
-                    );
-                  }
+                    // fallback to earliest contract start_date
+                    if (!earliestContact) {
+                      earliestContact = contracts.reduce<string | null>(
+                        (min, c) => {
+                          if (!c.start_date) return min;
+                          const sd = c.start_date.split("T")[0];
+                          return !min || sd < min ? sd : min;
+                        },
+                        null,
+                      );
+                    }
 
-                  setDateStart(earliestContact ?? defaultStart);
-                  setDateEnd(defaultEnd);
-                }}
-                className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
+                    setDateStart(earliestContact ?? defaultStart);
+                    setDateEnd(defaultEnd);
+                  }}
+                  className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Kundensuche"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 w-64"
+            />
           </div>
         </CardHeader>
 
