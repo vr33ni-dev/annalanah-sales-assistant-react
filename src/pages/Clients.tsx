@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -13,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Pencil, Save, X, Trash } from "lucide-react";
+import { Search, Pencil, Save, X, Trash, Filter } from "lucide-react";
 import { Client, deleteClient, getClients, updateClient } from "@/lib/api";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
@@ -49,9 +55,17 @@ const statusLabels = {
   inactive: "Inaktiv",
 } as const;
 
+const FORMER_CLIENT_STATUSES = new Set(["inactive"]);
+const CLIENT_STATUS_FILTER_OPTIONS = Object.keys(statusLabels) as Array<
+  keyof typeof statusLabels
+>;
+
 export default function Clients() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterMonth, setFilterMonth] = useState("");
+  const [showFormerClients, setShowFormerClients] = useState(false);
+  const [activeStatusFilters, setActiveStatusFilters] = useState<
+    Array<keyof typeof statusLabels>
+  >([]);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editedClient, setEditedClient] = useState<Partial<Client>>({});
 
@@ -68,16 +82,45 @@ export default function Clients() {
 
   const clients = data ?? [];
 
+  const toggleStatusFilter = (status: keyof typeof statusLabels) => {
+    setActiveStatusFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    );
+  };
+
+  // When showFormerClients is toggled off, remove any former statuses
+  // (e.g. "inactive") from the active filters so they aren't selectable.
+  const onToggleShowFormer = (value: boolean) => {
+    setShowFormerClients(value);
+    if (!value) {
+      setActiveStatusFilters((current) =>
+        current.filter((s) => !FORMER_CLIENT_STATUSES.has(s)),
+      );
+    }
+  };
+
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
 
   const filteredClients = clients.filter((c) => {
+    const clientStatus = c.status as keyof typeof statusLabels;
     const matchesSearch =
       toLower(c.name).includes(toLower(searchTerm)) ||
       toLower(c.email).includes(toLower(searchTerm));
-    const matchesMonth = filterMonth
-      ? c.completed_at?.startsWith(filterMonth)
-      : true;
-    return matchesSearch && matchesMonth;
+    const matchesStatus =
+      activeStatusFilters.length === 0
+        ? true
+        : activeStatusFilters.includes(clientStatus);
+    const selectedFormerStatus = activeStatusFilters.some((status) =>
+      FORMER_CLIENT_STATUSES.has(status),
+    );
+    const matchesFormer =
+      showFormerClients || selectedFormerStatus
+        ? true
+        : !FORMER_CLIENT_STATUSES.has(clientStatus);
+
+    return matchesSearch && matchesStatus && matchesFormer;
   });
 
   const { page, setPage, totalPages, paginatedItems } = usePagination(
@@ -168,12 +211,17 @@ export default function Clients() {
             Verwaltung und Übersicht von Kunden und Leads.
           </p>
         </div>
-        <Input
-          type="month"
-          value={filterMonth}
-          onChange={(e) => setFilterMonth(e.target.value)}
-          className="w-40"
-        />
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={showFormerClients}
+              onChange={(e) => onToggleShowFormer(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            Ehemalige anzeigen
+          </label>
+        </div>
       </div>
 
       <Card>
@@ -183,7 +231,7 @@ export default function Clients() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search clients..."
+                  placeholder="Kundensuche..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9 w-64"
@@ -201,7 +249,56 @@ export default function Clients() {
                 <TableHead>Telefon</TableHead>
                 <TableHead>Quelle</TableHead>
                 <TableHead>Bühne</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                        Status
+                        <Filter className="w-3 h-3 opacity-70" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56">
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                          <Checkbox
+                            id="client-filter-all"
+                            checked={activeStatusFilters.length === 0}
+                            onCheckedChange={() => setActiveStatusFilters([])}
+                          />
+                          <label
+                            htmlFor="client-filter-all"
+                            className="text-sm font-medium"
+                          >
+                            Alle
+                          </label>
+                        </div>
+
+                        {CLIENT_STATUS_FILTER_OPTIONS.filter((status) =>
+                          showFormerClients
+                            ? true
+                            : !FORMER_CLIENT_STATUSES.has(status),
+                        ).map((status) => (
+                          <div
+                            key={status}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`client-filter-${status}`}
+                              checked={activeStatusFilters.includes(status)}
+                              onCheckedChange={() => toggleStatusFilter(status)}
+                            />
+                            <label
+                              htmlFor={`client-filter-${status}`}
+                              className="text-sm"
+                            >
+                              {statusLabels[status]}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
                 <TableHead>Abgeschlossen am</TableHead>
                 <TableHead>Aktionen</TableHead>
               </TableRow>

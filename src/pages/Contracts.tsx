@@ -674,11 +674,7 @@ export default function Contracts() {
           iconBg="bg-success/10 text-success"
           value={euro(totalRevenue)}
           label="Gesamter Vertragswert"
-          popover={
-            `Summe der Vertragswerte aller aktiven Verträge\n` +
-            `= ${contracts.map((c) => euro(c.revenue_total)).join(" + ") || "0"}\n` +
-            `= ${euro(totalRevenue)}`
-          }
+          popover={`Summe der Vertragswerte aller aktiven Verträge`}
         />
 
         <MetricChip

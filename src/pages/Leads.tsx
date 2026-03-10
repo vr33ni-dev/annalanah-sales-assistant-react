@@ -11,7 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, UserPlus, CheckCircle2, Trash } from "lucide-react";
+import { Search, UserPlus, CheckCircle2, Trash, Filter } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Lead, getLeads, deleteLead } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { asArray } from "@/lib/safe";
@@ -36,6 +42,9 @@ const sourceLabels: Record<string, string> = {
 
 export default function Leads() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeStatusFilters, setActiveStatusFilters] = useState<
+    Array<"converted" | "open">
+  >([]);
   const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Lead[]>({
@@ -53,14 +62,38 @@ export default function Leads() {
 
   const leads = data ?? [];
 
+  const statusLabels: Record<string, string> = {
+    converted: "Konvertiert",
+    open: "Offen",
+  };
+
+  const CLIENT_STATUS_FILTER_OPTIONS = Object.keys(statusLabels) as Array<
+    "converted" | "open"
+  >;
+
+  const toggleStatusFilter = (status: "converted" | "open") => {
+    setActiveStatusFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    );
+  };
+
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
 
   const filteredLeads = leads.filter((lead) => {
-    return (
+    const matchesSearch =
       toLower(lead.name).includes(toLower(searchTerm)) ||
       toLower(lead.email).includes(toLower(searchTerm)) ||
-      toLower(lead.phone).includes(toLower(searchTerm))
-    );
+      toLower(lead.phone).includes(toLower(searchTerm));
+
+    const leadStatus = lead.converted ? "converted" : "open";
+    const matchesStatus =
+      activeStatusFilters.length === 0
+        ? true
+        : activeStatusFilters.includes(leadStatus as "converted" | "open");
+
+    return matchesSearch && matchesStatus;
   });
 
   const formatDate = (dateStr?: string | null) => {
@@ -160,7 +193,52 @@ export default function Leads() {
                 <TableHead>Telefon</TableHead>
                 <TableHead>Quelle</TableHead>
                 <TableHead>Stage</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="flex items-center gap-1 font-semibold hover:text-primary">
+                        Status
+                        <Filter className="w-3 h-3 opacity-70" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48">
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 border-b pb-2 mb-2">
+                          <Checkbox
+                            id="lead-filter-all"
+                            checked={activeStatusFilters.length === 0}
+                            onCheckedChange={() => setActiveStatusFilters([])}
+                          />
+                          <label
+                            htmlFor="lead-filter-all"
+                            className="text-sm font-medium"
+                          >
+                            Alle
+                          </label>
+                        </div>
+
+                        {CLIENT_STATUS_FILTER_OPTIONS.map((status) => (
+                          <div
+                            key={status}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              id={`lead-filter-${status}`}
+                              checked={activeStatusFilters.includes(status)}
+                              onCheckedChange={() => toggleStatusFilter(status)}
+                            />
+                            <label
+                              htmlFor={`lead-filter-${status}`}
+                              className="text-sm"
+                            >
+                              {statusLabels[status]}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </TableHead>
                 <TableHead>Erstellt am</TableHead>
                 <TableHead>Aktionen</TableHead>
               </TableRow>

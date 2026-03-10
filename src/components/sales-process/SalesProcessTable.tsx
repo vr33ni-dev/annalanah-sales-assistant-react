@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { Filter, Info } from "lucide-react";
+import { Filter, Info, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,6 @@ const stageBadgeClass: Record<
 };
 
 export function SalesProcessTable({
-  statusFilter,
   setActiveStatusFilters,
   activeStatusFilters,
   activeSourceFilters,
@@ -58,6 +58,8 @@ export function SalesProcessTable({
   dateFilter,
   setDateFilter,
   paginatedSales,
+  searchTerm,
+  setSearchTerm,
   stages,
   highlightId,
   onShowDetails,
@@ -72,31 +74,15 @@ export function SalesProcessTable({
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <Select
-            value={statusFilter}
-            onValueChange={(value: StatusFilter) =>
-              setActiveStatusFilters(value === "all" ? [] : [value])
-            }
-          >
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Status filtern" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle Status</SelectItem>
-              <SelectItem value="erstgespräch">Erstgespräch</SelectItem>
-              <SelectItem value="erstgespräch abgeschlossen">
-                Erstgespräch abgeschlossen
-              </SelectItem>
-              <SelectItem value="zweitgespräch geplant">
-                Zweitgespräch geplant
-              </SelectItem>
-              <SelectItem value="zweitgespräch abgeschlossen">
-                Zweitgespräch abgeschlossen
-              </SelectItem>
-              <SelectItem value="abgeschlossen">Abgeschlossen</SelectItem>
-              <SelectItem value="verloren">Verloren</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Kundensuche..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 w-64"
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent>
