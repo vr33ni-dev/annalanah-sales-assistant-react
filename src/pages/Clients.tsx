@@ -470,7 +470,7 @@ export default function Clients() {
               )}
             </TableBody>
           </Table>
-          <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
               {paginatedItems.length} von {filteredClients.length} Kunden angezeigt
             </span>
