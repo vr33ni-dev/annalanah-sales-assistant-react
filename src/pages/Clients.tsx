@@ -470,11 +470,16 @@ export default function Clients() {
               )}
             </TableBody>
           </Table>
-          <TablePagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-          />
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {paginatedItems.length} von {filteredClients.length} Kunden angezeigt
+            </span>
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>
