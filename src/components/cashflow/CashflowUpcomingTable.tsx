@@ -25,13 +25,14 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     data: forecast = [],
     isFetching: isFetchingForecast,
     isError: isErrorForecast,
-  } = useQuery<CashflowRow[]>({
+  } = useMockableQuery<CashflowRow[]>({
     queryKey: queryKeys.cashflowForecastByContract(contractId),
     queryFn: () => getCashflowForecast(contractId),
-    enabled: enabled && !isContractView,
+    enabled: !isContractView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
+    mockData: mockCashflowForecast as CashflowRow[],
   });
 
   const {
