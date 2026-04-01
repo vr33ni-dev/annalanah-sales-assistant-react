@@ -498,7 +498,12 @@ export default function Contracts() {
   }, [filteredContracts, startDateSortOrder]);
 
   /* ----------------- Pagination ---------------- */
-  const { page, setPage, totalPages, paginatedItems: paginatedContracts } = usePagination(sortedContracts, 10);
+  const {
+    page,
+    setPage,
+    totalPages,
+    paginatedItems: paginatedContracts,
+  } = usePagination(sortedContracts, 10);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
@@ -947,7 +952,7 @@ export default function Contracts() {
           </Table>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
+              {paginatedContracts.length} von {sortedContracts.length} Einträgen
             </span>
             <TablePagination
               page={page}
