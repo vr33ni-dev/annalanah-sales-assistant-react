@@ -31,7 +31,7 @@ export function TablePagination({ page, totalPages, onPageChange }: TablePaginat
   }
 
   return (
-    <Pagination className="mt-4">
+    <Pagination className="mt-4 justify-end">
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious

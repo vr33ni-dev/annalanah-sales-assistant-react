@@ -337,16 +337,18 @@ export function SalesProcessTable({
             })}
           </TableBody>
         </Table>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            {paginatedSales.length} von {totalItems} Einträge angezeigt
-          </span>
-          <TablePagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={onPageChange}
-          />
-        </div>
+        {totalItems > 0 && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {paginatedSales.length} von {totalItems} Einträge angezeigt
+            </span>
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={onPageChange}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
