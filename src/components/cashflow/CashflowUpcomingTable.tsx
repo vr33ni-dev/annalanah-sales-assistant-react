@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockContracts } from "@/lib/mockData";
+import { mockContracts, mockCashflowForecast } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
