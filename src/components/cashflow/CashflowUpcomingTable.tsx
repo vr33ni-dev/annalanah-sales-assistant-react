@@ -1,6 +1,7 @@
 // src/components/CashflowUpcomingTable.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import {
   Contract,
