@@ -68,6 +68,7 @@ export function SalesProcessTable({
   onEnterClosing,
   page,
   totalPages,
+  totalItems,
   onPageChange,
 }: SalesProcessTableProps) {
   return (

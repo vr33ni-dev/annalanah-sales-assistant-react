@@ -7,6 +7,8 @@ import { useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/TablePagination";
 
 import { toast } from "@/components/ui/use-toast";
 
