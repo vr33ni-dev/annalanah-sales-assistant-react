@@ -231,13 +231,16 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
                 ))}
               </TableBody>
             </Table>
-            {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {displayedEntries.length} von {filteredEntries.length} Einträge angezeigt
+              </span>
               <TablePagination
                 page={page}
                 totalPages={totalPages}
                 onPageChange={setPage}
               />
-            )}
+            </div>
           </>
         )}
       </CardContent>

@@ -943,28 +943,15 @@ export default function Contracts() {
               })}
             </TableBody>
           </Table>
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-muted-foreground">
-              Seite {totalPages === 0 ? 0 : page} von {totalPages}
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Zurück
-              </button>
-
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Weiter
-              </button>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
+            </span>
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
           </div>
         </CardContent>
       </Card>
