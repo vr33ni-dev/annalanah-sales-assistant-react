@@ -496,14 +496,7 @@ export default function Contracts() {
   }, [filteredContracts, startDateSortOrder]);
 
   /* ----------------- Pagination ---------------- */
-  const [page, setPage] = useState(1);
-  const pageSize = 10; // contracts per page
-  const totalPages = Math.ceil(sortedContracts.length / pageSize);
-
-  const paginatedContracts = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedContracts.slice(start, start + pageSize);
-  }, [page, sortedContracts]);
+  const { page, setPage, totalPages, paginatedItems: paginatedContracts } = usePagination(sortedContracts, 10);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
