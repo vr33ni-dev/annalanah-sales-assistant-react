@@ -945,16 +945,18 @@ export default function Contracts() {
               })}
             </TableBody>
           </Table>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
-            </span>
-            <TablePagination
-              page={page}
-              totalPages={totalPages}
-              onPageChange={setPage}
-            />
-          </div>
+          {sortedContracts.length > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
+              </span>
+              <TablePagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
