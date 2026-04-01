@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockContracts } from "@/lib/mockData";
+import { mockContracts, mockCashflowForecast } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
@@ -26,13 +26,14 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     data: forecast = [],
     isFetching: isFetchingForecast,
     isError: isErrorForecast,
-  } = useQuery<CashflowRow[]>({
+  } = useMockableQuery<CashflowRow[]>({
     queryKey: queryKeys.cashflowForecastByContract(contractId),
     queryFn: () => getCashflowForecast(contractId),
-    enabled: enabled && !isContractView,
+    enabled: !isContractView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
+    mockData: mockCashflowForecast as CashflowRow[],
   });
 
   const {
