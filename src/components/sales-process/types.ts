@@ -83,5 +83,6 @@ export interface SalesProcessTableProps {
   onEnterClosing: (entry: SalesProcessWithStageId) => void;
   page: number;
   totalPages: number;
+  totalItems: number;
   onPageChange: (page: number) => void;
 }

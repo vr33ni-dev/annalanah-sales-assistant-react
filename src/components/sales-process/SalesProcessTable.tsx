@@ -68,6 +68,7 @@ export function SalesProcessTable({
   onEnterClosing,
   page,
   totalPages,
+  totalItems,
   onPageChange,
 }: SalesProcessTableProps) {
   return (
@@ -336,11 +337,16 @@ export function SalesProcessTable({
             })}
           </TableBody>
         </Table>
-        <TablePagination
-          page={page}
-          totalPages={totalPages}
-          onPageChange={onPageChange}
-        />
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            {paginatedSales.length} von {totalItems} Einträge angezeigt
+          </span>
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
+          />
+        </div>
       </CardContent>
     </Card>
   );

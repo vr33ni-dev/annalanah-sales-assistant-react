@@ -810,6 +810,7 @@ export default function SalesProcessView() {
         onEnterClosing={handleEnterClosing}
         page={page}
         totalPages={totalPages}
+        totalItems={searchedEntries.length}
         onPageChange={setPage}
       />
       <SalesProcessDetailSheet

@@ -7,6 +7,8 @@ import { useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePagination } from "@/hooks/usePagination";
+import { TablePagination } from "@/components/TablePagination";
 
 import { toast } from "@/components/ui/use-toast";
 
@@ -496,14 +498,7 @@ export default function Contracts() {
   }, [filteredContracts, startDateSortOrder]);
 
   /* ----------------- Pagination ---------------- */
-  const [page, setPage] = useState(1);
-  const pageSize = 10; // contracts per page
-  const totalPages = Math.ceil(sortedContracts.length / pageSize);
-
-  const paginatedContracts = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedContracts.slice(start, start + pageSize);
-  }, [page, sortedContracts]);
+  const { page, setPage, totalPages, paginatedItems: paginatedContracts } = usePagination(sortedContracts, 10);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
@@ -950,28 +945,15 @@ export default function Contracts() {
               })}
             </TableBody>
           </Table>
-          <div className="flex justify-between items-center mt-4">
-            <p className="text-sm text-muted-foreground">
-              Seite {totalPages === 0 ? 0 : page} von {totalPages}
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Zurück
-              </button>
-
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Weiter
-              </button>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
+            </span>
+            <TablePagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
           </div>
         </CardContent>
       </Card>
