@@ -181,9 +181,10 @@ export default function Contracts() {
   );
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDateSortOrder, setStartDateSortOrder] = useState<"asc" | "desc">(
-    "desc",
-  );
+  const [sortField, setSortField] = useState<
+    "client_name" | "start_date" | "duration_months" | "progress"
+  >("start_date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const shouldFetchExpiredContracts =
     showExpiredContracts || !!salesProcessParam;
@@ -458,8 +459,13 @@ export default function Contracts() {
         const isFutureStart = cStart > viewEnd;
         const createdInWindow =
           !!created && created >= viewStart && created <= viewEnd;
+        // Future-start contracts that are still active (end >= viewEnd / today)
+        // must always appear in the table so the count matches the metric chip.
+        const isFutureActive = isFutureStart && (!cEnd || cEnd >= viewEnd);
 
-        return overlapsWindow || (isFutureStart && createdInWindow);
+        return (
+          overlapsWindow || (isFutureStart && createdInWindow) || isFutureActive
+        );
       });
     }
 
@@ -487,18 +493,72 @@ export default function Contracts() {
   ]);
 
   const sortedContracts = useMemo(() => {
+    const sortNow = new Date();
+
     return [...filteredContracts].sort((a, b) => {
+      const direction = sortOrder === "asc" ? 1 : -1;
+
+      if (sortField === "client_name") {
+        return (
+          (a.client_name ?? "").localeCompare(b.client_name ?? "", "de") *
+          direction
+        );
+      }
+
+      if (sortField === "duration_months") {
+        return (
+          ((a.duration_months ?? 0) - (b.duration_months ?? 0)) * direction
+        );
+      }
+
+      if (sortField === "progress") {
+        const aProgress =
+          a.duration_months > 0
+            ? getElapsedContractMonths(
+                a.start_date,
+                sortNow,
+                a.duration_months,
+              ) / a.duration_months
+            : 0;
+        const bProgress =
+          b.duration_months > 0
+            ? getElapsedContractMonths(
+                b.start_date,
+                sortNow,
+                b.duration_months,
+              ) / b.duration_months
+            : 0;
+        return (aProgress - bProgress) * direction;
+      }
+
       const aStart =
         toDateStartOfDay(a.start_date)?.getTime() ?? Number.POSITIVE_INFINITY;
       const bStart =
         toDateStartOfDay(b.start_date)?.getTime() ?? Number.POSITIVE_INFINITY;
 
-      return startDateSortOrder === "asc" ? aStart - bStart : bStart - aStart;
+      return (aStart - bStart) * direction;
     });
-  }, [filteredContracts, startDateSortOrder]);
+  }, [filteredContracts, sortField, sortOrder]);
+
+  const onSortBy = (
+    field: "client_name" | "start_date" | "duration_months" | "progress",
+  ) => {
+    if (sortField === field) {
+      setSortOrder((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortField(field);
+    setSortOrder(field === "start_date" ? "desc" : "asc");
+  };
 
   /* ----------------- Pagination ---------------- */
-  const { page, setPage, totalPages, paginatedItems: paginatedContracts } = usePagination(sortedContracts, 10);
+  const {
+    page,
+    setPage,
+    totalPages,
+    paginatedItems: paginatedContracts,
+  } = usePagination(sortedContracts, 10);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
@@ -572,8 +632,10 @@ export default function Contracts() {
     dateEnd,
     clientFilter,
     showExpiredContracts,
-    startDateSortOrder,
+    sortField,
+    sortOrder,
     searchTerm,
+    setPage,
   ]);
 
   // Ensure the dateEnd filter at least reaches the latest contract end date,
@@ -833,36 +895,100 @@ export default function Contracts() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Kunde</TableHead>
                 <TableHead>
                   <button
                     type="button"
-                    onClick={() =>
-                      setStartDateSortOrder((current) =>
-                        current === "asc" ? "desc" : "asc",
-                      )
-                    }
+                    onClick={() => onSortBy("client_name")}
                     className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
                     title={
-                      startDateSortOrder === "asc"
-                        ? "Nach Startdatum absteigend sortieren"
-                        : "Nach Startdatum aufsteigend sortieren"
+                      sortField === "client_name" && sortOrder === "asc"
+                        ? "Nach Kunde absteigend sortieren"
+                        : "Nach Kunde aufsteigend sortieren"
                     }
                   >
-                    Startdatum
-                    {startDateSortOrder === "asc" ? (
-                      <ArrowUp className="h-4 w-4" />
-                    ) : startDateSortOrder === "desc" ? (
-                      <ArrowDown className="h-4 w-4" />
+                    Kunde
+                    {sortField === "client_name" ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )
                     ) : (
                       <ArrowUpDown className="h-4 w-4" />
                     )}
                   </button>
                 </TableHead>
-                <TableHead>Laufzeit</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => onSortBy("start_date")}
+                    className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
+                    title={
+                      sortField === "start_date" && sortOrder === "asc"
+                        ? "Nach Startdatum absteigend sortieren"
+                        : "Nach Startdatum aufsteigend sortieren"
+                    }
+                  >
+                    Startdatum
+                    {sortField === "start_date" ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => onSortBy("duration_months")}
+                    className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
+                    title={
+                      sortField === "duration_months" && sortOrder === "asc"
+                        ? "Nach Laufzeit absteigend sortieren"
+                        : "Nach Laufzeit aufsteigend sortieren"
+                    }
+                  >
+                    Laufzeit
+                    {sortField === "duration_months" ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead>Umsatz</TableHead>
                 <TableHead>Zahlungsfrequenz</TableHead>
-                <TableHead>Fortschritt</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => onSortBy("progress")}
+                    className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
+                    title={
+                      sortField === "progress" && sortOrder === "asc"
+                        ? "Nach Fortschritt absteigend sortieren"
+                        : "Nach Fortschritt aufsteigend sortieren"
+                    }
+                  >
+                    Fortschritt
+                    {sortField === "progress" ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead>Aktion</TableHead>
               </TableRow>
             </TableHeader>
@@ -948,7 +1074,8 @@ export default function Contracts() {
           {sortedContracts.length > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {paginatedContracts.length} von {sortedContracts.length} Verträge angezeigt
+                {paginatedContracts.length} von {sortedContracts.length}{" "}
+                Einträgen
               </span>
               <TablePagination
                 page={page}

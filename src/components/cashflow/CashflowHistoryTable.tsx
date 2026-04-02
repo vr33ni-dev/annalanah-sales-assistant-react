@@ -234,7 +234,8 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
             {filteredEntries.length > 0 && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {displayedEntries.length} von {filteredEntries.length} Einträge angezeigt
+                  {displayedEntries.length} von {filteredEntries.length}{" "}
+                  Einträgen
                 </span>
                 <TablePagination
                   page={page}

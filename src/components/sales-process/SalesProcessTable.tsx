@@ -340,7 +340,7 @@ export function SalesProcessTable({
         {totalItems > 0 && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {paginatedSales.length} von {totalItems} Einträge angezeigt
+              {paginatedSales.length} von {totalItems} Einträgen
             </span>
             <TablePagination
               page={page}
