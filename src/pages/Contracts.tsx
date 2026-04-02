@@ -459,8 +459,13 @@ export default function Contracts() {
         const isFutureStart = cStart > viewEnd;
         const createdInWindow =
           !!created && created >= viewStart && created <= viewEnd;
+        // Future-start contracts that are still active (end >= viewEnd / today)
+        // must always appear in the table so the count matches the metric chip.
+        const isFutureActive = isFutureStart && (!cEnd || cEnd >= viewEnd);
 
-        return overlapsWindow || (isFutureStart && createdInWindow);
+        return (
+          overlapsWindow || (isFutureStart && createdInWindow) || isFutureActive
+        );
       });
     }
 
