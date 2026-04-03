@@ -871,10 +871,8 @@ export default function Dashboard() {
                     })),
                   ]
                     .sort((a, b) => {
-                      const aName =
-                        clientNameById.get(a.u.client_id) ?? "";
-                      const bName =
-                        clientNameById.get(b.u.client_id) ?? "";
+                      const aName = clientNameById.get(a.u.client_id) ?? "";
+                      const bName = clientNameById.get(b.u.client_id) ?? "";
                       return aName.localeCompare(bName);
                     })
                     .map(({ u, renewed }) => (
