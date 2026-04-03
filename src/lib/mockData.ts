@@ -538,11 +538,12 @@ export const mockUpsells: ContractUpsell[] = [
 ];
 
 export const mockUpsellAnalytics = {
-  verlangerung_count: 1,
+  verlaengerung_count: 1,
   keine_verlaengerung_count: 1,
   scheduled_count: 0,
-  verlangerungsquote: 50,
+  verlaengerungsquote: 50,
   umsatz_sum: 6000,
+  revenue_by_month: [],
 };
 
 // Mock cashflow forecast data - aligned with contracts above

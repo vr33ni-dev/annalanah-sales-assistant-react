@@ -319,11 +319,12 @@ export type CreateOrUpdateUpsellRequest = {
 };
 
 export type UpsellAnalytics = {
-  verlangerung_count: number;
+  verlaengerung_count: number;
   keine_verlaengerung_count: number;
   scheduled_count: number;
-  verlangerungsquote: number | null;
+  verlaengerungsquote: number | null;
   umsatz_sum: number;
+  revenue_by_month: { month: string; revenue: number }[];
 };
 
 /* Contracts */
