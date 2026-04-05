@@ -340,7 +340,11 @@ export type DashboardKPIs = {
   closing_rate_new: number | null;
   verlaengerungsquote: number | null;
   active_contracts_count: number;
-  total_clv: number;
+  clv_active_clients: number;
+  clv_all_time: number;
+  active_revenue: number;
+  avg_vertragswert: number | null;
+  avg_clv_per_contract: number | null;
 };
 
 export const getDashboardKPIs = async (params?: {

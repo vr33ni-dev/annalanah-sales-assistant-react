@@ -615,7 +615,11 @@ export const mockDashboardKPIs = {
   closing_rate_new: 50,
   verlaengerungsquote: 50,
   active_contracts_count: 5,
-  total_clv: 54000,
+  clv_active_clients: 54000,
+  clv_all_time: 54000,
+  active_revenue: 10800,
+  avg_vertragswert: 2160,
+  avg_clv_per_contract: 10800,
 };
 
 // Mock cashflow forecast data - aligned with contracts above

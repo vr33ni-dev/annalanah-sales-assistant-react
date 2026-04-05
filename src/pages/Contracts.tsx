@@ -353,16 +353,7 @@ export default function Contracts() {
   const [dateStart, setDateStart] = useState<string>(toYmdLocal(startOfYear));
   const [dateEnd, setDateEnd] = useState<string>(toYmdLocal(now));
 
-  // Dashboard KPIs (server-side) — active contracts count, total revenue, etc.
-  const { data: kpis } = useMockableQuery<DashboardKPIs>({
-    queryKey: ["dashboardKPIs", dateStart ?? "", dateEnd ?? ""],
-    queryFn: () =>
-      getDashboardKPIs({ start_date: dateStart, end_date: dateEnd }),
-    staleTime: 5 * 60 * 1000,
-    mockData: mockDashboardKPIs,
-  });
-
-  // All-time KPIs (no date filter) — used for metrics that must not be date-filtered (e.g. total_clv)
+  // All-time KPIs (no date filter) — used for all metric chips on this page
   const { data: kpisAllTime } = useMockableQuery<DashboardKPIs>({
     queryKey: ["dashboardKPIs", "all-time"],
     queryFn: () => getDashboardKPIs(),
@@ -773,42 +764,44 @@ export default function Contracts() {
         <MetricChip
           icon={<DollarSign className="w-4 h-4" />}
           iconBg="bg-success/10 text-success"
-          value={euro(kpisAllTime?.total_clv ?? 0)}
-          label="Gesamt CLV"
-          popover={`Gesamter Kundenwert über alle Vertragsketten (Laufzeitgesamtwert)`}
+          value={euro(kpisAllTime?.clv_active_clients ?? 0)}
+          label="CLV aktive Kunden"
+          popover={`Gesamtwert aller Vertragsperioden aktiver Kunden (historisch + aktuell)`}
         />
 
         <MetricChip
           icon={<DollarSign className="w-4 h-4" />}
-          iconBg="bg-primary/10 text-primary"
-          value={euro(kpis?.total_revenue ?? 0)}
-          label="Umsatz im Zeitraum"
-          popover={`Umsatz aus neuen und verlängerten Verträgen im gewählten Zeitraum`}
+          iconBg="bg-success/20 text-success"
+          value={euro(kpisAllTime?.clv_all_time ?? 0)}
+          label="CLV gesamt (all-time)"
+          popover={`Summe aller Verträge ever – inkl. inaktiver/verlorener Kunden`}
         />
 
         <MetricChip
           icon={<FileText className="w-4 h-4" />}
           iconBg="bg-warning/10 text-warning"
-          value={String(kpis?.active_contracts_count ?? 0)}
+          value={String(kpisAllTime?.active_contracts_count ?? 0)}
           label="Aktive Verträge"
-          popover={`Anzahl heute aktiver Verträge = ${kpis?.active_contracts_count ?? 0}`}
+          popover={`Anzahl heute aktiver Verträge = ${kpisAllTime?.active_contracts_count ?? 0}`}
+        />
+
+        <MetricChip
+          icon={<DollarSign className="w-4 h-4" />}
+          iconBg="bg-success/10 text-success"
+          value={euro(kpisAllTime?.active_revenue ?? 0)}
+          label="Aktiver Umsatz"
+          popover={`Summe der laufenden Vertragsperioden (nicht abgelaufen)\n= ${euro(kpisAllTime?.active_revenue ?? 0)}`}
         />
 
         <MetricChip
           icon={<Users className="w-4 h-4" />}
           iconBg="bg-accent/20 text-accent-foreground"
-          value={euro(
-            Math.round(
-              kpis?.active_contracts_count
-                ? kpis.total_revenue / kpis.active_contracts_count
-                : 0,
-            ),
-          )}
-          label="Ø Vertragswert (Zeitraum)"
+          value={euro(kpisAllTime?.avg_vertragswert ?? 0)}
+          label="Ø Vertragswert"
           popover={
-            `Ø Vertragswert im gewählten Zeitraum\n` +
-            `= ${euro(kpis?.total_revenue ?? 0)} / ${kpis?.active_contracts_count || 1}\n` +
-            `= ${euro(Math.round(kpis?.active_contracts_count ? kpis.total_revenue / kpis.active_contracts_count : 0))}`
+            `Ø Vertragswert aktiver Verträge\n` +
+            `= ${euro(kpisAllTime?.active_revenue ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
+            `= ${euro(kpisAllTime?.avg_vertragswert ?? 0)}`
           }
         />
 
@@ -818,15 +811,16 @@ export default function Contracts() {
           value={euro(
             Math.round(
               kpisAllTime?.active_contracts_count
-                ? kpisAllTime.total_clv / kpisAllTime.active_contracts_count
+                ? kpisAllTime.clv_active_clients /
+                    kpisAllTime.active_contracts_count
                 : 0,
             ),
           )}
           label="Ø CLV pro Vertrag"
           popover={
             `Ø Kundenwert (Laufzeit) pro Vertrag\n` +
-            `= ${euro(kpisAllTime?.total_clv ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
-            `= ${euro(Math.round(kpisAllTime?.active_contracts_count ? kpisAllTime.total_clv / kpisAllTime.active_contracts_count : 0))}`
+            `= ${euro(kpisAllTime?.clv_active_clients ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
+            `= ${euro(Math.round(kpisAllTime?.active_contracts_count ? kpisAllTime.clv_active_clients / kpisAllTime.active_contracts_count : 0))}`
           }
         />
 
