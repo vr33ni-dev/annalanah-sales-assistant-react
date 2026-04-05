@@ -10,14 +10,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createOrUpdateUpsell } from "@/lib/api";
 import { useEffect, useState } from "react";
-import { toDateOnly } from "@/helpers/date";
+import { parseIsoToLocal, toDateOnly, toYmdLocal } from "@/helpers/date";
+import { useToast } from "@/hooks/use-toast";
+import { extractErrorMessage } from "@/helpers/error";
 
 export function UpsellModal({ contract, upsell, onClose, onSaved }) {
-  const [date, setDate] = useState(toDateOnly(upsell?.upsell_date));
-  const isFinalTalk = !!upsell?.upsell_result; // only for date + result lock
+  const { toast } = useToast();
+  // Compute contract end date as fallback for verlaengerung records imported without a talk date
+  const contractEndDateYmd = (() => {
+    if (!contract) return "";
+    if (contract.end_date) return toDateOnly(contract.end_date);
+    const start = parseIsoToLocal(contract.start_date);
+    if (!start || typeof contract.duration_months !== "number") return "";
+    const end = new Date(
+      start.getFullYear(),
+      start.getMonth() + contract.duration_months,
+      start.getDate(),
+    );
+    return toYmdLocal(end);
+  })();
+
+  const [date, setDate] = useState(
+    toDateOnly(upsell?.upsell_date) ||
+      (upsell?.upsell_result === "verlaengerung" ? contractEndDateYmd : ""),
+  );
+  const isEditing = !!upsell;
   const [result, setResult] = useState(upsell?.upsell_result ?? "");
   const [revenue, setRevenue] = useState(upsell?.upsell_revenue ?? "");
-  const isEditing = !!upsell;
   const isExtension = result === "verlaengerung";
   const [contractStart, setContractStart] = useState(
     toDateOnly(upsell?.contract_start_date),
@@ -33,13 +52,16 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const contractDurationNum = Number(contractDuration) || 0;
 
   useEffect(() => {
-    setDate(toDateOnly(upsell?.upsell_date));
+    setDate(
+      toDateOnly(upsell?.upsell_date) ||
+        (upsell?.upsell_result === "verlaengerung" ? contractEndDateYmd : ""),
+    );
     setResult(upsell?.upsell_result ?? "");
     setRevenue(upsell?.upsell_revenue ?? "");
     setContractStart(toDateOnly(upsell?.contract_start_date));
     setContractDuration(upsell?.contract_duration_months ?? "");
     setContractFrequency(upsell?.contract_frequency ?? "monthly");
-  }, [upsell]);
+  }, [upsell, contractEndDateYmd]);
 
   const handleSubmit = async () => {
     if (!contract) return;
@@ -47,16 +69,27 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
     const targetSalesProcessId =
       upsell?.sales_process_id ?? contract.sales_process_id;
 
-    await createOrUpdateUpsell(targetSalesProcessId, {
-      upsell_date: date,
-      upsell_result: result || null,
-      upsell_revenue: revenue ? Number(revenue) : null,
-      contract_start_date: isExtension ? contractStart : null,
-      contract_duration_months: isExtension ? Number(contractDuration) : null,
-      contract_frequency: isExtension ? contractFrequency : null,
-    });
-
-    onSaved();
+    try {
+      await createOrUpdateUpsell(targetSalesProcessId, {
+        upsell_date: date || null,
+        upsell_result: result || null,
+        upsell_revenue: revenue ? Number(revenue) : null,
+        contract_start_date: isExtension ? contractStart : null,
+        contract_duration_months: isExtension ? Number(contractDuration) : null,
+        contract_frequency: isExtension ? contractFrequency : null,
+      });
+      onSaved();
+    } catch (err) {
+      const raw = extractErrorMessage(err);
+      const message = raw.toLowerCase().includes("contract_start_date")
+        ? "Das neue Startdatum darf nicht vor dem Ende des aktuellen Vertrags liegen."
+        : raw;
+      toast({
+        title: "Fehler beim Speichern",
+        description: message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -75,7 +108,6 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
             <Input
               type="date"
               value={date}
-              disabled={isFinalTalk} // lock if talk has taken place (result exists)
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
@@ -86,7 +118,6 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
             <select
               className="border rounded px-2 py-1 w-full"
               value={result}
-              disabled={isFinalTalk} // lock if result exists
               onChange={(e) => setResult(e.target.value)}
             >
               <option value="">offen</option>
@@ -153,7 +184,9 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
           <Button variant="outline" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={handleSubmit}>Speichern</Button>
+          <Button onClick={handleSubmit} disabled={!date}>
+            Speichern
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

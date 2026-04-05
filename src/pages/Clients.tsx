@@ -19,7 +19,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Pencil, Save, X, Trash, Filter } from "lucide-react";
+import {
+  Search,
+  Pencil,
+  Save,
+  X,
+  Trash,
+  Filter,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 import { Client, deleteClient, getClients, updateClient } from "@/lib/api";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
@@ -68,12 +78,14 @@ export default function Clients() {
   >([]);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [editedClient, setEditedClient] = useState<Partial<Client>>({});
+  const [sortField, setSortField] = useState<"name" | "email" | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const queryClient = useQueryClient();
 
   const { data, isFetching, error } = useMockableQuery<Client[]>({
-    queryKey: queryKeys.clients,
-    queryFn: getClients,
+    queryKey: queryKeys.clients(showFormerClients),
+    queryFn: () => getClients(showFormerClients),
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: (d) => asArray<Client>(d),
@@ -90,15 +102,10 @@ export default function Clients() {
     );
   };
 
-  // When showFormerClients is toggled off, remove any former statuses
-  // (e.g. "inactive") from the active filters so they aren't selectable.
+  // Switching modes clears status filters to avoid stale cross-mode selections.
   const onToggleShowFormer = (value: boolean) => {
     setShowFormerClients(value);
-    if (!value) {
-      setActiveStatusFilters((current) =>
-        current.filter((s) => !FORMER_CLIENT_STATUSES.has(s)),
-      );
-    }
+    setActiveStatusFilters([]);
   };
 
   const toLower = (v: unknown) => (v ?? "").toString().toLowerCase();
@@ -112,19 +119,32 @@ export default function Clients() {
       activeStatusFilters.length === 0
         ? true
         : activeStatusFilters.includes(clientStatus);
-    const selectedFormerStatus = activeStatusFilters.some((status) =>
-      FORMER_CLIENT_STATUSES.has(status),
-    );
-    const matchesFormer =
-      showFormerClients || selectedFormerStatus
-        ? true
-        : !FORMER_CLIENT_STATUSES.has(clientStatus);
+    const matchesFormer = showFormerClients
+      ? FORMER_CLIENT_STATUSES.has(clientStatus)
+      : !FORMER_CLIENT_STATUSES.has(clientStatus);
 
     return matchesSearch && matchesStatus && matchesFormer;
   });
 
+  const handleSort = (field: "name" | "email") => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedClients = sortField
+    ? [...filteredClients].sort((a, b) => {
+        const av = toLower(a[sortField]);
+        const bv = toLower(b[sortField]);
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      })
+    : filteredClients;
+
   const { page, setPage, totalPages, paginatedItems } = usePagination(
-    filteredClients,
+    sortedClients,
     10,
   );
 
@@ -171,26 +191,31 @@ export default function Clients() {
       return;
     }
 
-    queryClient.setQueryData<Client[]>(queryKeys.clients, (current = []) =>
-      current.map((client) =>
-        client.id === editingClientId
-          ? {
-              ...client,
-              ...optimisticClient,
-              ...savedClient,
-              source_stage_id:
-                savedClient.source_stage_id ?? optimisticClient.source_stage_id,
-              source_stage_name:
-                savedClient.source_stage_name ??
-                optimisticClient.source_stage_name,
-            }
-          : client,
-      ),
+    queryClient.setQueryData<Client[]>(
+      queryKeys.clients(showFormerClients),
+      (current = []) =>
+        current.map((client) =>
+          client.id === editingClientId
+            ? {
+                ...client,
+                ...optimisticClient,
+                ...savedClient,
+                source_stage_id:
+                  savedClient.source_stage_id ??
+                  optimisticClient.source_stage_id,
+                source_stage_name:
+                  savedClient.source_stage_name ??
+                  optimisticClient.source_stage_name,
+              }
+            : client,
+        ),
     );
 
     setEditingClientId(null);
     setEditedClient({});
-    queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.clients(showFormerClients),
+    });
     queryClient.invalidateQueries({ queryKey: queryKeys.leads });
     toast({ title: "Kunde gespeichert" });
   };
@@ -212,15 +237,28 @@ export default function Clients() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
-            <input
-              type="checkbox"
-              checked={showFormerClients}
-              onChange={(e) => onToggleShowFormer(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            Ehemalige anzeigen
-          </label>
+          <div className="flex rounded-md border overflow-hidden text-sm">
+            <button
+              className={`px-3 py-1.5 transition-colors ${
+                !showFormerClients
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+              onClick={() => onToggleShowFormer(false)}
+            >
+              Aktive
+            </button>
+            <button
+              className={`px-3 py-1.5 border-l transition-colors ${
+                showFormerClients
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+              onClick={() => onToggleShowFormer(true)}
+            >
+              Ehemalige
+            </button>
+          </div>
         </div>
       </div>
 
@@ -241,11 +279,43 @@ export default function Clients() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="[&_td]:py-2">
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>
+                  <button
+                    className="flex items-center gap-1 font-semibold hover:text-primary"
+                    onClick={() => handleSort("name")}
+                  >
+                    Name
+                    {sortField === "name" ? (
+                      sortDir === "asc" ? (
+                        <ArrowUp className="w-3 h-3" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 opacity-40" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    className="flex items-center gap-1 font-semibold hover:text-primary"
+                    onClick={() => handleSort("email")}
+                  >
+                    Email
+                    {sortField === "email" ? (
+                      sortDir === "asc" ? (
+                        <ArrowUp className="w-3 h-3" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 opacity-40" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead>Telefon</TableHead>
                 <TableHead>Quelle</TableHead>
                 <TableHead>Bühne</TableHead>
@@ -275,7 +345,7 @@ export default function Clients() {
 
                         {CLIENT_STATUS_FILTER_OPTIONS.filter((status) =>
                           showFormerClients
-                            ? true
+                            ? FORMER_CLIENT_STATUSES.has(status)
                             : !FORMER_CLIENT_STATUSES.has(status),
                         ).map((status) => (
                           <div
@@ -432,7 +502,7 @@ export default function Clients() {
                               await deleteClient(client.id);
 
                               queryClient.invalidateQueries({
-                                queryKey: queryKeys.clients,
+                                queryKey: ["clients"],
                               });
                               queryClient.invalidateQueries({
                                 queryKey: queryKeys.sales,

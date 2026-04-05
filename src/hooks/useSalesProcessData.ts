@@ -61,8 +61,8 @@ export function useSalesProcessData({
   });
 
   const { data: clients = [] } = useMockableQuery<Client[]>({
-    queryKey: queryKeys.clients,
-    queryFn: getClients,
+    queryKey: queryKeys.clients(false),
+    queryFn: () => getClients(false),
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Client>,
@@ -87,7 +87,7 @@ export function useSalesProcessData({
     onSuccess: (data: StartSalesProcessResponse) => {
       try {
         if (data.client) {
-          queryClient.setQueryData<Client[]>(queryKeys.clients, (old) => {
+          queryClient.setQueryData<Client[]>(queryKeys.clients(false), (old) => {
             const prev = (old ?? []) as Client[];
             const idx = prev.findIndex(
               (client) => client.id === data.client.id,
@@ -138,7 +138,7 @@ export function useSalesProcessData({
 
       queryClient.invalidateQueries({ queryKey: queryKeys.leads });
       queryClient.invalidateQueries({ queryKey: queryKeys.contracts });
-      queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
       onStartSuccess();
     },
     onError: (err: unknown) => {
@@ -223,7 +223,7 @@ export function useSalesProcessData({
         });
       }
 
-      queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: queryKeys.leads });
     },
     onError: (err: unknown) => showErrorToast("Fehler beim Aktualisieren", err),

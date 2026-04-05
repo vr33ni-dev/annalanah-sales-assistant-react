@@ -128,7 +128,12 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">
+                Email{" "}
+                <span className="text-muted-foreground font-normal">
+                  (oder Telefon *)
+                </span>
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -142,7 +147,12 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Telefon</Label>
+              <Label htmlFor="phone">
+                Telefon{" "}
+                <span className="text-muted-foreground font-normal">
+                  (oder Email *)
+                </span>
+              </Label>
               <Input
                 id="phone"
                 value={formData.phone}
@@ -241,7 +251,12 @@ export function SalesProcessWorkflowForm({
               </Button>
               <Button
                 onClick={onErstgespraechSave}
-                disabled={!formData.name || !formData.source || isStartPending}
+                disabled={
+                  !formData.name ||
+                  !formData.source ||
+                  !(formData.email.trim() || formData.phone.trim()) ||
+                  isStartPending
+                }
               >
                 {isStartPending ? "Speichern…" : "Speichern & Schließen"}
               </Button>
@@ -619,7 +634,12 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email-zweit">Email</Label>
+              <Label htmlFor="email-zweit">
+                Email{" "}
+                <span className="text-muted-foreground font-normal">
+                  (oder Telefon *)
+                </span>
+              </Label>
               <Input
                 id="email-zweit"
                 type="email"
@@ -633,7 +653,12 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone-zweit">Telefon</Label>
+              <Label htmlFor="phone-zweit">
+                Telefon{" "}
+                <span className="text-muted-foreground font-normal">
+                  (oder Email *)
+                </span>
+              </Label>
               <Input
                 id="phone-zweit"
                 value={formData.phone}
@@ -735,6 +760,7 @@ export function SalesProcessWorkflowForm({
                 disabled={
                   !formData.name ||
                   !formData.source ||
+                  !(formData.email.trim() || formData.phone.trim()) ||
                   !formData.zweitgespraechDate ||
                   isStartPending
                 }

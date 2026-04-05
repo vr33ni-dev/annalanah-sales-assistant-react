@@ -9,12 +9,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Contract, SalesProcess, ContractUpsell } from "@/lib/api";
+import type { Contract, SalesProcess } from "@/lib/api";
 
 interface MonthlyKPITableProps {
   contracts: Contract[];
   salesProcesses: SalesProcess[];
-  upsells: ContractUpsell[];
 }
 
 interface MonthlyData {
@@ -50,7 +49,6 @@ const MONTH_NAMES = [
 export function MonthlyKPITable({
   contracts,
   salesProcesses,
-  upsells,
 }: MonthlyKPITableProps) {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
@@ -65,36 +63,6 @@ export function MonthlyKPITable({
     if (!y || !m || !d) return null;
     return new Date(y, m - 1, d);
   };
-
-  // Group upsells per client for renewal classification
-  const upsellByClient: Record<number, ContractUpsell[]> = {};
-  upsells.forEach((u) => {
-    if (!upsellByClient[u.client_id]) upsellByClient[u.client_id] = [];
-    upsellByClient[u.client_id].push(u);
-  });
-
-  const successfulRenewalByNewContractId = new Set(
-    upsells
-      .filter(
-        (u) =>
-          u.upsell_result === "verlaengerung" &&
-          typeof u.new_contract_id === "number",
-      )
-      .map((u) => u.new_contract_id as number),
-  );
-
-  function isRenewalProcess(sp: SalesProcess) {
-    const clientUpsells = upsellByClient[sp.client_id] ?? [];
-    if (!sp.follow_up_date) return false;
-    const f = parseIsoToLocal(sp.follow_up_date);
-    if (!f) return false;
-    return clientUpsells.some((u) => {
-      if (!u.upsell_date) return false;
-      const uDate = parseIsoToLocal(u.upsell_date);
-      if (!uDate) return false;
-      return uDate < f;
-    });
-  }
 
   // Calculate monthly data
   const monthlyData: MonthlyData[] = [];
@@ -113,13 +81,10 @@ export function MonthlyKPITable({
       inMonth(contract.start_date),
     );
 
-    const newCustomerRevenue = contractsStartedInMonth
-      .filter((contract) => !successfulRenewalByNewContractId.has(contract.id))
-      .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
-
-    const renewalRevenue = contractsStartedInMonth
-      .filter((contract) => successfulRenewalByNewContractId.has(contract.id))
-      .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
+    const revenue = contractsStartedInMonth.reduce(
+      (sum, contract) => sum + (contract.revenue_total ?? 0),
+      0,
+    );
 
     // Month basis:
     // - Abschlüsse (wins): completed_at month
@@ -127,14 +92,13 @@ export function MonthlyKPITable({
     //   - wins bucketed by completed_at
     //   - losses bucketed by updated_at (fallback follow_up_date/created_at)
 
-    const wonNewCustomerInMonth = salesProcesses.filter((sp) => {
+    const wonInMonth = salesProcesses.filter((sp) => {
       if (sp.closed !== true) return false;
       if (!sp.completed_at) return false;
-      if (!inMonth(sp.completed_at)) return false;
-      return !isRenewalProcess(sp);
+      return inMonth(sp.completed_at);
     });
 
-    const decidedNewCustomerInMonth = salesProcesses.filter((sp) => {
+    const decidedInMonth = salesProcesses.filter((sp) => {
       if (sp.closed !== true && sp.closed !== false) return false;
       // Losses should only count if a follow-up call actually happened.
       if (sp.closed === false && sp.follow_up_result !== true) return false;
@@ -144,24 +108,21 @@ export function MonthlyKPITable({
           ? sp.completed_at
           : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
       if (!decisionDate) return false;
-      if (!inMonth(decisionDate)) return false;
-      return !isRenewalProcess(sp);
+      return inMonth(decisionDate);
     });
 
-    const revenue = newCustomerRevenue + renewalRevenue;
-
-    const closedDeals = wonNewCustomerInMonth.length;
+    const closedDeals = wonInMonth.length;
     const closingRate =
-      decidedNewCustomerInMonth.length > 0
-        ? Math.round((closedDeals / decidedNewCustomerInMonth.length) * 100)
+      decidedInMonth.length > 0
+        ? Math.round((closedDeals / decidedInMonth.length) * 100)
         : null;
 
     monthlyData.push({
       month: MONTH_NAMES[m],
       monthNum: m,
       revenue,
-      newCustomerRevenue,
-      renewalRevenue,
+      newCustomerRevenue: 0,
+      renewalRevenue: 0,
       closedDeals,
       closingRate,
     });
@@ -193,8 +154,6 @@ export function MonthlyKPITable({
             <TableRow>
               <TableHead>Monat</TableHead>
               <TableHead className="text-right">Gesamtumsatz</TableHead>
-              <TableHead className="text-right">Neukunden</TableHead>
-              <TableHead className="text-right">Verlängerungen</TableHead>
               <TableHead className="text-right">Abschlüsse</TableHead>
               <TableHead className="text-right">Abschlussquote</TableHead>
             </TableRow>
@@ -217,12 +176,6 @@ export function MonthlyKPITable({
                       <span>{euro(data.revenue)}</span>
                       <TrendIndicator value={revenueTrend} />
                     </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {euro(data.newCustomerRevenue)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {euro(data.renewalRevenue)}
                   </TableCell>
                   <TableCell className="text-right">
                     {data.closedDeals}

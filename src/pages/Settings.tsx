@@ -233,7 +233,7 @@ export default function Settings() {
               id="avg_revenue_per_contract"
               type="number"
               min={0}
-              placeholder="z.B. 900"
+              placeholder="z.B. 300"
               value={flatEur}
               onChange={(e) => setFlatEur(e.target.value)}
               disabled={saving}

@@ -17,13 +17,13 @@ import {
   getSalesProcesses,
   getStages,
   getUpsells,
-  getUpsellAnalytics,
+  getDashboardKPIs,
   type Client,
   type Contract,
   type SalesProcess,
   type Stage,
   type ContractUpsell,
-  UpsellAnalytics,
+  type DashboardKPIs,
 } from "@/lib/api";
 
 import {
@@ -32,7 +32,7 @@ import {
   mockSalesProcesses,
   mockStages,
   mockUpsells,
-  mockUpsellAnalytics,
+  mockDashboardKPIs,
 } from "@/lib/mockData";
 
 import { asArray } from "@/lib/safe";
@@ -47,7 +47,6 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import {
   Tooltip,
   TooltipContent,
@@ -71,8 +70,6 @@ const formatLocalDate = (d?: Date | null) =>
 
 export default function Dashboard() {
   const navigate = useNavigate();
-
-  const { useMockData } = useAuthEnabled();
 
   // -----------------------------
   // DATE RANGE
@@ -101,7 +98,7 @@ export default function Dashboard() {
   // -----------------------------
   const { data: clients = [] } = useMockableQuery<Client[]>({
     queryKey: ["clients"],
-    queryFn: getClients,
+    queryFn: () => getClients(),
     select: asArray<Client>,
     mockData: mockClients,
   });
@@ -138,103 +135,21 @@ export default function Dashboard() {
     mockData: mockUpsells,
   });
 
-  // Unfiltered upsells are required for correct renewal vs new-customer
-  // classification (a renewal depends on historical upsells, not just those
-  // inside the currently selected date range).
-  const { data: upsellsAll = [] } = useMockableQuery<ContractUpsell[]>({
-    queryKey: ["upsellsAll"],
-    queryFn: () => getUpsells(),
-    select: asArray<ContractUpsell>,
-    mockData: mockUpsells,
-  });
-
-  const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
-    queryKey: ["upsellAnalytics", startDateParam ?? "", endDateParam ?? ""],
+  const { data: kpis } = useMockableQuery<DashboardKPIs>({
+    queryKey: ["dashboardKPIs", startDateParam ?? "", endDateParam ?? ""],
     queryFn: () =>
-      getUpsellAnalytics({
+      getDashboardKPIs({
         start_date: startDateParam,
         end_date: endDateParam,
       }),
-    mockData: mockUpsellAnalytics,
+    mockData: mockDashboardKPIs,
   });
-
-  // -----------------------------
-  // HELPER
-  // -----------------------------
-  function groupBy<T, K extends string | number>(
-    list: readonly T[],
-    keyFn: (item: T) => K,
-  ): Record<K, T[]> {
-    return list.reduce(
-      (acc, item) => {
-        const key = keyFn(item);
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(item);
-        return acc;
-      },
-      {} as Record<K, T[]>,
-    );
-  }
 
   // -----------------------------
   // KPI: REVENUE
   // -----------------------------
-  // Group ALL upsells per client (needed for renewal classification)
-  const upsellByClient = groupBy(upsellsAll, (u) => u.client_id);
-  const successfulRenewalByNewContractId = new Set(
-    upsellsAll
-      .filter(
-        (u) =>
-          u.upsell_result === "verlaengerung" &&
-          typeof u.new_contract_id === "number",
-      )
-      .map((u) => u.new_contract_id as number),
-  );
-
-  // Correct classification logic:
-  // A sales process is a RENEWAL process only if an upsell
-  // happened BEFORE the follow-up call.
-  function isRenewalProcess(sp: SalesProcess) {
-    const clientUpsells = upsellByClient[sp.client_id] ?? [];
-    if (!sp.follow_up_date) return false;
-
-    const f = parseIsoToLocal(sp.follow_up_date);
-    if (!f) return false;
-
-    return clientUpsells.some((u) => {
-      if (!u.upsell_date) return false; // ignore nulls
-      const uDate = parseIsoToLocal(u.upsell_date);
-      if (!uDate) return false;
-      return uDate < f; // upsell happened BEFORE call
-    });
-  }
-
-  // Abschlussquote Neukunden:
-  // - Numerator: won (closed=true) with completed_at (contract made)
-  // - Denominator: decided (closed true/false)
-  // - Time bucketing:
-  //   - wins by completed_at
-  //   - losses by updated_at (fallback follow_up_date/created_at)
-
-  const wonNewCustomerInRange = salesProcesses.filter((sp) => {
-    if (sp.closed !== true) return false;
-    if (!sp.completed_at) return false;
-    if (isRenewalProcess(sp)) return false;
-    return inRange(sp.completed_at);
-  });
-
-  const decidedNewCustomerInRange = salesProcesses.filter((sp) => {
-    if (sp.closed !== true && sp.closed !== false) return false;
-    // Losses should only count if a follow-up call actually happened.
-    if (sp.closed === false && sp.follow_up_result !== true) return false;
-    if (isRenewalProcess(sp)) return false;
-
-    const decisionDate =
-      sp.closed === true
-        ? sp.completed_at
-        : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
-    return inRange(decisionDate);
-  });
+  const newCustomerRevenue = kpis?.new_customer_revenue ?? 0;
+  const renewalRevenue = kpis?.renewal_revenue ?? 0;
 
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
@@ -319,62 +234,21 @@ export default function Dashboard() {
     inRange(contract.start_date),
   );
 
-  const newCustomerContracts = contractsStartedInRange.filter(
-    (contract) => !successfulRenewalByNewContractId.has(contract.id),
-  );
-  const renewalContracts = contractsStartedInRange.filter((contract) =>
-    successfulRenewalByNewContractId.has(contract.id),
-  );
-
-  const newCustomerRevenue = newCustomerContracts.reduce(
-    (sum, contract) => sum + (contract.revenue_total ?? 0),
-    0,
-  );
-
-  const renewalRevenue = renewalContracts.reduce(
-    (sum, contract) => sum + (contract.revenue_total ?? 0),
-    0,
-  );
-
-  const totalRevenue = newCustomerRevenue + renewalRevenue;
+  // Gesamtumsatz comes from the backend KPI so it's consistent with the
+  // new_customer_revenue + renewal_revenue breakdown from the same source.
+  const totalRevenue = kpis?.total_revenue ?? 0;
 
   // -----------------------------
   // KPI: ABSCHLUSSQUOTE (NEUKUNDEN)
   // -----------------------------
-  // IMPORTANT:
-  // Do NOT filter by stage === "follow_up"
-  // because closed/lost calls no longer have stage "follow_up".
-  // A new-customer sales call is any call with a follow_up_date.
-
   const closingRateNew =
-    decidedNewCustomerInRange.length > 0
-      ? Math.round(
-          (wonNewCustomerInRange.length / decidedNewCustomerInRange.length) *
-            100,
-        ) + "%"
-      : "—";
+    kpis?.closing_rate_new != null ? kpis.closing_rate_new + "%" : "—";
 
   // -----------------------------
   // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
   // -----------------------------
-  const renewalRateValue = useMockData
-    ? (() => {
-        const decided = upsells.filter(
-          (u) =>
-            inRange(u.upsell_date) &&
-            (u.upsell_result === "verlaengerung" ||
-              u.upsell_result === "keine_verlaengerung"),
-        );
-        const total = decided.length;
-        const ok = decided.filter(
-          (u) => u.upsell_result === "verlaengerung",
-        ).length;
-        if (total === 0) return null;
-        return Math.round((1000 * ok) / total) / 10; // 1 decimal
-      })()
-    : (upsellAnalytics?.verlaengerungsquote ?? null);
-
-  const renewalRate = renewalRateValue != null ? renewalRateValue + "%" : "—";
+  const renewalRate =
+    kpis?.verlaengerungsquote != null ? kpis.verlaengerungsquote + "%" : "—";
 
   // -----------------------------
   // RECENT ACTIVITIES (combine contracts + sales and sort by date)
@@ -388,9 +262,12 @@ export default function Dashboard() {
     url: string;
   };
 
-  const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
+  const clientNameById = new Map<number, string>();
+  for (const sp of salesProcesses)
+    clientNameById.set(sp.client_id, sp.client_name);
+  for (const c of clients) clientNameById.set(c.id, c.name);
 
-  const recentUpsellItems: RecentItem[] = upsellsAll.map((u) => {
+  const recentUpsellItems: RecentItem[] = upsells.map((u) => {
     const created = parseIsoToLocal(u.created_at);
     const updated = parseIsoToLocal(u.updated_at);
     const changedAt = updated ?? created;
@@ -671,11 +548,7 @@ export default function Dashboard() {
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
-      <MonthlyKPITable
-        contracts={contracts}
-        salesProcesses={salesProcesses}
-        upsells={upsellsAll}
-      />
+      <MonthlyKPITable contracts={contracts} salesProcesses={salesProcesses} />
 
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -807,35 +680,15 @@ export default function Dashboard() {
           {/* ── Abschlussquote Neukunden ── */}
           {revenueModal === "closing" && (
             <div className="space-y-2 mt-2">
-              <p className="text-sm text-muted-foreground">
-                {wonNewCustomerInRange.length} von{" "}
-                {decidedNewCustomerInRange.length} entschiedenen
-                Neukunden-Prozessen gewonnen.
-              </p>
-              {decidedNewCustomerInRange.length === 0 ? (
+              {(kpis?.decided_new_count ?? 0) === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Keine entschiedenen Prozesse im gewählten Zeitraum.
                 </p>
               ) : (
-                <>
-                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
-                    <span>Kunde</span>
-                    <span className="text-right">Ergebnis</span>
-                  </div>
-                  {decidedNewCustomerInRange.map((sp) => (
-                    <div
-                      key={sp.id}
-                      className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
-                    >
-                      <span>{sp.client_name}</span>
-                      <span
-                        className={`text-right text-xs font-medium ${sp.closed === true ? "text-green-600" : "text-red-500"}`}
-                      >
-                        {sp.closed === true ? "Gewonnen" : "Verloren"}
-                      </span>
-                    </div>
-                  ))}
-                </>
+                <p className="text-sm text-muted-foreground">
+                  {kpis?.won_new_count ?? 0} von {kpis?.decided_new_count ?? 0}{" "}
+                  entschiedenen Neukunden-Prozessen gewonnen.
+                </p>
               )}
             </div>
           )}
@@ -896,51 +749,74 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── Revenue modals (new / renewal / all) ── */}
-          {(revenueModal === "new" ||
-            revenueModal === "renewal" ||
-            revenueModal === "all") && (
+          {/* ── Umsatz durch Verlängerungen ── */}
+          {revenueModal === "renewal" && (
             <div className="space-y-2 mt-2">
-              {(revenueModal === "new"
-                ? newCustomerContracts
-                : revenueModal === "renewal"
-                  ? renewalContracts
-                  : contractsStartedInRange
-              ).length === 0 ? (
+              {renewedUpsellsInRange.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine Verlängerungen im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-right">Umsatz</span>
+                  </div>
+                  {renewedUpsellsInRange
+                    .slice()
+                    .sort(
+                      (a, b) =>
+                        (b.upsell_revenue ?? 0) - (a.upsell_revenue ?? 0),
+                    )
+                    .map((u) => (
+                      <div
+                        key={u.id}
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>
+                          {clientNameById.get(u.client_id) ??
+                            `Kunde ${u.client_id}`}
+                        </span>
+                        <span className="text-right font-medium">
+                          {euro(u.upsell_revenue ?? 0)}
+                        </span>
+                      </div>
+                    ))}
+                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                    <span>Gesamt</span>
+                    <span className="text-right">
+                      {euro(kpis?.renewal_revenue ?? 0)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Revenue modals (new / all) ── */}
+          {(revenueModal === "new" || revenueModal === "all") && (
+            <div className="space-y-2 mt-2">
+              {contractsStartedInRange.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Keine Verträge im gewählten Zeitraum.
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-[1fr_auto_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
                     <span>Kunde</span>
-                    {revenueModal === "all" && (
-                      <span className="text-center px-2">Art</span>
-                    )}
                     <span className="text-right">Umsatz</span>
                   </div>
-                  {(revenueModal === "new"
-                    ? newCustomerContracts
-                    : revenueModal === "renewal"
-                      ? renewalContracts
-                      : contractsStartedInRange
-                  )
+                  {contractsStartedInRange
+                    .slice()
                     .sort(
                       (a, b) => (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
                     )
                     .map((c) => (
                       <div
                         key={c.id}
-                        className="grid grid-cols-[1fr_auto_auto] items-center text-sm py-1 border-b last:border-0"
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
                       >
                         <span>{c.client_name}</span>
-                        {revenueModal === "all" && (
-                          <span className="text-xs text-muted-foreground px-2">
-                            {successfulRenewalByNewContractId.has(c.id)
-                              ? "Verlängerung"
-                              : "Neukunde"}
-                          </span>
-                        )}
                         <span className="text-right font-medium">
                           {euro(c.revenue_total ?? 0)}
                         </span>
@@ -948,16 +824,7 @@ export default function Dashboard() {
                     ))}
                   <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
                     <span>Gesamt</span>
-                    <span className="text-right">
-                      {euro(
-                        (revenueModal === "new"
-                          ? newCustomerContracts
-                          : revenueModal === "renewal"
-                            ? renewalContracts
-                            : contractsStartedInRange
-                        ).reduce((s, c) => s + (c.revenue_total ?? 0), 0),
-                      )}
-                    </span>
+                    <span className="text-right">{euro(totalRevenue)}</span>
                   </div>
                 </>
               )}

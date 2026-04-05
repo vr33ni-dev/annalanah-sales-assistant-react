@@ -103,6 +103,36 @@ export const mockContracts: Contract[] = [
     payment_frequency: "bi-yearly",
     base_monthly_amount: 1000,
     next_due_date: null,
+    chain: [
+      {
+        id: 3,
+        client_id: 3,
+        client_name: "Moritz Mustermann",
+        sales_process_id: 3,
+        created_at: "2025-03-01T08:00:00Z",
+        start_date: "2025-03-23",
+        end_date: "2026-03-22",
+        duration_months: 12,
+        revenue_total: 12000,
+        payment_frequency: "bi-yearly",
+        base_monthly_amount: 1000,
+        next_due_date: null,
+      },
+      {
+        id: 4,
+        client_id: 3,
+        client_name: "Moritz Mustermann",
+        sales_process_id: 3,
+        created_at: "2026-02-15T08:00:00Z",
+        start_date: "2026-03-23",
+        end_date: "2027-03-22",
+        duration_months: 12,
+        revenue_total: 12000,
+        payment_frequency: "bi-yearly",
+        base_monthly_amount: 1000,
+        next_due_date: null,
+      },
+    ],
   },
   {
     id: 4,
@@ -117,6 +147,36 @@ export const mockContracts: Contract[] = [
     payment_frequency: "bi-yearly",
     base_monthly_amount: 1000,
     next_due_date: null,
+    chain: [
+      {
+        id: 3,
+        client_id: 3,
+        client_name: "Moritz Mustermann",
+        sales_process_id: 3,
+        created_at: "2025-03-01T08:00:00Z",
+        start_date: "2025-03-23",
+        end_date: "2026-03-22",
+        duration_months: 12,
+        revenue_total: 12000,
+        payment_frequency: "bi-yearly",
+        base_monthly_amount: 1000,
+        next_due_date: null,
+      },
+      {
+        id: 4,
+        client_id: 3,
+        client_name: "Moritz Mustermann",
+        sales_process_id: 3,
+        created_at: "2026-02-15T08:00:00Z",
+        start_date: "2026-03-23",
+        end_date: "2027-03-22",
+        duration_months: 12,
+        revenue_total: 12000,
+        payment_frequency: "bi-yearly",
+        base_monthly_amount: 1000,
+        next_due_date: null,
+      },
+    ],
   },
 ];
 
@@ -544,6 +604,18 @@ export const mockUpsellAnalytics = {
   verlaengerungsquote: 50,
   umsatz_sum: 6000,
   revenue_by_month: [],
+};
+
+export const mockDashboardKPIs = {
+  total_revenue: 10800,
+  new_customer_revenue: 4800,
+  renewal_revenue: 6000,
+  won_new_count: 1,
+  decided_new_count: 2,
+  closing_rate_new: 50,
+  verlaengerungsquote: 50,
+  active_contracts_count: 5,
+  total_clv: 54000,
 };
 
 // Mock cashflow forecast data - aligned with contracts above

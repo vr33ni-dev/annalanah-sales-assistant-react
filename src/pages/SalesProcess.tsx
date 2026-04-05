@@ -686,7 +686,7 @@ export default function SalesProcessView() {
         ),
       );
 
-      qc.setQueryData<Client[]>(queryKeys.clients, (current) =>
+      qc.setQueryData<Client[]>(queryKeys.clients(false), (current) =>
         (current ?? []).map((client) =>
           client.id === savedClient.id
             ? {
@@ -704,7 +704,7 @@ export default function SalesProcessView() {
         ),
       );
 
-      await qc.invalidateQueries({ queryKey: queryKeys.clients });
+      await qc.invalidateQueries({ queryKey: ["clients"] });
       await qc.invalidateQueries({ queryKey: queryKeys.leads });
 
       toast({

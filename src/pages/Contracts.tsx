@@ -43,9 +43,10 @@ import {
   getContracts,
   getCashflowForecast,
   getCashflowMetrics,
-  getUpsells,
+  getDashboardKPIs,
   type CashflowRow,
   type CashflowMetrics,
+  type DashboardKPIs,
   getSalesProcesses,
   type SalesProcess,
   ContractUpsell,
@@ -56,7 +57,7 @@ import {
   mockContracts,
   mockCashflowForecast,
   mockSalesProcesses,
-  mockUpsells,
+  mockDashboardKPIs,
 } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
@@ -76,7 +77,6 @@ import { cn } from "@/lib/utils";
 
 // add months to a YYYY-MM-DD string safely
 function addMonthsIso(iso: string, m: number): string {
-  const datePart = iso.split("T")[0];
   const dateOnly = iso.split("T")[0];
   const [y, mo, d] = dateOnly.split("-").map(Number);
   const dt = new Date(y, mo - 1, d);
@@ -179,57 +179,15 @@ export default function Contracts() {
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
     null,
   );
+  const [showHistory, setShowHistory] = useState(false);
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<
-    "client_name" | "start_date" | "duration_months" | "progress"
+    "client_name" | "start_date" | "duration_months" | "progress" | "revenue"
   >("start_date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const shouldFetchExpiredContracts =
-    showExpiredContracts || !!salesProcessParam;
-
-  // Upsell for selected contract
-  const { data: upsell, refetch: refetchUpsell } = useMockableQuery<
-    ContractUpsell[],
-    ContractUpsell | null,
-    ReturnType<typeof queryKeys.upsell>
-  >({
-    queryKey: queryKeys.upsell(selectedContract?.sales_process_id),
-    queryFn: () =>
-      selectedContract
-        ? getUpsellForSalesProcess(selectedContract.sales_process_id)
-        : null,
-    enabled: !!selectedContract,
-    select: (list) => (list && list.length > 0 ? list[0] : null),
-    mockData: selectedContract
-      ? mockUpsells.filter(
-          (item) => item.sales_process_id === selectedContract.sales_process_id,
-        )
-      : [],
-  });
-
-  const { data: allUpsells = [], refetch: refetchAllUpsells } =
-    useMockableQuery<ContractUpsell[]>({
-      queryKey: ["upsells-all-contracts"],
-      queryFn: () => getUpsells(),
-      enabled: !!selectedContract,
-      retry: false,
-      staleTime: 5 * 60 * 1000,
-      select: asArray<ContractUpsell>,
-      mockData: mockUpsells,
-    });
-
-  const relatedUpsell =
-    upsell ??
-    (selectedContract
-      ? (allUpsells.find(
-          (item) =>
-            item.previous_contract_id === selectedContract.id ||
-            item.new_contract_id === selectedContract.id ||
-            item.sales_process_id === selectedContract.sales_process_id,
-        ) ?? null)
-      : null);
+  const shouldFetchExpiredContracts = showExpiredContracts;
 
   // Contracts for table + KPIs
   const {
@@ -272,64 +230,76 @@ export default function Contracts() {
 
   const drawerContract = selectedContractDetail ?? selectedContract;
 
-  const linkedPreviousContractId =
-    relatedUpsell && typeof relatedUpsell.previous_contract_id === "number"
-      ? relatedUpsell.previous_contract_id
-      : null;
+  // Chain is embedded in the GET /contracts/{id} response.
+  const contractChain = useMemo(
+    () => selectedContractDetail?.chain ?? [],
+    [selectedContractDetail?.chain],
+  );
 
-  const linkedNewContractId =
-    relatedUpsell && typeof relatedUpsell.new_contract_id === "number"
-      ? relatedUpsell.new_contract_id
-      : null;
+  const chainWithLabels = useMemo(() => {
+    const sorted = contractChain
+      .slice()
+      .sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? ""));
+    return sorted.map((c, i) => ({
+      ...c,
+      label: i === 0 ? "Aktueller Vertrag" : `Verlängerung #${i}`,
+      // Only the first contract (original) is ever 'geöffnet' (current)
+      isCurrent: i === 0,
+    }));
+  }, [contractChain]);
 
-  const { data: linkedPreviousContract } = useMockableQuery<Contract | null>({
-    queryKey: linkedPreviousContractId
-      ? queryKeys.contract(linkedPreviousContractId)
-      : (["contract", "linked-previous"] as const),
-    queryFn: () =>
-      linkedPreviousContractId
-        ? getContractById(linkedPreviousContractId)
-        : null,
-    enabled: !!linkedPreviousContractId,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: (contract) => contract ?? null,
-    mockData: linkedPreviousContractId
-      ? (mockContracts.find(
-          (contract) => contract.id === linkedPreviousContractId,
-        ) ?? null)
-      : null,
-  });
+  // Chain-level aggregates for the drawer header
+  const sortedChain = useMemo(
+    () =>
+      contractChain
+        .slice()
+        .sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? "")),
+    [contractChain],
+  );
+  const chainTotal = sortedChain.reduce((sum, c) => sum + c.revenue_total, 0);
+  const chainStart = sortedChain[0]?.start_date ?? null;
+  const chainEnd = sortedChain[sortedChain.length - 1]?.end_date ?? null;
+  const chainDuration = sortedChain.reduce(
+    (sum, c) => sum + (c.duration_months ?? 0),
+    0,
+  );
 
-  const { data: linkedNewContract } = useMockableQuery<Contract | null>({
-    queryKey: linkedNewContractId
-      ? queryKeys.contract(linkedNewContractId)
-      : (["contract", "linked-new"] as const),
-    queryFn: () =>
-      linkedNewContractId ? getContractById(linkedNewContractId) : null,
-    enabled: !!linkedNewContractId,
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: (contract) => contract ?? null,
-    mockData: linkedNewContractId
-      ? (mockContracts.find(
-          (contract) => contract.id === linkedNewContractId,
-        ) ?? null)
-      : null,
-  });
+  // Find the current or next contract in the chain
+  const today = new Date();
+  const currentOrNextContract = useMemo(() => {
+    if (!sortedChain.length) return drawerContract;
+    // 1. Try to find contract where today is within [start, end]
+    for (const c of sortedChain) {
+      const start = toDateStartOfDay(c.start_date);
+      const end = getContractEndDate(c);
+      if (start && end && start <= today && end >= today) return c;
+      if (start && !end && start <= today) return c; // open-ended
+    }
+    // 2. If all are in the future, return the first (soonest)
+    for (const c of sortedChain) {
+      const start = toDateStartOfDay(c.start_date);
+      if (start && start > today) return c;
+    }
+    // 3. If all are expired, return the last (most recent)
+    return sortedChain[sortedChain.length - 1];
+  }, [sortedChain, drawerContract, today]);
 
-  const isUpsellSourceContract =
-    !!drawerContract &&
-    !!relatedUpsell &&
-    (relatedUpsell.previous_contract_id == null
-      ? true
-      : relatedUpsell.previous_contract_id === drawerContract.id);
+  const clientContracts = useMemo(
+    () =>
+      drawerContract
+        ? contracts
+            .filter((c) => c.client_id === drawerContract.client_id)
+            .sort((a, b) =>
+              (a.start_date ?? "").localeCompare(b.start_date ?? ""),
+            )
+        : [],
+    [contracts, drawerContract],
+  );
 
-  const isUpsellResultContract =
-    !!drawerContract &&
-    !!relatedUpsell &&
-    relatedUpsell.new_contract_id === drawerContract.id &&
-    relatedUpsell.previous_contract_id !== drawerContract.id;
+  const clientTotalRevenue = clientContracts.reduce(
+    (sum, c) => sum + c.revenue_total,
+    0,
+  );
 
   const openLinkedContract = (contract: Contract) => {
     setSelectedContract(contract);
@@ -341,11 +311,7 @@ export default function Contracts() {
   };
 
   // Cashflow forecast (server-side aggregation)
-  const {
-    data: forecast = [],
-    isFetching: loadingForecast,
-    isError: errorForecast,
-  } = useMockableQuery<CashflowRow[]>({
+  const { data: forecast = [] } = useMockableQuery<CashflowRow[]>({
     queryKey: queryKeys.cashflowForecast,
     queryFn: () => getCashflowForecast(),
     retry: false,
@@ -355,15 +321,14 @@ export default function Contracts() {
   });
 
   // Cashflow metrics (server-side) — avg YTD, confirmed next3, etc.
-  const { data: metrics, isFetching: loadingMetrics } =
-    useMockableQuery<CashflowMetrics | null>({
-      queryKey: queryKeys.cashflowMetrics,
-      queryFn: () => getCashflowMetrics(),
-      retry: false,
-      staleTime: 5 * 60 * 1000,
-      select: (d) => d ?? null,
-      mockData: null,
-    });
+  const { data: metrics } = useMockableQuery<CashflowMetrics | null>({
+    queryKey: queryKeys.cashflowMetrics,
+    queryFn: () => getCashflowMetrics(),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: (d) => d ?? null,
+    mockData: null,
+  });
 
   // Sales processes (used to compute earliest contact date for reset)
   const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
@@ -376,30 +341,8 @@ export default function Contracts() {
   });
 
   /* ---------------- Used for Contracts Table and Monthly Cashflow Calculation  ---------------- */
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const startOfYear = new Date(now.getFullYear(), 0, 1); // Jan 1
-
-  /* ---------------- KPIs from contracts ---------------- */
-  const totalRevenue = contracts.reduce((sum, c) => sum + c.revenue_total, 0);
-
-  // "Active" = contract that has not yet ended (end >= today),
-  // including future contracts that have already been confirmed
-  const activeContracts = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return contracts.filter((c) => {
-      const cStart = toDateStartOfDay(c.start_date as string | null);
-      if (!cStart) return false;
-      const cEnd = getContractEndDate(c);
-      // Future-start contracts are considered active (no confirmation required)
-
-      if (!cEnd) return true; // open-ended → active
-      return cEnd >= today; // not yet ended (includes future starts)
-    });
-  }, [contracts]);
-
-  const activeCount = activeContracts.length;
-  const avgContractValue = activeCount ? totalRevenue / activeCount : 0;
 
   /* ---- YTD average monthly cashflow (1.1. bis jetzt) — use metrics if available ---- */
   const monthsElapsedYtd = now.getMonth() + 1; // Jan..current month inclusive
@@ -409,6 +352,23 @@ export default function Contracts() {
   /* ---- Filtered Contracts for Active Contracts table ---- */
   const [dateStart, setDateStart] = useState<string>(toYmdLocal(startOfYear));
   const [dateEnd, setDateEnd] = useState<string>(toYmdLocal(now));
+
+  // Dashboard KPIs (server-side) — active contracts count, total revenue, etc.
+  const { data: kpis } = useMockableQuery<DashboardKPIs>({
+    queryKey: ["dashboardKPIs", dateStart ?? "", dateEnd ?? ""],
+    queryFn: () =>
+      getDashboardKPIs({ start_date: dateStart, end_date: dateEnd }),
+    staleTime: 5 * 60 * 1000,
+    mockData: mockDashboardKPIs,
+  });
+
+  // All-time KPIs (no date filter) — used for metrics that must not be date-filtered (e.g. total_clv)
+  const { data: kpisAllTime } = useMockableQuery<DashboardKPIs>({
+    queryKey: ["dashboardKPIs", "all-time"],
+    queryFn: () => getDashboardKPIs(),
+    staleTime: 5 * 60 * 1000,
+    mockData: mockDashboardKPIs,
+  });
 
   const filteredContracts = useMemo(() => {
     let list = contracts;
@@ -469,12 +429,6 @@ export default function Contracts() {
       });
     }
 
-    if (!showExpiredContracts) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      list = list.filter((contract) => !isContractExpired(contract, today));
-    }
-
     if (searchTerm && searchTerm.trim() !== "") {
       const q = searchTerm.toLowerCase();
       list = list.filter((c) =>
@@ -483,14 +437,7 @@ export default function Contracts() {
     }
 
     return list;
-  }, [
-    contracts,
-    clientFilter,
-    dateEnd,
-    dateStart,
-    showExpiredContracts,
-    searchTerm,
-  ]);
+  }, [contracts, clientFilter, dateEnd, dateStart, searchTerm]);
 
   const sortedContracts = useMemo(() => {
     const sortNow = new Date();
@@ -509,6 +456,10 @@ export default function Contracts() {
         return (
           ((a.duration_months ?? 0) - (b.duration_months ?? 0)) * direction
         );
+      }
+
+      if (sortField === "revenue") {
+        return (a.revenue_total - b.revenue_total) * direction;
       }
 
       if (sortField === "progress") {
@@ -540,8 +491,87 @@ export default function Contracts() {
     });
   }, [filteredContracts, sortField, sortOrder]);
 
+  const clientGroups = useMemo(() => {
+    const map = new Map<number, Contract[]>();
+    for (const c of filteredContracts) {
+      const group = map.get(c.client_id) ?? [];
+      group.push(c);
+      map.set(c.client_id, group);
+    }
+    return Array.from(map.values()).map((group) => {
+      const sorted = [...group].sort((a, b) =>
+        (a.start_date ?? "").localeCompare(b.start_date ?? ""),
+      );
+      const latest = sorted[sorted.length - 1];
+      // Chain members all share the same sales_process_id — deduplicate so
+      // renewals/upsells don't inflate the badge count. History is shown in
+      // the drawer's Vertragshistorie, not as separate table entries.
+      const seenProcessIds = new Set<number>();
+      const distinctContracts = sorted.filter((c) => {
+        if (!c.sales_process_id) return true;
+        if (seenProcessIds.has(c.sales_process_id)) return false;
+        seenProcessIds.add(c.sales_process_id);
+        return true;
+      });
+      return {
+        client_id: latest.client_id,
+        client_name: latest.client_name,
+        contracts: distinctContracts,
+        latest,
+        totalRevenue: group.reduce((sum, c) => sum + c.revenue_total, 0),
+      };
+    });
+  }, [filteredContracts]);
+
+  const sortedClientGroups = useMemo(() => {
+    return [...clientGroups].sort((a, b) => {
+      const direction = sortOrder === "asc" ? 1 : -1;
+      if (sortField === "client_name") {
+        return (
+          (a.client_name ?? "").localeCompare(b.client_name ?? "", "de") *
+          direction
+        );
+      }
+      if (sortField === "revenue") {
+        return (a.totalRevenue - b.totalRevenue) * direction;
+      }
+
+      if (sortField === "progress") {
+        const aP =
+          a.latest.duration_months > 0
+            ? getElapsedContractMonths(
+                a.latest.start_date,
+                now,
+                a.latest.duration_months,
+              ) / a.latest.duration_months
+            : 0;
+        const bP =
+          b.latest.duration_months > 0
+            ? getElapsedContractMonths(
+                b.latest.start_date,
+                now,
+                b.latest.duration_months,
+              ) / b.latest.duration_months
+            : 0;
+        return (aP - bP) * direction;
+      }
+      const aStart =
+        toDateStartOfDay(a.latest.start_date)?.getTime() ??
+        Number.POSITIVE_INFINITY;
+      const bStart =
+        toDateStartOfDay(b.latest.start_date)?.getTime() ??
+        Number.POSITIVE_INFINITY;
+      return (aStart - bStart) * direction;
+    });
+  }, [clientGroups, sortField, sortOrder, now]);
+
   const onSortBy = (
-    field: "client_name" | "start_date" | "duration_months" | "progress",
+    field:
+      | "client_name"
+      | "start_date"
+      | "duration_months"
+      | "progress"
+      | "revenue",
   ) => {
     if (sortField === field) {
       setSortOrder((current) => (current === "asc" ? "desc" : "asc"));
@@ -557,8 +587,8 @@ export default function Contracts() {
     page,
     setPage,
     totalPages,
-    paginatedItems: paginatedContracts,
-  } = usePagination(sortedContracts, 10);
+    paginatedItems: paginatedClientGroups,
+  } = usePagination(sortedClientGroups, 10);
 
   /* ---------------- Effects ---------------- */
   // Auto-open contract based on URL
@@ -683,11 +713,6 @@ export default function Contracts() {
     "0",
   )}`;
 
-  const next3MonthKeys = Array.from({ length: 3 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() + index, 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  });
-
   // If server metrics available, prefer them; else compute from `forecast`
   const next3FromMetrics =
     metrics?.confirmed_next3?.map((m) => ({
@@ -748,28 +773,60 @@ export default function Contracts() {
         <MetricChip
           icon={<DollarSign className="w-4 h-4" />}
           iconBg="bg-success/10 text-success"
-          value={euro(totalRevenue)}
-          label="Gesamter Vertragswert"
-          popover={`Summe der Vertragswerte aller aktiven Verträge`}
+          value={euro(kpisAllTime?.total_clv ?? 0)}
+          label="Gesamt CLV"
+          popover={`Gesamter Kundenwert über alle Vertragsketten (Laufzeitgesamtwert)`}
+        />
+
+        <MetricChip
+          icon={<DollarSign className="w-4 h-4" />}
+          iconBg="bg-primary/10 text-primary"
+          value={euro(kpis?.total_revenue ?? 0)}
+          label="Umsatz im Zeitraum"
+          popover={`Umsatz aus neuen und verlängerten Verträgen im gewählten Zeitraum`}
         />
 
         <MetricChip
           icon={<FileText className="w-4 h-4" />}
           iconBg="bg-warning/10 text-warning"
-          value={String(activeCount)}
+          value={String(kpis?.active_contracts_count ?? 0)}
           label="Aktive Verträge"
-          popover={`Anzahl heute aktiver Verträge = ${activeCount}`}
+          popover={`Anzahl heute aktiver Verträge = ${kpis?.active_contracts_count ?? 0}`}
         />
 
         <MetricChip
           icon={<Users className="w-4 h-4" />}
           iconBg="bg-accent/20 text-accent-foreground"
-          value={euro(Math.round(avgContractValue))}
-          label="Ø Vertragswert"
+          value={euro(
+            Math.round(
+              kpis?.active_contracts_count
+                ? kpis.total_revenue / kpis.active_contracts_count
+                : 0,
+            ),
+          )}
+          label="Ø Vertragswert (Zeitraum)"
           popover={
-            `Ø Vertragswert = Gesamt-Vertragswert / Anzahl Verträge\n` +
-            `= ${euro(totalRevenue)} / ${activeCount || 1}\n` +
-            `= ${euro(Math.round(avgContractValue))}`
+            `Ø Vertragswert im gewählten Zeitraum\n` +
+            `= ${euro(kpis?.total_revenue ?? 0)} / ${kpis?.active_contracts_count || 1}\n` +
+            `= ${euro(Math.round(kpis?.active_contracts_count ? kpis.total_revenue / kpis.active_contracts_count : 0))}`
+          }
+        />
+
+        <MetricChip
+          icon={<Users className="w-4 h-4" />}
+          iconBg="bg-muted/40 text-muted-foreground"
+          value={euro(
+            Math.round(
+              kpisAllTime?.active_contracts_count
+                ? kpisAllTime.total_clv / kpisAllTime.active_contracts_count
+                : 0,
+            ),
+          )}
+          label="Ø CLV pro Vertrag"
+          popover={
+            `Ø Kundenwert (Laufzeit) pro Vertrag\n` +
+            `= ${euro(kpisAllTime?.total_clv ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
+            `= ${euro(Math.round(kpisAllTime?.active_contracts_count ? kpisAllTime.total_clv / kpisAllTime.active_contracts_count : 0))}`
           }
         />
 
@@ -814,16 +871,30 @@ export default function Contracts() {
             </CardTitle>
             <div className="flex items-center gap-4">
               {/* DATE RANGE FILTER */}
+              {/* AKTIVE / ABGELAUFENE TOGGLE */}
+              <div className="flex rounded-md border overflow-hidden text-sm">
+                <button
+                  className={`px-3 py-1.5 transition-colors ${
+                    !showExpiredContracts
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setShowExpiredContracts(false)}
+                >
+                  Aktive
+                </button>
+                <button
+                  className={`px-3 py-1.5 border-l transition-colors ${
+                    showExpiredContracts
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setShowExpiredContracts(true)}
+                >
+                  Abgelaufene
+                </button>
+              </div>
               <div className="flex items-center gap-2">
-                <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={showExpiredContracts}
-                    onChange={(e) => setShowExpiredContracts(e.target.checked)}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  Abgelaufene Verträge anzeigen
-                </label>
                 <input
                   type="date"
                   value={dateStart}
@@ -941,19 +1012,20 @@ export default function Contracts() {
                     )}
                   </button>
                 </TableHead>
+                <TableHead>Enddatum</TableHead>
                 <TableHead>
                   <button
                     type="button"
-                    onClick={() => onSortBy("duration_months")}
+                    onClick={() => onSortBy("revenue")}
                     className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
                     title={
-                      sortField === "duration_months" && sortOrder === "asc"
-                        ? "Nach Laufzeit absteigend sortieren"
-                        : "Nach Laufzeit aufsteigend sortieren"
+                      sortField === "revenue" && sortOrder === "asc"
+                        ? "Nach Umsatz absteigend sortieren"
+                        : "Nach Umsatz aufsteigend sortieren"
                     }
                   >
-                    Laufzeit
-                    {sortField === "duration_months" ? (
+                    Umsatz
+                    {sortField === "revenue" ? (
                       sortOrder === "asc" ? (
                         <ArrowUp className="h-4 w-4" />
                       ) : (
@@ -964,7 +1036,6 @@ export default function Contracts() {
                     )}
                   </button>
                 </TableHead>
-                <TableHead>Umsatz</TableHead>
                 <TableHead>Zahlungsfrequenz</TableHead>
                 <TableHead>
                   <button
@@ -993,20 +1064,22 @@ export default function Contracts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedContracts.map((contract) => {
+              {paginatedClientGroups.map((group) => {
+                const { latest } = group;
                 const elapsedMonths = getElapsedContractMonths(
-                  contract.start_date,
+                  latest.start_date,
                   now,
-                  contract.duration_months,
+                  latest.duration_months,
                 );
-                const contractExpired = isContractExpired(contract, now);
+                const contractExpired = isContractExpired(latest, now);
                 const progressPercent =
-                  contract.duration_months > 0
-                    ? (elapsedMonths / contract.duration_months) * 100
+                  latest.duration_months > 0
+                    ? (elapsedMonths / latest.duration_months) * 100
                     : 0;
+                const earliestStart = group.contracts[0]?.start_date;
                 return (
                   <TableRow
-                    key={contract.id}
+                    key={group.client_id}
                     className={cn(
                       contractExpired &&
                         "bg-muted/20 text-muted-foreground hover:bg-muted/30",
@@ -1014,24 +1087,32 @@ export default function Contracts() {
                   >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        <span>{contract.client_name}</span>
+                        <span>{group.client_name}</span>
+                        {group.contracts.length > 1 && (
+                          <Badge variant="outline" className="text-xs">
+                            {group.contracts.length} Verträge
+                          </Badge>
+                        )}
                         {contractExpired && (
                           <Badge variant="secondary">Abgelaufen</Badge>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {contract.start_date
-                        ? formatDateOnly(contract.start_date)
-                        : "–"}
+                      {earliestStart ? formatDateOnly(earliestStart) : "–"}
                     </TableCell>
-                    <TableCell>{contract.duration_months} Monate</TableCell>
                     <TableCell>
-                      €{contract.revenue_total.toLocaleString()}
+                      {(() => {
+                        const end = getContractEndDate(latest);
+                        return end ? formatDateOnly(end.toISOString()) : "–";
+                      })()}
+                    </TableCell>
+                    <TableCell>
+                      €{group.totalRevenue.toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {contract.payment_frequency}
+                        {latest.payment_frequency}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -1044,18 +1125,16 @@ export default function Contracts() {
                           }
                         />
                         <p className="text-xs text-muted-foreground">
-                          {elapsedMonths}/{contract.duration_months} Monate
-                          {contract.next_due_date
-                            ? ` • Nächste: ${formatDateOnly(
-                                contract.next_due_date,
-                              )}`
+                          {elapsedMonths}/{latest.duration_months} Monate
+                          {latest.next_due_date
+                            ? ` • Nächste: ${formatDateOnly(latest.next_due_date)}`
                             : ""}
                         </p>
                       </div>
                     </TableCell>
                     <TableCell>
                       <button
-                        onClick={() => setSelectedContract(contract)}
+                        onClick={() => setSelectedContract(latest)}
                         className={cn(
                           "text-sm hover:underline",
                           contractExpired
@@ -1063,7 +1142,7 @@ export default function Contracts() {
                             : "text-blue-600",
                         )}
                       >
-                        Vertrag anzeigen
+                        Verträge anzeigen
                       </button>
                     </TableCell>
                   </TableRow>
@@ -1074,7 +1153,7 @@ export default function Contracts() {
           {sortedContracts.length > 0 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {paginatedContracts.length} von {sortedContracts.length}{" "}
+                {paginatedClientGroups.length} von {sortedContracts.length}{" "}
                 Einträgen
               </span>
               <TablePagination
@@ -1089,7 +1168,7 @@ export default function Contracts() {
 
       {/* Cashflow Entries & Forecast */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <CashflowHistoryTable />
+        <CashflowHistoryTable onContractClick={setSelectedContract} />
         <CashflowUpcomingTable />
       </div>
 
@@ -1116,20 +1195,34 @@ export default function Contracts() {
               <div className="space-y-4 mt-4">
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
-                    Laufzeit
+                    Laufzeit (gesamt)
                   </h3>
-                  <p>{drawerContract.duration_months} Monate</p>
+                  <p>
+                    {chainDuration > 0
+                      ? `${chainDuration} Monate`
+                      : `${drawerContract.duration_months} Monate`}
+                  </p>
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
                     Startdatum
                   </h3>
                   <p>
-                    {drawerContract.start_date
-                      ? formatDateOnly(drawerContract.start_date)
+                    {(chainStart ?? drawerContract.start_date)
+                      ? formatDateOnly(
+                          (chainStart ?? drawerContract.start_date)!,
+                        )
                       : "–"}
                   </p>
                 </div>
+                {chainEnd && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      Enddatum
+                    </h3>
+                    <p>{formatDateOnly(chainEnd)}</p>
+                  </div>
+                )}
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
                     Zahlungsfrequenz
@@ -1140,27 +1233,73 @@ export default function Contracts() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
-                    Umsatz
+                    Umsatz (gesamt)
                   </h3>
-                  <p>€{drawerContract.revenue_total.toLocaleString()}</p>
+                  <p>
+                    €
+                    {(chainTotal > 0
+                      ? chainTotal
+                      : drawerContract.revenue_total
+                    ).toLocaleString()}
+                  </p>
                 </div>
-                {/* ---------------- Edit Contract Button ---------------- */}
-                <button
-                  className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-                  onClick={() => setShowContractEdit(true)}
-                >
-                  Vertragsdetails bearbeiten
-                </button>
+
+                {/* Current period / edit button */}
+                {sortedChain.length > 1 ? (
+                  <div className="mt-2 p-3 border rounded-md bg-muted/30">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Aktuelle Periode
+                    </p>
+                    <div className="space-y-1 text-sm mb-3">
+                      <div>
+                        {formatDateOnly(currentOrNextContract.start_date)}
+                        {" – "}
+                        {(() => {
+                          const end = getContractEndDate(currentOrNextContract);
+                          return end ? formatDateOnly(end.toISOString()) : "–";
+                        })()}
+                        {" ("}
+                        {currentOrNextContract.duration_months}
+                        {" Monate)"}
+                      </div>
+                      <div>
+                        €{currentOrNextContract.revenue_total.toLocaleString()}{" "}
+                        · {currentOrNextContract.payment_frequency}
+                      </div>
+                    </div>
+                    <button
+                      className="px-3 py-1.5 bg-primary text-white text-sm rounded-md hover:bg-primary/90"
+                      onClick={() => setShowContractEdit(true)}
+                    >
+                      Vertragsdetails bearbeiten
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                    onClick={() => setShowContractEdit(true)}
+                  >
+                    Vertragsdetails bearbeiten
+                  </button>
+                )}
 
                 {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
-                  <CashflowHistoryTable contractId={drawerContract.id} />
+                  <CashflowHistoryTable contractId={currentOrNextContract.id} />
                 </div>
               </div>
               <div className="mt-6 space-y-3">
                 <h3 className="font-semibold">Prognose</h3>
-                <CashflowUpcomingTable contractId={drawerContract.id} />{" "}
+                {isContractExpired(currentOrNextContract, new Date()) ? (
+                  <p className="text-sm text-muted-foreground">
+                    Für abgelaufene Verträge gibt es keine Prognose.
+                  </p>
+                ) : (
+                  <CashflowUpcomingTable
+                    contractId={currentOrNextContract.id}
+                  />
+                )}
               </div>
               {/* ---------------- Upsell Section ---------------- */}
               <div className="mt-8 border-t pt-6">
@@ -1169,118 +1308,120 @@ export default function Contracts() {
                   Upsell / Vertragsverlängerung
                 </h3>
 
-                {/* Renewal result contract: show origin info only */}
-                {isUpsellResultContract && relatedUpsell && (
-                  <div className="p-3 mt-4 border rounded-md bg-muted/30">
-                    <div className="font-medium text-sm">
-                      Dieser Vertrag entstand aus einer Vertragsverlängerung.
-                    </div>
-                    {linkedPreviousContract && (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        Ursprünglicher Vertrag:{" "}
-                        {linkedPreviousContract.client_name}
-                      </div>
-                    )}
-                    {linkedPreviousContract && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openLinkedContract(linkedPreviousContract)
-                        }
-                        className="mt-3 px-3 py-1.5 border rounded-md text-sm hover:bg-muted"
-                      >
-                        Ursprünglichen Vertrag öffnen
-                      </button>
+                {/* Show upsell planning button */}
+                <button
+                  onClick={() => {
+                    setEditingUpsell(null);
+                    setShowUpsellModal(true);
+                  }}
+                  className="mt-4 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                >
+                  Upsell planen
+                </button>
+
+                {/* ---- Vertragshistorie (all periods in chain) ---- */}
+                {chainWithLabels.length > 1 && (
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => setShowHistory((v) => !v)}
+                      className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted"
+                    >
+                      {showHistory
+                        ? "Vertragshistorie schließen"
+                        : `Vertragshistorie öffnen (${chainWithLabels.length})`}
+                    </button>
+
+                    {showHistory && (
+                      <>
+                        {chainWithLabels.map((c, i) => {
+                          const endDate = getContractEndDate(c);
+                          const expired = isContractExpired(c, new Date());
+                          return (
+                            <div key={c.id} className="mt-4">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                  {c.label}
+                                  {c.isCurrent && " (geöffnet)"}
+                                </span>
+                                {/* Verlängerung edit button if not expired */}
+                                {i > 0 && !expired && (
+                                  <button
+                                    className="ml-2 text-xs text-blue-600 hover:underline"
+                                    onClick={() => {
+                                      setSelectedContract(c);
+                                      setShowContractEdit(true);
+                                    }}
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                )}
+                              </div>
+                              <div
+                                className={`p-3 border rounded-md ${expired ? "opacity-60" : ""}`}
+                              >
+                                <div className="mb-2">
+                                  {expired ? (
+                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                                      Abgelaufen
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                                      Aktiv
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="text-sm">
+                                    Startdatum:{" "}
+                                    {c.start_date
+                                      ? formatDateOnly(c.start_date)
+                                      : "–"}
+                                  </div>
+                                  <div className="text-sm">
+                                    Enddatum:{" "}
+                                    {endDate
+                                      ? endDate.toLocaleDateString("de-DE")
+                                      : "–"}
+                                  </div>
+                                  {c.duration_months && (
+                                    <div className="text-sm">
+                                      Dauer: {c.duration_months} Monate
+                                    </div>
+                                  )}
+                                  {c.payment_frequency && (
+                                    <div className="text-sm">
+                                      Zahlungsfrequenz: {c.payment_frequency}
+                                    </div>
+                                  )}
+                                  <div className="text-sm flex items-center gap-1.5">
+                                    <span
+                                      className={
+                                        c.source === "imported"
+                                          ? "text-muted-foreground italic"
+                                          : ""
+                                      }
+                                    >
+                                      Umsatz: €
+                                      {c.revenue_total.toLocaleString()}
+                                    </span>
+                                    {c.source === "imported" && (
+                                      <span
+                                        className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border"
+                                        title="Umsatz aus Import geschätzt – CLV gleichmäßig auf Perioden aufgeteilt"
+                                      >
+                                        Geschätzt
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
                     )}
                   </div>
-                )}
-
-                {/* Source/original contract: show editable upsell card */}
-                {isUpsellSourceContract && relatedUpsell && (
-                  <div
-                    className="p-3 mt-4 border rounded-md cursor-pointer hover:bg-muted/50"
-                    onClick={() => {
-                      setEditingUpsell(relatedUpsell);
-                      setShowUpsellModal(true);
-                    }}
-                  >
-                    {/* If result is verlängerung → show contract details */}
-                    {relatedUpsell.upsell_result === "verlaengerung" ? (
-                      <div className="space-y-1">
-                        <div className="font-medium text-green-600">
-                          Ergebnis: Vertragsverlängerung
-                        </div>
-
-                        {relatedUpsell.contract_start_date && (
-                          <div className="text-sm">
-                            Neuer Vertrag ab:{" "}
-                            {formatDateOnly(relatedUpsell.contract_start_date)}
-                          </div>
-                        )}
-
-                        {relatedUpsell.contract_duration_months && (
-                          <div className="text-sm">
-                            Dauer: {relatedUpsell.contract_duration_months}{" "}
-                            Monate
-                          </div>
-                        )}
-
-                        {relatedUpsell.contract_frequency && (
-                          <div className="text-sm">
-                            Zahlungsfrequenz: {relatedUpsell.contract_frequency}
-                          </div>
-                        )}
-
-                        {relatedUpsell.upsell_revenue && (
-                          <div className="text-sm">
-                            Umsatz: €
-                            {relatedUpsell.upsell_revenue.toLocaleString()}
-                          </div>
-                        )}
-
-                        {linkedNewContract && (
-                          <div className="pt-2">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openLinkedContract(linkedNewContract);
-                              }}
-                              className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted"
-                            >
-                              Neuen Vertrag öffnen
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      /* Default: show talk date + status */
-                      <div>
-                        <div className="font-medium">
-                          Upsellgespräch:{" "}
-                          {relatedUpsell.upsell_date
-                            ? formatDateOnly(relatedUpsell.upsell_date)
-                            : "–"}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Status: {relatedUpsell.upsell_result ?? "offen"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* If no upsell exists on the source contract → show button */}
-                {!relatedUpsell && !isUpsellResultContract && (
-                  <button
-                    onClick={() => {
-                      setEditingUpsell(null);
-                      setShowUpsellModal(true);
-                    }}
-                    className="mt-3 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-                  >
-                    Upsell planen
-                  </button>
                 )}
               </div>
 
@@ -1303,8 +1444,9 @@ export default function Contracts() {
           onClose={() => setShowUpsellModal(false)}
           onSaved={() => {
             setShowUpsellModal(false);
-            refetchUpsell(); // or invalidateQueries()
-            refetchAllUpsells();
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.contract(selectedContract!.id),
+            });
           }}
         />
       )}
