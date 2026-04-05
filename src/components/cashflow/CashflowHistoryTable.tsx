@@ -258,12 +258,22 @@ export function CashflowHistoryTable({
                         delete copy[e.id];
                         return copy;
                       });
+                      // Invalidate all contract query variants so both the list
+                      // view and the detail view reflect the updated status.
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.contractsList({ compact: true }),
+                      });
                       queryClient.invalidateQueries({
                         queryKey: queryKeys.contractsList({}),
                       });
                       queryClient.invalidateQueries({
                         queryKey: queryKeys.contract(e.contractId),
                       });
+                      if (contractId && contractId !== e.contractId) {
+                        queryClient.invalidateQueries({
+                          queryKey: queryKeys.contract(contractId),
+                        });
+                      }
                     } catch {
                       // Revert on error
                       setStatusOverrides((prev) => {
