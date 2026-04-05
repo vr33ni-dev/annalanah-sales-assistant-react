@@ -600,8 +600,12 @@ export function SalesProcessWorkflowForm({
             )}
 
             <div className="flex gap-3">
-              <Button onClick={onSubmit} disabled={!canSubmit} className="mt-4">
-                Speichern & Abschließen
+              <Button
+                onClick={onSubmit}
+                disabled={!canSubmit || isPatchPending}
+                className="mt-4"
+              >
+                {isPatchPending ? "Speichern…" : "Speichern & Abschließen"}
               </Button>
               <Button variant="ghost" onClick={onClose} className="mt-4">
                 Abbrechen

@@ -48,6 +48,7 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const [contractFrequency, setContractFrequency] = useState(
     upsell?.contract_frequency ?? "monthly",
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const contractDurationNum = Number(contractDuration) || 0;
 
@@ -64,7 +65,8 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   }, [upsell, contractEndDateYmd]);
 
   const handleSubmit = async () => {
-    if (!contract) return;
+    if (!contract || isSubmitting) return;
+    setIsSubmitting(true);
 
     const targetSalesProcessId =
       upsell?.sales_process_id ?? contract.sales_process_id;
@@ -89,6 +91,8 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
         description: message,
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -184,7 +188,7 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
           <Button variant="outline" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={handleSubmit} disabled={!date}>
+          <Button onClick={handleSubmit} disabled={!date || isSubmitting}>
             Speichern
           </Button>
         </DialogFooter>
