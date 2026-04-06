@@ -17,7 +17,7 @@ import {
   patchCashflowEntryStatus,
   type CashflowEntry,
 } from "@/lib/api";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
@@ -88,11 +88,29 @@ export function CashflowHistoryTable({
   type RangeFilter = "all" | "30" | "90" | "365";
 
   const [range, setRange] = useState<RangeFilter>("30");
-  // Optimistic local status overrides: entryId -> "overdue" | "confirmed"
-  const [statusOverrides, setStatusOverrides] = useState<
-    Record<number, "overdue" | "confirmed">
-  >({});
   const queryClient = useQueryClient();
+
+  // Shared status overrides stored in React Query cache so all
+  // CashflowHistoryTable instances (main page + detail drawer) stay in sync.
+  const OVERRIDES_KEY = ["cashflow-status-overrides"] as const;
+  const { data: statusOverrides = {} } = useQuery<
+    Record<number, "overdue" | "confirmed">
+  >({
+    queryKey: OVERRIDES_KEY,
+    queryFn: () => ({}),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const setStatusOverrides = (
+    updater: (
+      prev: Record<number, "overdue" | "confirmed">,
+    ) => Record<number, "overdue" | "confirmed">,
+  ) => {
+    queryClient.setQueryData<Record<number, "overdue" | "confirmed">>(
+      OVERRIDES_KEY,
+      (prev = {}) => updater(prev),
+    );
+  };
 
   useEffect(() => {
     setRange("30");
@@ -252,14 +270,10 @@ export function CashflowHistoryTable({
                     }));
                     try {
                       await patchCashflowEntryStatus(e.id, next);
-                      // Clear override — let fresh backend data take over
-                      setStatusOverrides((prev) => {
-                        const copy = { ...prev };
-                        delete copy[e.id];
-                        return copy;
-                      });
-                      // Invalidate all contract query variants so both the list
-                      // view and the detail view reflect the updated status.
+                      // Do NOT clear the override — compact mode doesn't return
+                      // cashflow statuses, so clearing it would cause a blink back
+                      // to the old value while the refetch is in flight.
+                      // The override persists as the source of truth until unmount.
                       queryClient.invalidateQueries({
                         queryKey: queryKeys.contractsList({ compact: true }),
                       });
