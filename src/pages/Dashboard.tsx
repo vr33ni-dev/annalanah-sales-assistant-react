@@ -17,13 +17,13 @@ import {
   getSalesProcesses,
   getStages,
   getUpsells,
-  getUpsellAnalytics,
+  getDashboardKPIs,
   type Client,
   type Contract,
   type SalesProcess,
   type Stage,
   type ContractUpsell,
-  UpsellAnalytics,
+  type DashboardKPIs,
 } from "@/lib/api";
 
 import {
@@ -32,7 +32,7 @@ import {
   mockSalesProcesses,
   mockStages,
   mockUpsells,
-  mockUpsellAnalytics,
+  mockDashboardKPIs,
 } from "@/lib/mockData";
 
 import { asArray } from "@/lib/safe";
@@ -47,12 +47,17 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
-import { useAuthEnabled } from "@/auth/useAuthEnabled";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // small utility
 const euro = (n: number) =>
@@ -65,8 +70,6 @@ const formatLocalDate = (d?: Date | null) =>
 
 export default function Dashboard() {
   const navigate = useNavigate();
-
-  const { useMockData } = useAuthEnabled();
 
   // -----------------------------
   // DATE RANGE
@@ -95,7 +98,7 @@ export default function Dashboard() {
   // -----------------------------
   const { data: clients = [] } = useMockableQuery<Client[]>({
     queryKey: ["clients"],
-    queryFn: getClients,
+    queryFn: () => getClients(),
     select: asArray<Client>,
     mockData: mockClients,
   });
@@ -132,103 +135,21 @@ export default function Dashboard() {
     mockData: mockUpsells,
   });
 
-  // Unfiltered upsells are required for correct renewal vs new-customer
-  // classification (a renewal depends on historical upsells, not just those
-  // inside the currently selected date range).
-  const { data: upsellsAll = [] } = useMockableQuery<ContractUpsell[]>({
-    queryKey: ["upsellsAll"],
-    queryFn: () => getUpsells(),
-    select: asArray<ContractUpsell>,
-    mockData: mockUpsells,
-  });
-
-  const { data: upsellAnalytics } = useMockableQuery<UpsellAnalytics>({
-    queryKey: ["upsellAnalytics", startDateParam ?? "", endDateParam ?? ""],
+  const { data: kpis } = useMockableQuery<DashboardKPIs>({
+    queryKey: ["dashboardKPIs", startDateParam ?? "", endDateParam ?? ""],
     queryFn: () =>
-      getUpsellAnalytics({
+      getDashboardKPIs({
         start_date: startDateParam,
         end_date: endDateParam,
       }),
-    mockData: mockUpsellAnalytics,
+    mockData: mockDashboardKPIs,
   });
-
-  // -----------------------------
-  // HELPER
-  // -----------------------------
-  function groupBy<T, K extends string | number>(
-    list: readonly T[],
-    keyFn: (item: T) => K,
-  ): Record<K, T[]> {
-    return list.reduce(
-      (acc, item) => {
-        const key = keyFn(item);
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(item);
-        return acc;
-      },
-      {} as Record<K, T[]>,
-    );
-  }
 
   // -----------------------------
   // KPI: REVENUE
   // -----------------------------
-  // Group ALL upsells per client (needed for renewal classification)
-  const upsellByClient = groupBy(upsellsAll, (u) => u.client_id);
-  const successfulRenewalByNewContractId = new Set(
-    upsellsAll
-      .filter(
-        (u) =>
-          u.upsell_result === "verlaengerung" &&
-          typeof u.new_contract_id === "number",
-      )
-      .map((u) => u.new_contract_id as number),
-  );
-
-  // Correct classification logic:
-  // A sales process is a RENEWAL process only if an upsell
-  // happened BEFORE the follow-up call.
-  function isRenewalProcess(sp: SalesProcess) {
-    const clientUpsells = upsellByClient[sp.client_id] ?? [];
-    if (!sp.follow_up_date) return false;
-
-    const f = parseIsoToLocal(sp.follow_up_date);
-    if (!f) return false;
-
-    return clientUpsells.some((u) => {
-      if (!u.upsell_date) return false; // ignore nulls
-      const uDate = parseIsoToLocal(u.upsell_date);
-      if (!uDate) return false;
-      return uDate < f; // upsell happened BEFORE call
-    });
-  }
-
-  // Abschlussquote Neukunden:
-  // - Numerator: won (closed=true) with completed_at (contract made)
-  // - Denominator: decided (closed true/false)
-  // - Time bucketing:
-  //   - wins by completed_at
-  //   - losses by updated_at (fallback follow_up_date/created_at)
-
-  const wonNewCustomerInRange = salesProcesses.filter((sp) => {
-    if (sp.closed !== true) return false;
-    if (!sp.completed_at) return false;
-    if (isRenewalProcess(sp)) return false;
-    return inRange(sp.completed_at);
-  });
-
-  const decidedNewCustomerInRange = salesProcesses.filter((sp) => {
-    if (sp.closed !== true && sp.closed !== false) return false;
-    // Losses should only count if a follow-up call actually happened.
-    if (sp.closed === false && sp.follow_up_result !== true) return false;
-    if (isRenewalProcess(sp)) return false;
-
-    const decisionDate =
-      sp.closed === true
-        ? sp.completed_at
-        : (sp.updated_at ?? sp.follow_up_date ?? sp.created_at ?? null);
-    return inRange(decisionDate);
-  });
+  const newCustomerRevenue = kpis?.new_customer_revenue ?? 0;
+  const renewalRevenue = kpis?.renewal_revenue ?? 0;
 
   // -----------------------------
   // KPI: ACTIVE CONTRACTS
@@ -241,6 +162,24 @@ export default function Dashboard() {
     dt.setMonth(dt.getMonth() + months);
     return dt;
   }
+
+  // "Aktive Verträge" KPI = contracts that have not yet ended (end >= today),
+  // regardless of the selected date range. This matches the Contracts page chip.
+  const activeContracts = contracts.filter((c) => {
+    const cStart = parseIsoToLocal(c.start_date);
+    if (!cStart) return false;
+    const endRaw = c.end_date ?? undefined;
+    let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
+    const durationMonths = Number(
+      (c as { duration_months?: unknown }).duration_months,
+    );
+    if (!cEnd && Number.isFinite(durationMonths) && durationMonths > 0) {
+      cEnd = addMonthsDate(cStart, durationMonths);
+      cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
+    }
+    if (!cEnd) return true; // open-ended → active
+    return cEnd >= today;
+  }).length;
 
   // Active contracts for the Dashboard KPI: respect the selected date range.
   // Semantics:
@@ -291,59 +230,25 @@ export default function Dashboard() {
     return overlapsWindow || (isFutureStart && createdInWindow);
   });
 
-  const activeContracts = contractsInRange.length;
-
   const contractsStartedInRange = contracts.filter((contract) =>
     inRange(contract.start_date),
   );
 
-  const newCustomerRevenue = contractsStartedInRange
-    .filter((contract) => !successfulRenewalByNewContractId.has(contract.id))
-    .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
-
-  const renewalRevenue = contractsStartedInRange
-    .filter((contract) => successfulRenewalByNewContractId.has(contract.id))
-    .reduce((sum, contract) => sum + (contract.revenue_total ?? 0), 0);
-
-  const totalRevenue = newCustomerRevenue + renewalRevenue;
+  // Gesamtumsatz comes from the backend KPI so it's consistent with the
+  // new_customer_revenue + renewal_revenue breakdown from the same source.
+  const totalRevenue = kpis?.total_revenue ?? 0;
 
   // -----------------------------
   // KPI: ABSCHLUSSQUOTE (NEUKUNDEN)
   // -----------------------------
-  // IMPORTANT:
-  // Do NOT filter by stage === "follow_up"
-  // because closed/lost calls no longer have stage "follow_up".
-  // A new-customer sales call is any call with a follow_up_date.
-
   const closingRateNew =
-    decidedNewCustomerInRange.length > 0
-      ? Math.round(
-          (wonNewCustomerInRange.length / decidedNewCustomerInRange.length) *
-            100,
-        ) + "%"
-      : "—";
+    kpis?.closing_rate_new != null ? kpis.closing_rate_new + "%" : "—";
 
   // -----------------------------
   // KPI: VERLÄNGERUNGSQUOTE (BESTANDSKUNDEN)
   // -----------------------------
-  const renewalRateValue = useMockData
-    ? (() => {
-        const decided = upsells.filter(
-          (u) =>
-            inRange(u.upsell_date) &&
-            (u.upsell_result === "verlaengerung" ||
-              u.upsell_result === "keine_verlaengerung"),
-        );
-        const total = decided.length;
-        const ok = decided.filter(
-          (u) => u.upsell_result === "verlaengerung",
-        ).length;
-        if (total === 0) return null;
-        return Math.round((1000 * ok) / total) / 10; // 1 decimal
-      })()
-    : (upsellAnalytics?.verlangerungsquote ?? null);
-
-  const renewalRate = renewalRateValue != null ? renewalRateValue + "%" : "—";
+  const renewalRate =
+    kpis?.verlaengerungsquote != null ? kpis.verlaengerungsquote + "%" : "—";
 
   // -----------------------------
   // RECENT ACTIVITIES (combine contracts + sales and sort by date)
@@ -357,9 +262,12 @@ export default function Dashboard() {
     url: string;
   };
 
-  const clientNameById = new Map(clients.map((c) => [c.id, c.name]));
+  const clientNameById = new Map<number, string>();
+  for (const sp of salesProcesses)
+    clientNameById.set(sp.client_id, sp.client_name);
+  for (const c of clients) clientNameById.set(c.id, c.name);
 
-  const recentUpsellItems: RecentItem[] = upsellsAll.map((u) => {
+  const recentUpsellItems: RecentItem[] = upsells.map((u) => {
     const created = parseIsoToLocal(u.created_at);
     const updated = parseIsoToLocal(u.updated_at);
     const changedAt = updated ?? created;
@@ -441,6 +349,41 @@ export default function Dashboard() {
 
   const recent = recentItems.slice(0, 5);
 
+  // Popup data arrays
+  const activeContractsList = contracts.filter((c) => {
+    const cStart = parseIsoToLocal(c.start_date);
+    if (!cStart) return false;
+    const endRaw = c.end_date ?? undefined;
+    let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
+    const dur = Number((c as { duration_months?: unknown }).duration_months);
+    if (!cEnd && Number.isFinite(dur) && dur > 0) {
+      cEnd = addMonthsDate(cStart, dur);
+      cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
+    }
+    if (!cEnd) return true;
+    return cEnd >= today;
+  });
+
+  const decidedUpsellsInRange = upsells.filter(
+    (u) =>
+      inRange(u.upsell_date) &&
+      (u.upsell_result === "verlaengerung" ||
+        u.upsell_result === "keine_verlaengerung"),
+  );
+
+  // For the renewalRate modal: backend already filters upsells by date range.
+  // Split into renewed vs not-renewed directly from the fetched upsells.
+  const renewedUpsellsInRange = upsells.filter(
+    (u) => u.upsell_result === "verlaengerung",
+  );
+  const notRenewedUpsellsInRange = upsells.filter(
+    (u) => u.upsell_result === "keine_verlaengerung",
+  );
+
+  const [revenueModal, setRevenueModal] = useState<
+    "new" | "renewal" | "all" | "active" | "closing" | "renewalRate" | null
+  >(null);
+
   // debug: show which recent items parsed to a Date
   if (typeof window !== "undefined") {
     console.debug(
@@ -477,7 +420,10 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("all")}
+            >
               <KPICard
                 title="Gesamtumsatz"
                 value={euro(totalRevenue)}
@@ -488,15 +434,17 @@ export default function Dashboard() {
           <TooltipContent>
             <p className="max-w-xs text-xs">
               Summe der Vertragswerte von Verträgen mit Start im ausgewählten
-              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
-              wider.
+              Zeitraum. Klicken für Details.
             </p>
           </TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("active")}
+            >
               <KPICard
                 title="Aktive Verträge"
                 value={activeContracts}
@@ -506,16 +454,17 @@ export default function Dashboard() {
           </TooltipTrigger>
           <TooltipContent>
             <p className="max-w-xs text-xs">
-              Anzahl der Verträge, deren Laufzeit den gewählten Zeitraum
-              überschneidet. Beinhaltet Verträge mit späterem Startzeitpunkt,
-              die aber im gewählten Zeitraum abgeschlossen wurden.
+              Anzahl heute aktiver Verträge. Klicken für Details.
             </p>
           </TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("new")}
+            >
               <KPICard
                 title="Umsatz durch Neukunden"
                 value={euro(newCustomerRevenue)}
@@ -526,15 +475,17 @@ export default function Dashboard() {
           <TooltipContent>
             <p className="max-w-xs text-xs">
               Vertragswert aus gewonnener Neukundenakquise im gewählten
-              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
-              wider.
+              Zeitraum. Klicken für Details.
             </p>
           </TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("renewal")}
+            >
               <KPICard
                 title="Umsatz durch Verlängerungen"
                 value={euro(renewalRevenue)}
@@ -545,8 +496,7 @@ export default function Dashboard() {
           <TooltipContent>
             <p className="max-w-xs text-xs">
               Vertragswert aus erfolgreichen Verlängerungen (Upsells) im
-              Zeitraum. Spiegelt nicht die bereits erfolgten Cashflow-Zahlungen
-              wider.
+              Zeitraum. Klicken für Details.
             </p>
           </TooltipContent>
         </Tooltip>
@@ -556,7 +506,10 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("closing")}
+            >
               <KPICard
                 title="Abschlussquote Neukunden"
                 value={closingRateNew}
@@ -567,15 +520,17 @@ export default function Dashboard() {
           <TooltipContent>
             <p className="max-w-xs text-xs">
               Erfolgreiche Neukunden-Abschlüsse basierend auf Verkaufsprozessen
-              im ausgewählten Zeitraum. Erfordert erfasste Zweitgespräche und
-              Abschlussdaten.
+              im ausgewählten Zeitraum. Klicken für Details.
             </p>
           </TooltipContent>
         </Tooltip>
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>
+            <div
+              className="cursor-pointer"
+              onClick={() => setRevenueModal("renewalRate")}
+            >
               <KPICard
                 title="Verlängerungsquote"
                 value={renewalRate}
@@ -585,21 +540,15 @@ export default function Dashboard() {
           </TooltipTrigger>
           <TooltipContent>
             <p className="max-w-xs text-xs">
-              Anteil erfolgreicher Upsells im gewählten Zeitraum: Anzahl Upsells
-              mit Ergebnis "Verlängerung" geteilt durch alle entschiedenen
-              Upsells ("Verlängerung" + "keine Verlängerung"), basierend auf dem
-              Upsell-Datum.
+              Anteil erfolgreicher Upsells im gewählten Zeitraum. Klicken für
+              Details.
             </p>
           </TooltipContent>
         </Tooltip>
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
-      <MonthlyKPITable
-        contracts={contracts}
-        salesProcesses={salesProcesses}
-        upsells={upsellsAll}
-      />
+      <MonthlyKPITable contracts={contracts} salesProcesses={salesProcesses} />
 
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -654,6 +603,235 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* KPI detail modals */}
+      <Dialog
+        open={revenueModal !== null}
+        onOpenChange={(open) => !open && setRevenueModal(null)}
+      >
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {revenueModal === "new"
+                ? "Umsatz durch Neukunden"
+                : revenueModal === "renewal"
+                  ? "Umsatz durch Verlängerungen"
+                  : revenueModal === "active"
+                    ? "Aktive Verträge"
+                    : revenueModal === "closing"
+                      ? "Abschlussquote Neukunden"
+                      : revenueModal === "renewalRate"
+                        ? "Verlängerungsquote"
+                        : "Gesamtumsatz"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* ── Aktive Verträge ── */}
+          {revenueModal === "active" && (
+            <div className="space-y-2 mt-2">
+              {activeContractsList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine aktiven Verträge.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-center px-3">Beginn</span>
+                    <span className="text-right">Ende</span>
+                  </div>
+                  {activeContractsList
+                    .slice()
+                    .sort((a, b) => {
+                      const aEnd = a.end_date
+                        ? (parseIsoToLocal(a.end_date)?.getTime() ?? Infinity)
+                        : Infinity;
+                      const bEnd = b.end_date
+                        ? (parseIsoToLocal(b.end_date)?.getTime() ?? Infinity)
+                        : Infinity;
+                      return aEnd - bEnd;
+                    })
+                    .map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-[1fr_auto_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>{c.client_name}</span>
+                        <span className="text-xs text-muted-foreground px-3">
+                          {c.start_date
+                            ? formatLocalDate(parseIsoToLocal(c.start_date))
+                            : "—"}
+                        </span>
+                        <span className="text-right text-xs text-muted-foreground">
+                          {c.end_date
+                            ? formatLocalDate(parseIsoToLocal(c.end_date))
+                            : "offen"}
+                        </span>
+                      </div>
+                    ))}
+                  <div className="text-sm font-semibold pt-2 border-t">
+                    {activeContractsList.length} Verträge
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Abschlussquote Neukunden ── */}
+          {revenueModal === "closing" && (
+            <div className="space-y-2 mt-2">
+              {(kpis?.decided_new_count ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine entschiedenen Prozesse im gewählten Zeitraum.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {kpis?.won_new_count ?? 0} von {kpis?.decided_new_count ?? 0}{" "}
+                  entschiedenen Neukunden-Prozessen gewonnen.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Verlängerungsquote ── */}
+          {revenueModal === "renewalRate" && (
+            <div className="space-y-2 mt-2">
+              <p className="text-sm text-muted-foreground">
+                {renewedUpsellsInRange.length} von{" "}
+                {renewedUpsellsInRange.length + notRenewedUpsellsInRange.length}{" "}
+                entschiedenen Upsells verlängert.
+              </p>
+              {renewedUpsellsInRange.length +
+                notRenewedUpsellsInRange.length ===
+              0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine entschiedenen Upsells im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-right">Ergebnis</span>
+                  </div>
+                  {[
+                    ...renewedUpsellsInRange.map((u) => ({
+                      u,
+                      renewed: true,
+                    })),
+                    ...notRenewedUpsellsInRange.map((u) => ({
+                      u,
+                      renewed: false,
+                    })),
+                  ]
+                    .sort((a, b) => {
+                      const aName = clientNameById.get(a.u.client_id) ?? "";
+                      const bName = clientNameById.get(b.u.client_id) ?? "";
+                      return aName.localeCompare(bName);
+                    })
+                    .map(({ u, renewed }) => (
+                      <div
+                        key={u.id}
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>
+                          {clientNameById.get(u.client_id) ??
+                            `Kunde ${u.client_id}`}
+                        </span>
+                        <span
+                          className={`text-right text-xs font-medium ${renewed ? "text-green-600" : "text-red-500"}`}
+                        >
+                          {renewed ? "Verlängert" : "Nicht verlängert"}
+                        </span>
+                      </div>
+                    ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Umsatz durch Verlängerungen ── */}
+          {revenueModal === "renewal" && (
+            <div className="space-y-2 mt-2">
+              {renewedUpsellsInRange.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine Verlängerungen im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-right">Umsatz</span>
+                  </div>
+                  {renewedUpsellsInRange
+                    .slice()
+                    .sort(
+                      (a, b) =>
+                        (b.upsell_revenue ?? 0) - (a.upsell_revenue ?? 0),
+                    )
+                    .map((u) => (
+                      <div
+                        key={u.id}
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>
+                          {clientNameById.get(u.client_id) ??
+                            `Kunde ${u.client_id}`}
+                        </span>
+                        <span className="text-right font-medium">
+                          {euro(u.upsell_revenue ?? 0)}
+                        </span>
+                      </div>
+                    ))}
+                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                    <span>Gesamt</span>
+                    <span className="text-right">
+                      {euro(kpis?.renewal_revenue ?? 0)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Revenue modals (new / all) ── */}
+          {(revenueModal === "new" || revenueModal === "all") && (
+            <div className="space-y-2 mt-2">
+              {contractsStartedInRange.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine Verträge im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-right">Umsatz</span>
+                  </div>
+                  {contractsStartedInRange
+                    .slice()
+                    .sort(
+                      (a, b) => (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
+                    )
+                    .map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>{c.client_name}</span>
+                        <span className="text-right font-medium">
+                          {euro(c.revenue_total ?? 0)}
+                        </span>
+                      </div>
+                    ))}
+                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                    <span>Gesamt</span>
+                    <span className="text-right">{euro(totalRevenue)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,13 +7,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar } from "lucide-react";
+import { AlertCircle, Calendar, CheckCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Contract,
   getContractById,
   getContracts,
+  patchCashflowEntryStatus,
   type CashflowEntry,
 } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { mockContracts } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
@@ -40,7 +44,15 @@ function calcNextDueAmount(c: Contract): number {
   }
 }
 
-export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
+export function CashflowHistoryTable({
+  contractId,
+  clientId,
+  onContractClick,
+}: {
+  contractId?: number;
+  clientId?: number;
+  onContractClick?: (contract: Contract) => void;
+}) {
   const {
     data: contracts = [],
     isFetching: fetchingContracts,
@@ -76,10 +88,15 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
   type RangeFilter = "all" | "30" | "90" | "365";
 
   const [range, setRange] = useState<RangeFilter>("30");
+  // Optimistic local status overrides: entryId -> "overdue" | "confirmed"
+  const [statusOverrides, setStatusOverrides] = useState<
+    Record<number, "overdue" | "confirmed">
+  >({});
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     setRange("30");
-  }, [contractId]);
+  }, [contractId, clientId]);
 
   const now = new Date();
 
@@ -88,11 +105,15 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
       ? contractDetail
         ? [contractDetail]
         : []
-      : contracts;
+      : typeof clientId === "number"
+        ? contracts.filter((c) => c.client_id === clientId)
+        : contracts;
+
+  const contractById = Object.fromEntries(contractSource.map((c) => [c.id, c]));
 
   const entries = contractSource
     .flatMap((contract) => {
-      const contractLabel = `${contract.client_name} - ${contract.duration_months} Monate`;
+      const contractLabel = contract.client_name;
       const embeddedEntries = Array.isArray(contract.cashflow)
         ? contract.cashflow
             .filter((entry) => Number(entry.amount ?? 0) > 0)
@@ -105,6 +126,8 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
               contractLabel,
               dueDate: entry.due_date,
               amount: entry.amount,
+              confirmed: entry.confirmed ?? true,
+              status: entry.status ?? null,
             }))
         : [];
 
@@ -120,6 +143,8 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
           contractLabel,
           dueDate: due,
           amount: calcNextDueAmount(contract),
+          confirmed: true,
+          status: null,
         },
       ].filter((entry) => entry.amount > 0);
     })
@@ -206,29 +231,129 @@ export function CashflowHistoryTable({ contractId }: { contractId?: number }) {
                   {!contractId && <TableHead>Vertrag</TableHead>}
                   <TableHead>Fälligkeitsdatum</TableHead>
                   <TableHead>Betrag</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedEntries.map((e) => (
-                  <TableRow
-                    key={`${e.contractId ?? "na"}-${e.id}-${e.dueDate ?? "na"}`}
-                  >
-                    {!contractId && (
-                      <TableCell className="font-medium">
-                        {e.contractLabel}
+                {displayedEntries.map((e) => {
+                  const dueYmd = extractYmd(e.dueDate);
+                  // Effective status: local override wins, then backend status, then default confirmed
+                  const effectiveStatus =
+                    statusOverrides[e.id] ??
+                    (e.status === "overdue" ? "overdue" : "confirmed");
+                  const isOverdue = effectiveStatus === "overdue";
+
+                  const handleToggle = async () => {
+                    const next = isOverdue ? "confirmed" : "overdue";
+                    const nextLocal = isOverdue ? "confirmed" : "overdue";
+                    setStatusOverrides((prev) => ({
+                      ...prev,
+                      [e.id]: nextLocal,
+                    }));
+                    try {
+                      await patchCashflowEntryStatus(e.id, next);
+                      // Clear override — let fresh backend data take over
+                      setStatusOverrides((prev) => {
+                        const copy = { ...prev };
+                        delete copy[e.id];
+                        return copy;
+                      });
+                      // Invalidate all contract query variants so both the list
+                      // view and the detail view reflect the updated status.
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.contractsList({ compact: true }),
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.contractsList({}),
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.contract(e.contractId),
+                      });
+                      if (contractId && contractId !== e.contractId) {
+                        queryClient.invalidateQueries({
+                          queryKey: queryKeys.contract(contractId),
+                        });
+                      }
+                    } catch {
+                      // Revert on error
+                      setStatusOverrides((prev) => {
+                        const copy = { ...prev };
+                        delete copy[e.id];
+                        return copy;
+                      });
+                    }
+                  };
+
+                  const canClick = !contractId && !!onContractClick;
+
+                  return (
+                    <TableRow
+                      key={`${e.contractId ?? "na"}-${e.id}-${e.dueDate ?? "na"}`}
+                      className={
+                        [
+                          isOverdue ? "bg-destructive/5" : "",
+                          canClick ? "cursor-pointer hover:bg-muted/50" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
+                      onClick={
+                        canClick
+                          ? () => {
+                              const c = contractById[e.contractId];
+                              if (c) onContractClick(c);
+                            }
+                          : undefined
+                      }
+                    >
+                      {!contractId && (
+                        <TableCell className="font-medium">
+                          {e.contractLabel}
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          {formatYmdToLocale(dueYmd)}
+                        </div>
                       </TableCell>
-                    )}
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        {formatYmdToLocale(extractYmd(e.dueDate))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      €{Math.round(e.amount).toLocaleString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableCell>
+                        €{Math.round(e.amount).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {isOverdue ? (
+                            <Badge
+                              variant="destructive"
+                              className="flex items-center gap-1"
+                            >
+                              <AlertCircle className="w-3 h-3" />
+                              Überfällig
+                            </Badge>
+                          ) : (
+                            <Badge className="flex items-center gap-1 bg-green-100 text-green-700 hover:bg-green-100">
+                              <CheckCircle className="w-3 h-3" />
+                              Bestätigt
+                            </Badge>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-xs text-muted-foreground"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              handleToggle();
+                            }}
+                          >
+                            {isOverdue
+                              ? "Als bestätigt markieren"
+                              : "Als überfällig markieren"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {filteredEntries.length > 0 && (

@@ -73,8 +73,12 @@ export interface Client {
   completed_at?: string | null;
 }
 
-export const getClients = async (): Promise<Client[]> => {
-  const { data } = await api.get("/clients");
+export const getClients = async (
+  includeInactive = false,
+): Promise<Client[]> => {
+  const { data } = await api.get("/clients", {
+    params: includeInactive ? { include_inactive: "true" } : {},
+  });
   return asArray<Client>(data);
 };
 
@@ -319,11 +323,41 @@ export type CreateOrUpdateUpsellRequest = {
 };
 
 export type UpsellAnalytics = {
-  verlangerung_count: number;
+  verlaengerung_count: number;
   keine_verlaengerung_count: number;
   scheduled_count: number;
-  verlangerungsquote: number | null;
+  verlaengerungsquote: number | null;
   umsatz_sum: number;
+  revenue_by_month: { month: string; revenue: number }[];
+};
+
+export type DashboardKPIs = {
+  total_revenue: number;
+  new_customer_revenue: number;
+  renewal_revenue: number;
+  won_new_count: number;
+  decided_new_count: number;
+  closing_rate_new: number | null;
+  verlaengerungsquote: number | null;
+  active_contracts_count: number;
+  clv_active_clients: number;
+  clv_all_time: number;
+  active_revenue: number;
+  avg_vertragswert: number | null;
+  avg_clv_per_contract: number | null;
+};
+
+export const getDashboardKPIs = async (params?: {
+  start_date?: string;
+  end_date?: string;
+}): Promise<DashboardKPIs> => {
+  const { data } = await api.get<DashboardKPIs>("/dashboard/kpis", {
+    params: {
+      ...(params?.start_date ? { start_date: params.start_date } : null),
+      ...(params?.end_date ? { end_date: params.end_date } : null),
+    },
+  });
+  return data;
 };
 
 /* Contracts */
@@ -341,6 +375,8 @@ export interface Contract {
   base_monthly_amount: number;
   next_due_date?: string | null;
   cashflow?: CashflowEntry[];
+  chain?: Contract[];
+  source?: "manual" | "imported";
 }
 
 export const getContracts = async (options?: {
@@ -361,6 +397,11 @@ export const getContractById = async (
 ): Promise<Contract> => {
   const { data } = await api.get(`/contracts/${id}`);
   return data as Contract;
+};
+
+export const getContractChain = async (id: number): Promise<Contract[]> => {
+  const { data } = await api.get(`/contracts/${id}/chain`);
+  return asArray<Contract>(data);
 };
 
 export const createContract = async (
@@ -662,6 +703,7 @@ export interface CashflowEntry {
   due_date: string; // ISO date
   amount: number;
   confirmed?: boolean;
+  status?: "overdue" | "paid" | null;
 }
 
 export const getCashflowEntries = async (
@@ -742,6 +784,14 @@ export const getCashflowEntries = async (
 };
 
 export type RawExportTable = "clients" | "contracts" | "cashflow_entries";
+
+/** PATCH /cashflow/entries/{id}/status */
+export const patchCashflowEntryStatus = async (
+  id: number,
+  status: "overdue" | "confirmed",
+): Promise<void> => {
+  await api.patch(`/cashflow/entries/${id}/status`, { status });
+};
 
 export const getRawExportUrl = (table: RawExportTable): string => {
   return `/api/exports/raw/${table}.csv`;

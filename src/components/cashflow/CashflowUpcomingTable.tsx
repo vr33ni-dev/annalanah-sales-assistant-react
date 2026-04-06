@@ -18,9 +18,10 @@ import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
 
-export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
+export function CashflowUpcomingTable({ contractId, clientId }: { contractId?: number; clientId?: number }) {
   const { enabled } = useAuthEnabled();
   const isContractView = typeof contractId === "number";
+  const isClientView = typeof clientId === "number";
 
   const {
     data: forecast = [],
@@ -29,7 +30,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   } = useMockableQuery<CashflowRow[]>({
     queryKey: queryKeys.cashflowForecastByContract(contractId),
     queryFn: () => getCashflowForecast(contractId),
-    enabled: !isContractView,
+    enabled: !isContractView && !isClientView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<CashflowRow>,
@@ -43,7 +44,21 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
   } = useMockableQuery<Contract[]>({
     queryKey: queryKeys.contractsList({ compact: true }),
     queryFn: () => getContracts({ compact: true }),
-    enabled: !isContractView,
+    enabled: !isContractView && !isClientView,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<Contract>,
+    mockData: mockContracts,
+  });
+
+  const {
+    data: clientContractsFull = [],
+    isFetching: isFetchingClientContracts,
+    isError: isErrorClientContracts,
+  } = useMockableQuery<Contract[]>({
+    queryKey: queryKeys.contractsList({}),
+    queryFn: () => getContracts({}),
+    enabled: isClientView,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
@@ -82,7 +97,7 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     staleTime: 10 * 60 * 1000,
   });
 
-  const showPotential = !contractId; // only show potential if all contracts view
+  const showPotential = !contractId && !clientId; // only show potential in global view
   const selectedContract =
     contractDetail ??
     (typeof contractId === "number"
@@ -90,6 +105,33 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
       : undefined);
 
   const rows = useMemo(() => {
+    if (isClientView) {
+      const filtered = clientContractsFull.filter(
+        (c) => c.client_id === clientId,
+      );
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayYmd = toYmdLocal(today);
+      const byMonth = new Map<string, number>();
+      for (const contract of filtered) {
+        const entries = Array.isArray(contract.cashflow)
+          ? contract.cashflow
+          : [];
+        for (const entry of entries) {
+          const amount = Number(entry?.amount ?? NaN);
+          if (!entry?.due_date || !Number.isFinite(amount) || amount <= 0)
+            continue;
+          const dueYmd = extractYmd(entry.due_date);
+          if (!dueYmd || dueYmd <= todayYmd) continue;
+          const ym = dueYmd.slice(0, 7);
+          byMonth.set(ym, (byMonth.get(ym) ?? 0) + amount);
+        }
+      }
+      return Array.from(byMonth.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
+    }
+
     if (!isContractView) return forecast;
 
     const entries = Array.isArray(selectedContract?.cashflow)
@@ -121,12 +163,18 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
     return Array.from(byMonth.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
-  }, [forecast, isContractView, selectedContract?.cashflow]);
+  }, [forecast, isContractView, isClientView, selectedContract?.cashflow, clientContractsFull, clientId]);
 
-  const isFetching = isContractView
+  const isFetching = isClientView
+    ? isFetchingClientContracts
+    : isContractView
     ? isFetchingContractDetail
     : isFetchingForecast;
-  const isError = isContractView ? isErrorContractDetail : isErrorForecast;
+  const isError = isClientView
+    ? isErrorClientContracts
+    : isContractView
+    ? isErrorContractDetail
+    : isErrorForecast;
 
   return (
     <Card>
@@ -162,8 +210,10 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
           <div className="space-y-4">
             {rows.slice(0, potentialMonths).map((row) => {
               const total = showPotential
-                ? Math.round((row.confirmed ?? 0) + (row.potential ?? 0))
-                : Math.round(row.confirmed ?? 0);
+                ? Math.round(
+                    ((row.confirmed ?? 0) + (row.potential ?? 0)) * 100,
+                  ) / 100
+                : Math.round((row.confirmed ?? 0) * 100) / 100;
 
               return (
                 <div key={row.month} className="space-y-2">
@@ -178,7 +228,13 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
                       <span className="text-success">
                         {isContractView ? "Geplant" : "Bestätigt"}
                       </span>
-                      <span>€{row.confirmed.toLocaleString()}</span>
+                      <span>
+                        €
+                        {row.confirmed.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
                     </div>
 
                     {/* Show potential and total only in all-contract view */}
@@ -187,7 +243,13 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
                         {row.potential > 0 && (
                           <div className="flex justify-between text-sm">
                             <span className="text-warning">Potenziell</span>
-                            <span>€{row.potential.toLocaleString()}</span>
+                            <span>
+                              €
+                              {row.potential.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
                           </div>
                         )}
                         <div className="flex justify-between text-sm">
@@ -195,7 +257,11 @@ export function CashflowUpcomingTable({ contractId }: { contractId?: number }) {
                             Gesamt (Bestätigt + Potenziell)
                           </span>
                           <span className="font-medium">
-                            €{total.toLocaleString()}
+                            €
+                            {total.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </span>
                         </div>
                       </>
