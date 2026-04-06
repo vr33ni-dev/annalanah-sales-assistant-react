@@ -46,26 +46,19 @@ const parseEmailRecipients = (value?: string | null) => {
   return normalizeEmails(raw.split(/[\n,;]+/));
 };
 
-// Mock data references (defined outside component to avoid re-render loops)
-const MOCK_MONTHS: Setting = {
-  key: "potential_months",
-  value_numeric: 6,
-  value_text: null,
-};
-const MOCK_FLAT: Setting = {
-  key: "avg_revenue_per_contract",
-  value_numeric: 600,
-  value_text: null,
-};
-const MOCK_NOTIFY_EMAIL: Setting = {
-  key: "new_contract_notify_email",
-  value_numeric: null,
-  value_text: "",
-};
+const MOCK_SETTINGS: Setting[] = [
+  { key: "potential_months", value_numeric: 6, value_text: null },
+  { key: "avg_revenue_per_contract", value_numeric: 600, value_text: null },
+  { key: "new_contract_notify_email", value_numeric: null, value_text: "" },
+];
 
-const fetchSetting = async (key: string): Promise<Setting> => {
-  const { data } = await api.get(`/settings/${key}`);
-  return data;
+const fetchAllSettings = async (): Promise<Setting[]> => {
+  const { data } = await api.get("/settings");
+  return Array.isArray(data)
+    ? data
+    : Object.entries(data).map(
+        ([key, val]: [string, unknown]) => val as Setting,
+      );
 };
 
 const updateNumericSetting = async (key: string, value: number) => {
@@ -79,23 +72,21 @@ const updateTextSetting = async (key: string, value: string) => {
 export default function Settings() {
   const qc = useQueryClient();
 
-  const { data: monthsSetting, isLoading: lMonths } = useMockableQuery({
-    queryKey: queryKeys.setting("potential_months"),
-    queryFn: () => fetchSetting("potential_months"),
-    mockData: MOCK_MONTHS,
+  const { data: allSettings = [], isLoading: lSettings } = useMockableQuery({
+    queryKey: queryKeys.settings,
+    queryFn: fetchAllSettings,
+    mockData: MOCK_SETTINGS,
   });
 
-  const { data: flatSetting, isLoading: lFlat } = useMockableQuery({
-    queryKey: queryKeys.setting("avg_revenue_per_contract"),
-    queryFn: () => fetchSetting("avg_revenue_per_contract"),
-    mockData: MOCK_FLAT,
-  });
-
-  const { data: notifyEmailSetting } = useMockableQuery({
-    queryKey: queryKeys.setting("new_contract_notify_email"),
-    queryFn: () => fetchSetting("new_contract_notify_email"),
-    mockData: MOCK_NOTIFY_EMAIL,
-  });
+  const monthsSetting = allSettings.find((s) => s.key === "potential_months");
+  const flatSetting = allSettings.find(
+    (s) => s.key === "avg_revenue_per_contract",
+  );
+  const notifyEmailSetting = allSettings.find(
+    (s) => s.key === "new_contract_notify_email",
+  );
+  const lMonths = lSettings;
+  const lFlat = lSettings;
 
   const [months, setMonths] = useState("");
   const [flatEur, setFlatEur] = useState("");

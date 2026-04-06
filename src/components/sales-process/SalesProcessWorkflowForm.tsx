@@ -128,12 +128,7 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">
-                Email{" "}
-                <span className="text-muted-foreground font-normal">
-                  (oder Telefon *)
-                </span>
-              </Label>
+              <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
                 type="email"
@@ -147,12 +142,7 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">
-                Telefon{" "}
-                <span className="text-muted-foreground font-normal">
-                  (oder Email *)
-                </span>
-              </Label>
+              <Label htmlFor="phone">Telefon</Label>
               <Input
                 id="phone"
                 value={formData.phone}
@@ -165,7 +155,7 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label>Datum des Erstgesprächs</Label>
+              <Label>Datum des Erstgesprächs *</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -254,7 +244,8 @@ export function SalesProcessWorkflowForm({
                 disabled={
                   !formData.name ||
                   !formData.source ||
-                  !(formData.email.trim() || formData.phone.trim()) ||
+                  !formData.email.trim() ||
+                  !formData.erstgespraechDate ||
                   isStartPending
                 }
               >
@@ -457,7 +448,7 @@ export function SalesProcessWorkflowForm({
             {formData.abschluss && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-success/10 rounded-lg">
                 <div className="space-y-2">
-                  <Label>Umsatz (€)</Label>
+                  <Label>Umsatz (€) *</Label>
                   <Input
                     type="number"
                     value={formData.revenue}
@@ -470,7 +461,7 @@ export function SalesProcessWorkflowForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Vertragsdauer (Monate)</Label>
+                  <Label>Vertragsdauer (Monate) *</Label>
                   <Select
                     value={formData.contractDuration ?? ""}
                     onValueChange={(value) =>
@@ -490,7 +481,7 @@ export function SalesProcessWorkflowForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Startdatum</Label>
+                  <Label>Startdatum *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -526,7 +517,7 @@ export function SalesProcessWorkflowForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Zahlungsfrequenz</Label>
+                  <Label>Zahlungsfrequenz *</Label>
                   <Select
                     value={formData.contractFrequency ?? ""}
                     onValueChange={(value) =>
@@ -558,7 +549,7 @@ export function SalesProcessWorkflowForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Abschlussdatum</Label>
+                  <Label>Abschlussdatum *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -638,12 +629,7 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email-zweit">
-                Email{" "}
-                <span className="text-muted-foreground font-normal">
-                  (oder Telefon *)
-                </span>
-              </Label>
+              <Label htmlFor="email-zweit">Email *</Label>
               <Input
                 id="email-zweit"
                 type="email"
@@ -657,12 +643,7 @@ export function SalesProcessWorkflowForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone-zweit">
-                Telefon{" "}
-                <span className="text-muted-foreground font-normal">
-                  (oder Email *)
-                </span>
-              </Label>
+              <Label htmlFor="phone-zweit">Telefon</Label>
               <Input
                 id="phone-zweit"
                 value={formData.phone}
@@ -764,7 +745,7 @@ export function SalesProcessWorkflowForm({
                 disabled={
                   !formData.name ||
                   !formData.source ||
-                  !(formData.email.trim() || formData.phone.trim()) ||
+                  !formData.email.trim() ||
                   !formData.zweitgespraechDate ||
                   isStartPending
                 }
