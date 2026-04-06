@@ -794,42 +794,63 @@ export default function Dashboard() {
           )}
 
           {/* ── Revenue modals (new / all) ── */}
-          {(revenueModal === "new" || revenueModal === "all") && (
-            <div className="space-y-2 mt-2">
-              {contractsStartedInRange.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Keine Verträge im gewählten Zeitraum.
-                </p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
-                    <span>Kunde</span>
-                    <span className="text-right">Umsatz</span>
-                  </div>
-                  {contractsStartedInRange
-                    .slice()
-                    .sort(
-                      (a, b) => (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
+          {(revenueModal === "new" || revenueModal === "all") &&
+            (() => {
+              const renewalContractIds = new Set(
+                upsells
+                  .filter(
+                    (u) =>
+                      u.upsell_result === "verlaengerung" &&
+                      u.new_contract_id != null,
+                  )
+                  .map((u) => u.new_contract_id!),
+              );
+              const displayContracts =
+                revenueModal === "new"
+                  ? contractsStartedInRange.filter(
+                      (c) => !renewalContractIds.has(c.id),
                     )
-                    .map((c) => (
-                      <div
-                        key={c.id}
-                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
-                      >
-                        <span>{c.client_name}</span>
-                        <span className="text-right font-medium">
-                          {euro(c.revenue_total ?? 0)}
-                        </span>
+                  : contractsStartedInRange;
+              const displayTotal =
+                revenueModal === "new" ? newCustomerRevenue : totalRevenue;
+              return (
+                <div className="space-y-2 mt-2">
+                  {displayContracts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Keine Verträge im gewählten Zeitraum.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                        <span>Kunde</span>
+                        <span className="text-right">Umsatz</span>
                       </div>
-                    ))}
-                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
-                    <span>Gesamt</span>
-                    <span className="text-right">{euro(totalRevenue)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                      {displayContracts
+                        .slice()
+                        .sort(
+                          (a, b) =>
+                            (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
+                        )
+                        .map((c) => (
+                          <div
+                            key={c.id}
+                            className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                          >
+                            <span>{c.client_name}</span>
+                            <span className="text-right font-medium">
+                              {euro(c.revenue_total ?? 0)}
+                            </span>
+                          </div>
+                        ))}
+                      <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                        <span>Gesamt</span>
+                        <span className="text-right">{euro(displayTotal)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
         </DialogContent>
       </Dialog>
     </div>
