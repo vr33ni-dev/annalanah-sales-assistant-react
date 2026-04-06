@@ -267,7 +267,8 @@ export default function SalesProcessView() {
     !!formData.contractFrequency &&
     ["monthly", "bi-monthly", "quarterly", "bi-yearly", "one-time"].includes(
       formData.contractFrequency,
-    );
+    ) &&
+    !!formData.completedAt;
 
   const canSubmit = formData.abschluss !== true || isContractValid;
 
@@ -400,7 +401,7 @@ export default function SalesProcessView() {
       } catch (err) {
         toast({
           title: "Fehler beim Speichern",
-          description: err instanceof Error ? err.message : String(err),
+          description: extractErrorMessage(err),
           variant: "destructive",
         });
       }
@@ -425,7 +426,7 @@ export default function SalesProcessView() {
       } catch (err) {
         toast({
           title: "Fehler beim Speichern",
-          description: err instanceof Error ? err.message : String(err),
+          description: extractErrorMessage(err),
           variant: "destructive",
         });
       }
@@ -475,7 +476,7 @@ export default function SalesProcessView() {
       } catch (err) {
         toast({
           title: "Fehler beim Speichern",
-          description: err instanceof Error ? err.message : String(err),
+          description: extractErrorMessage(err),
           variant: "destructive",
         });
       }
@@ -716,7 +717,7 @@ export default function SalesProcessView() {
     } catch (err) {
       toast({
         title: "Fehler beim Speichern",
-        description: err instanceof Error ? err.message : String(err),
+        description: extractErrorMessage(err),
         variant: "destructive",
       });
     }

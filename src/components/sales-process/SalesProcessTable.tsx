@@ -87,7 +87,7 @@ export function SalesProcessTable({
         </div>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="[&_th]:px-3 [&_td]:px-3">
           <TableHeader>
             <TableRow>
               <TableHead>Kunde</TableHead>
@@ -295,7 +295,7 @@ export function SalesProcessTable({
                     {entry.revenue ? `€${entry.revenue.toLocaleString()}` : "-"}
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col items-start gap-1">
+                    <div className="flex flex-row items-center gap-1.5 flex-wrap">
                       {entry.stage === SALES_STAGE.INITIAL_CONTACT && (
                         <Button size="sm" onClick={() => onPlanFollowUp(entry)}>
                           Zweitgespräch planen

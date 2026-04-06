@@ -14,7 +14,19 @@ export function extractErrorMessage(err: unknown): string {
       message?: string;
     };
 
+    const status = axiosErr.response?.status;
     const data = axiosErr.response?.data;
+
+    // 409 Conflict — duplicate resource (e.g. email already in use)
+    if (status === 409) {
+      if (typeof data === "string" && data.trim()) return data;
+      if (typeof data === "object" && data !== null) {
+        const d = data as Record<string, unknown>;
+        const msg = d.error ?? d.message ?? d.detail;
+        if (typeof msg === "string" && msg.trim()) return msg;
+      }
+      return "Dieser Eintrag existiert bereits (Konflikt).";
+    }
 
     if (typeof data === "string") return data;
 
