@@ -3,7 +3,8 @@ export const queryKeys = {
   salesProcesses: ["sales-processes"] as const,
   stages: ["stages"] as const,
   leads: ["leads"] as const,
-  clients: (includeInactive = false) => ["clients", { includeInactive }] as const,
+  clients: (includeInactive = false) =>
+    ["clients", { includeInactive }] as const,
   comments: (entityType: string, entityId: number) =>
     ["comments", entityType, entityId] as const,
   commentsByClient: (clientId: number) =>

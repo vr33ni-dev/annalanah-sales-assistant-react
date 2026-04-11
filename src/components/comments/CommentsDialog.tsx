@@ -9,9 +9,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { CommentsSection } from "./CommentsSection";
-import { CommentEntityType, getComments, getCommentsByClientId } from "@/lib/api";
+import {
+  CommentEntityType,
+  getComments,
+  getCommentsByClientId,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { getMockCommentsForEntity, getMockCommentsForClient } from "@/lib/mockData";
+import {
+  getMockCommentsForEntity,
+  getMockCommentsForClient,
+} from "@/lib/mockData";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { queryKeys } from "@/lib/queryKeys";
 

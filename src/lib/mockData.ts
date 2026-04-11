@@ -742,7 +742,5 @@ export const getMockCommentsForEntity = (
 export const getMockCommentsForClient = (clientId: number): Comment[] => {
   return mockComments
     .filter((c) => c.client_id === clientId)
-    .sort((a, b) =>
-      (b.created_at ?? "").localeCompare(a.created_at ?? ""),
-    );
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 };

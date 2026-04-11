@@ -16,7 +16,10 @@ import {
   deleteComment,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { getMockCommentsForEntity, getMockCommentsForClient } from "@/lib/mockData";
+import {
+  getMockCommentsForEntity,
+  getMockCommentsForClient,
+} from "@/lib/mockData";
 import { ConfirmActionButton } from "../ConfirmActionButton";
 import { toast } from "@/hooks/use-toast";
 
@@ -63,14 +66,18 @@ export function CommentsSection({
       clientId
         ? getCommentsByClientId(clientId)
         : getComments(entityType, entityId),
-    enabled: (isOpen ?? true) && (clientId ? !!clientId : !!entityId) && !useMockData,
+    enabled:
+      (isOpen ?? true) && (clientId ? !!clientId : !!entityId) && !useMockData,
   });
 
   // Use mock data in Lovable preview
   const comments = useMockData
     ? clientId
       ? [...getMockCommentsForClient(clientId), ...localMockComments]
-      : [...getMockCommentsForEntity(entityType, entityId), ...localMockComments]
+      : [
+          ...getMockCommentsForEntity(entityType, entityId),
+          ...localMockComments,
+        ]
     : apiComments;
 
   const createMutation = useMutation<Comment, unknown, string>({
@@ -176,7 +183,8 @@ export function CommentsSection({
                       </p>
                       {clientId && comment.entity_type !== "client" && (
                         <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                          {entityTypeLabels[comment.entity_type] ?? comment.entity_type}
+                          {entityTypeLabels[comment.entity_type] ??
+                            comment.entity_type}
                         </span>
                       )}
                     </div>
