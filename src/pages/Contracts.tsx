@@ -1424,6 +1424,7 @@ export default function Contracts() {
                 <CommentsSection
                   entityType="contract"
                   entityId={drawerContract.id}
+                  clientId={drawerContract.client_id}
                   maxHeight="250px"
                 />
               </div>

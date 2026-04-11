@@ -6,6 +6,8 @@ export const queryKeys = {
   clients: (includeInactive = false) => ["clients", { includeInactive }] as const,
   comments: (entityType: string, entityId: number) =>
     ["comments", entityType, entityId] as const,
+  commentsByClient: (clientId: number) =>
+    ["comments", "client", clientId] as const,
   contracts: ["contracts"] as const,
   contractsList: (options?: { includeExpired?: boolean; compact?: boolean }) =>
     [

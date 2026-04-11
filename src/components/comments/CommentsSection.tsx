@@ -11,17 +11,25 @@ import {
   Comment,
   CommentEntityType,
   getComments,
+  getCommentsByClientId,
   createComment,
   deleteComment,
 } from "@/lib/api";
 import { useAuthEnabled } from "@/auth/useAuthEnabled";
-import { getMockCommentsForEntity } from "@/lib/mockData";
+import { getMockCommentsForEntity, getMockCommentsForClient } from "@/lib/mockData";
 import { ConfirmActionButton } from "../ConfirmActionButton";
 import { toast } from "@/hooks/use-toast";
+
+const entityTypeLabels: Record<CommentEntityType, string> = {
+  client: "Kunde",
+  contract: "Vertrag",
+  sales_process: "Verkaufsprozess",
+};
 
 interface CommentsSectionProps {
   entityType: CommentEntityType;
   entityId: number;
+  clientId?: number;
   isOpen?: boolean;
   maxHeight?: string;
   className?: string;
@@ -30,6 +38,7 @@ interface CommentsSectionProps {
 export function CommentsSection({
   entityType,
   entityId,
+  clientId,
   isOpen,
   maxHeight = "300px",
   className,
@@ -39,7 +48,10 @@ export function CommentsSection({
   const queryClient = useQueryClient();
   const { useMockData } = useAuthEnabled();
 
-  const queryKey = ["comments", entityType, entityId];
+  // When clientId is provided, fetch all comments for the client; otherwise scope to entity
+  const queryKey = clientId
+    ? ["comments", "client", clientId]
+    : ["comments", entityType, entityId];
 
   const {
     data: apiComments = [],
@@ -47,18 +59,22 @@ export function CommentsSection({
     isError,
   } = useQuery<Comment[], Error>({
     queryKey,
-    queryFn: () => getComments(entityType, entityId),
-    enabled: (isOpen ?? true) && !!entityId && !useMockData,
+    queryFn: () =>
+      clientId
+        ? getCommentsByClientId(clientId)
+        : getComments(entityType, entityId),
+    enabled: (isOpen ?? true) && (clientId ? !!clientId : !!entityId) && !useMockData,
   });
 
   // Use mock data in Lovable preview
   const comments = useMockData
-    ? [...getMockCommentsForEntity(entityType, entityId), ...localMockComments]
+    ? clientId
+      ? [...getMockCommentsForClient(clientId), ...localMockComments]
+      : [...getMockCommentsForEntity(entityType, entityId), ...localMockComments]
     : apiComments;
 
   const createMutation = useMutation<Comment, unknown, string>({
     mutationFn: (content: string) =>
-      // API expects `body` field (backend contract). Pass `body` instead of `content`.
       createComment({
         entity_type: entityType,
         entity_id: entityId,
@@ -97,11 +113,11 @@ export function CommentsSection({
     if (!trimmed) return;
 
     if (useMockData) {
-      // In mock mode, add comment locally
       const mockComment: Comment = {
         id: Date.now(),
         entity_type: entityType,
         entity_id: entityId,
+        client_id: clientId,
         body: trimmed,
         created_at: new Date().toISOString(),
       };
@@ -115,7 +131,6 @@ export function CommentsSection({
 
   const handleDelete = (commentId: number) => {
     if (useMockData) {
-      // In mock mode, remove from local state
       setLocalMockComments((prev) => prev.filter((c) => c.id !== commentId));
       toast({ title: "Kommentar gelöscht" });
     } else {
@@ -155,9 +170,16 @@ export function CommentsSection({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">
-                      {comment.author ?? "—"}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium">
+                        {comment.author ?? "—"}
+                      </p>
+                      {clientId && comment.entity_type !== "client" && (
+                        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {entityTypeLabels[comment.entity_type] ?? comment.entity_type}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm whitespace-pre-wrap break-words mt-1">
                       {comment.body ?? ""}
                     </p>

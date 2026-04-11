@@ -315,8 +315,9 @@ export function SalesProcessDetailSheet({
                   Kommentare
                 </h3>
                 <CommentsSection
-                  entityType="salesprocess"
+                  entityType="sales_process"
                   entityId={entry.id}
+                  clientId={entry.client_id}
                   isOpen={true}
                 />
               </div>

@@ -491,6 +491,7 @@ export default function Clients() {
                         <CommentsDialog
                           entityType="client"
                           entityId={client.id}
+                          clientId={client.id}
                           entityName={client.name}
                         />
                         <ConfirmActionButton

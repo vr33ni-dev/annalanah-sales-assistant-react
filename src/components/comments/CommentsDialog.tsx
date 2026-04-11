@@ -9,15 +9,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { CommentsSection } from "./CommentsSection";
-import { CommentEntityType, getComments } from "@/lib/api";
+import { CommentEntityType, getComments, getCommentsByClientId } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
-import { getMockCommentsForEntity } from "@/lib/mockData";
+import { getMockCommentsForEntity, getMockCommentsForClient } from "@/lib/mockData";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
 import { queryKeys } from "@/lib/queryKeys";
 
 interface CommentsDialogProps {
   entityType: CommentEntityType;
   entityId: number;
+  clientId?: number;
   entityName?: string;
   triggerVariant?: "icon" | "button";
 }
@@ -25,16 +26,24 @@ interface CommentsDialogProps {
 export function CommentsDialog({
   entityType,
   entityId,
+  clientId,
   entityName,
   triggerVariant = "icon",
 }: CommentsDialogProps) {
   const [open, setOpen] = useState(false);
 
   const { data: comments = [] } = useMockableQuery({
-    queryKey: queryKeys.comments(entityType, entityId),
-    queryFn: () => getComments(entityType, entityId),
-    enabled: open && !!entityId,
-    mockData: getMockCommentsForEntity(entityType, entityId),
+    queryKey: clientId
+      ? queryKeys.commentsByClient(clientId)
+      : queryKeys.comments(entityType, entityId),
+    queryFn: () =>
+      clientId
+        ? getCommentsByClientId(clientId)
+        : getComments(entityType, entityId),
+    enabled: open && (clientId ? !!clientId : !!entityId),
+    mockData: clientId
+      ? getMockCommentsForClient(clientId)
+      : getMockCommentsForEntity(entityType, entityId),
   });
 
   const commentCount = comments.length;
@@ -42,7 +51,7 @@ export function CommentsDialog({
   const entityTypeLabels: Record<CommentEntityType, string> = {
     client: "Kunde",
     contract: "Vertrag",
-    salesprocess: "Verkaufsprozess",
+    sales_process: "Verkaufsprozess",
   };
 
   return (
@@ -87,6 +96,7 @@ export function CommentsDialog({
         <CommentsSection
           entityType={entityType}
           entityId={entityId}
+          clientId={clientId}
           isOpen={open}
           maxHeight="350px"
         />
