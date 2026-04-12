@@ -45,7 +45,7 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { STAGE_LABELS } from "@/constants/stages";
+import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
 import {
   Tooltip,
@@ -152,6 +152,7 @@ export default function Dashboard() {
   const renewalRevenue = kpis?.renewal_revenue ?? 0;
 
   // -----------------------------
+  // -----------------------------
   // KPI: ACTIVE CONTRACTS
   // -----------------------------
   const today = new Date();
@@ -163,72 +164,8 @@ export default function Dashboard() {
     return dt;
   }
 
-  // "Aktive Verträge" KPI = contracts that have not yet ended (end >= today),
-  // regardless of the selected date range. This matches the Contracts page chip.
-  const activeContracts = contracts.filter((c) => {
-    const cStart = parseIsoToLocal(c.start_date);
-    if (!cStart) return false;
-    const endRaw = c.end_date ?? undefined;
-    let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
-    const durationMonths = Number(
-      (c as { duration_months?: unknown }).duration_months,
-    );
-    if (!cEnd && Number.isFinite(durationMonths) && durationMonths > 0) {
-      cEnd = addMonthsDate(cStart, durationMonths);
-      cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
-    }
-    if (!cEnd) return true; // open-ended → active
-    return cEnd >= today;
-  }).length;
-
-  // Active contracts for the Dashboard KPI: respect the selected date range.
-  // Semantics:
-  // - Count contracts whose [start, end] period overlaps the selected window.
-  // - Additionally count future-start contracts (start > viewEnd) that were
-  //   created/confirmed within the selected window.
-  const viewStart = range.from
-    ? new Date(
-        range.from.getFullYear(),
-        range.from.getMonth(),
-        range.from.getDate(),
-      )
-    : null;
-  const viewEnd = range.to
-    ? new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate())
-    : null;
-
-  const contractsInRange = contracts.filter((c) => {
-    const cStart = parseIsoToLocal(c.start_date) || new Date(0);
-
-    const endRaw = c.end_date ?? undefined;
-    let cEnd = endRaw ? parseIsoToLocal(endRaw) : null;
-    const durationMonths = Number(
-      (c as { duration_months?: unknown }).duration_months,
-    );
-    if (!cEnd && Number.isFinite(durationMonths) && durationMonths > 0) {
-      cEnd = addMonthsDate(cStart, durationMonths);
-      cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), cEnd.getDate());
-    }
-
-    const created = parseIsoToLocal(c.created_at) || new Date(0);
-
-    // If no explicit range selected, fall back to "currently active".
-    if (!viewStart && !viewEnd) {
-      if (cStart > today && created > today) return false;
-      if (!cEnd) return true;
-      return cEnd >= today;
-    }
-
-    // Require a bounded window for the "continues beyond range end" logic.
-    // (Dashboard date picker always provides both, but keep this safe.)
-    if (!viewStart || !viewEnd) return false;
-
-    const overlapsWindow = cStart <= viewEnd && (!cEnd || cEnd >= viewStart);
-    const isFutureStart = cStart > viewEnd;
-    const createdInWindow = created >= viewStart && created <= viewEnd;
-
-    return overlapsWindow || (isFutureStart && createdInWindow);
-  });
+  // Comes from backend KPI (consistent with other chips).
+  const activeContracts = kpis?.active_contracts_count ?? 0;
 
   const contractsStartedInRange = contracts.filter((contract) =>
     inRange(contract.start_date),
@@ -364,13 +301,6 @@ export default function Dashboard() {
     return cEnd >= today;
   });
 
-  const decidedUpsellsInRange = upsells.filter(
-    (u) =>
-      inRange(u.upsell_date) &&
-      (u.upsell_result === "verlaengerung" ||
-        u.upsell_result === "keine_verlaengerung"),
-  );
-
   // For the renewalRate modal: backend already filters upsells by date range.
   // Split into renewed vs not-renewed directly from the fetched upsells.
   const renewedUpsellsInRange = upsells.filter(
@@ -378,6 +308,23 @@ export default function Dashboard() {
   );
   const notRenewedUpsellsInRange = upsells.filter(
     (u) => u.upsell_result === "keine_verlaengerung",
+  );
+
+  const renewalContractIds = new Set(
+    upsells
+      .filter(
+        (u) => u.upsell_result === "verlaengerung" && u.new_contract_id != null,
+      )
+      .map((u) => u.new_contract_id!),
+  );
+
+  const newCustomerContractsInRange = contractsStartedInRange.filter(
+    (c) => !renewalContractIds.has(c.id),
+  );
+
+  // Won sales processes list for the closing rate modal detail view
+  const wonSalesList = salesProcesses.filter(
+    (sp) => sp.stage === SALES_STAGE.CLOSED,
   );
 
   const [revenueModal, setRevenueModal] = useState<
@@ -680,15 +627,33 @@ export default function Dashboard() {
           {/* ── Abschlussquote Neukunden ── */}
           {revenueModal === "closing" && (
             <div className="space-y-2 mt-2">
-              {(kpis?.decided_new_count ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Keine entschiedenen Prozesse im gewählten Zeitraum.
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {kpis?.won_new_count ?? 0} von {kpis?.decided_new_count ?? 0}{" "}
-                  entschiedenen Neukunden-Prozessen gewonnen.
-                </p>
+              <p className="text-sm text-muted-foreground">
+                {(kpis?.decided_new_count ?? 0) === 0
+                  ? "Keine entschiedenen Verkaufsprozesse im gewählten Zeitraum."
+                  : `${kpis?.won_new_count ?? 0} von ${kpis?.decided_new_count ?? 0} entschiedenen Neukunden-Prozessen gewonnen.`}
+              </p>
+              {wonSalesList.length > 0 && (
+                <>
+                  <div className="text-xs font-medium text-muted-foreground border-b pb-1 mt-3 mb-1">
+                    Abgeschlossene Prozesse
+                  </div>
+                  {wonSalesList
+                    .slice()
+                    .sort((a, b) => a.client_name.localeCompare(b.client_name))
+                    .map((sp) => (
+                      <div
+                        key={sp.id}
+                        className="flex items-center justify-between text-sm py-1 border-b last:border-0"
+                      >
+                        <span>{sp.client_name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {sp.completed_at
+                            ? formatLocalDate(parseIsoToLocal(sp.completed_at))
+                            : "—"}
+                        </span>
+                      </div>
+                    ))}
+                </>
               )}
             </div>
           )}
@@ -796,20 +761,9 @@ export default function Dashboard() {
           {/* ── Revenue modals (new / all) ── */}
           {(revenueModal === "new" || revenueModal === "all") &&
             (() => {
-              const renewalContractIds = new Set(
-                upsells
-                  .filter(
-                    (u) =>
-                      u.upsell_result === "verlaengerung" &&
-                      u.new_contract_id != null,
-                  )
-                  .map((u) => u.new_contract_id!),
-              );
               const displayContracts =
                 revenueModal === "new"
-                  ? contractsStartedInRange.filter(
-                      (c) => !renewalContractIds.has(c.id),
-                    )
+                  ? newCustomerContractsInRange
                   : contractsStartedInRange;
               const displayTotal =
                 revenueModal === "new" ? newCustomerRevenue : totalRevenue;
