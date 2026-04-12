@@ -13,6 +13,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -322,14 +328,21 @@ export function SalesProcessTable({
                           </Button>
                         )}
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="px-2"
-                        onClick={() => onShowDetails(entry)}
-                      >
-                        <Info className="w-4 h-4" />
-                      </Button>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="px-2"
+                              onClick={() => onShowDetails(entry)}
+                            >
+                              <Info className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Details & bearbeiten</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                   </TableCell>
                 </TableRow>

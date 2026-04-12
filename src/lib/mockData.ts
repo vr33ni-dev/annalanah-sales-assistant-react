@@ -650,6 +650,7 @@ export const mockComments: Comment[] = [
     id: 1,
     entity_type: "client",
     entity_id: 1,
+    client_id: 1,
     body: "Sehr engagierter Kunde, hat großes Interesse an unserem Coaching-Programm gezeigt.",
     created_at: "2026-01-11T09:30:00Z",
   },
@@ -657,6 +658,7 @@ export const mockComments: Comment[] = [
     id: 2,
     entity_type: "client",
     entity_id: 1,
+    client_id: 1,
     body: "Telefongespräch geführt - möchte in Q2 erweitern.",
     created_at: "2026-01-12T14:20:00Z",
   },
@@ -664,6 +666,7 @@ export const mockComments: Comment[] = [
     id: 3,
     entity_type: "client",
     entity_id: 2,
+    client_id: 2,
     body: "Erste Beratung war sehr positiv. Follow-up nächste Woche geplant.",
     created_at: "2026-01-13T11:00:00Z",
   },
@@ -671,6 +674,7 @@ export const mockComments: Comment[] = [
     id: 4,
     entity_type: "contract",
     entity_id: 1,
+    client_id: 1,
     body: "Vertrag wurde pünktlich unterzeichnet. Alle Unterlagen vollständig.",
     created_at: "2026-01-02T10:00:00Z",
   },
@@ -678,6 +682,7 @@ export const mockComments: Comment[] = [
     id: 5,
     entity_type: "contract",
     entity_id: 1,
+    client_id: 1,
     body: "Kunde ist zufrieden mit dem Fortschritt. Verlängerung wahrscheinlich.",
     created_at: "2026-01-16T16:30:00Z",
   },
@@ -685,34 +690,39 @@ export const mockComments: Comment[] = [
     id: 6,
     entity_type: "contract",
     entity_id: 3,
+    client_id: 2,
     body: "Zahlungserinnerung wurde versendet.",
     created_at: "2026-01-05T09:00:00Z",
   },
   {
     id: 7,
-    entity_type: "salesprocess",
+    entity_type: "sales_process",
     entity_id: 1,
+    client_id: 1,
     body: "Erstkontakt per E-Mail. Interesse an Premium-Paket.",
     created_at: "2026-01-02T08:45:00Z",
   },
   {
     id: 8,
-    entity_type: "salesprocess",
+    entity_type: "sales_process",
     entity_id: 1,
+    client_id: 1,
     body: "Abschluss erfolgreich! Kunde hat 12-Monats-Vertrag gewählt.",
     created_at: "2026-01-02T11:30:00Z",
   },
   {
     id: 9,
-    entity_type: "salesprocess",
+    entity_type: "sales_process",
     entity_id: 4,
+    client_id: 2,
     body: "Follow-up Call angesetzt für nächste Woche.",
     created_at: "2026-01-18T15:00:00Z",
   },
   {
     id: 10,
-    entity_type: "salesprocess",
+    entity_type: "sales_process",
     entity_id: 3,
+    client_id: 2,
     body: "Angebot wurde versendet. Wartet auf Rückmeldung.",
     created_at: "2026-01-14T10:15:00Z",
   },
@@ -726,4 +736,11 @@ export const getMockCommentsForEntity = (
   return mockComments.filter(
     (c) => c.entity_type === entityType && c.entity_id === entityId,
   );
+};
+
+// Helper to get all mock comments for a client (across entity types)
+export const getMockCommentsForClient = (clientId: number): Comment[] => {
+  return mockComments
+    .filter((c) => c.client_id === clientId)
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 };

@@ -857,12 +857,13 @@ export const runNLQ = async (question: string): Promise<NLQResponse> => {
 };
 
 /* Comments */
-export type CommentEntityType = "client" | "contract" | "salesprocess";
+export type CommentEntityType = "client" | "contract" | "sales_process";
 
 export interface Comment {
   id: number;
   entity_type: CommentEntityType;
   entity_id: number;
+  client_id?: number;
   author?: string;
   body: string;
   created_at?: string;
@@ -881,6 +882,15 @@ export const getComments = async (
 ): Promise<Comment[]> => {
   const { data } = await api.get(`/comments`, {
     params: { entity_type: entityType, entity_id: entityId },
+  });
+  return asArray<Comment>(data);
+};
+
+export const getCommentsByClientId = async (
+  clientId: number,
+): Promise<Comment[]> => {
+  const { data } = await api.get(`/comments`, {
+    params: { client_id: clientId },
   });
   return asArray<Comment>(data);
 };
