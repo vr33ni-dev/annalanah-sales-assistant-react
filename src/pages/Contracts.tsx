@@ -183,7 +183,12 @@ export default function Contracts() {
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<
-    "client_name" | "start_date" | "duration_months" | "progress" | "revenue"
+    | "client_name"
+    | "start_date"
+    | "end_date"
+    | "duration_months"
+    | "progress"
+    | "revenue"
   >("start_date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -229,6 +234,31 @@ export default function Contracts() {
   });
 
   const drawerContract = selectedContractDetail ?? selectedContract;
+
+  // Upsell for the currently viewed contract: match by previous_contract_id,
+  // exclude already-executed upsells (new_contract_id set), pick most recently updated.
+  const { data: savedUpsells = [] } = useMockableQuery<ContractUpsell[]>({
+    queryKey: queryKeys.upsell(drawerContract?.sales_process_id ?? undefined),
+    queryFn: () =>
+      drawerContract?.sales_process_id
+        ? getUpsellForSalesProcess(drawerContract.sales_process_id)
+        : Promise.resolve([]),
+    enabled: !!drawerContract?.sales_process_id,
+    retry: false,
+    staleTime: 0,
+    select: (d) => d,
+    mockData: [],
+  });
+  const savedUpsell = useMemo(() => {
+    const candidates = savedUpsells.filter(
+      (u) =>
+        u.previous_contract_id === drawerContract?.id && !u.new_contract_id,
+    );
+    if (!candidates.length) return null;
+    return candidates.reduce((a, b) =>
+      (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
+    );
+  }, [savedUpsells, drawerContract?.id]);
 
   // Chain is embedded in the GET /contracts/{id} response.
   const contractChain = useMemo(
@@ -473,6 +503,14 @@ export default function Contracts() {
         return (aProgress - bProgress) * direction;
       }
 
+      if (sortField === "end_date") {
+        const aEnd =
+          getContractEndDate(a)?.getTime() ?? Number.POSITIVE_INFINITY;
+        const bEnd =
+          getContractEndDate(b)?.getTime() ?? Number.POSITIVE_INFINITY;
+        return (aEnd - bEnd) * direction;
+      }
+
       const aStart =
         toDateStartOfDay(a.start_date)?.getTime() ?? Number.POSITIVE_INFINITY;
       const bStart =
@@ -546,6 +584,13 @@ export default function Contracts() {
             : 0;
         return (aP - bP) * direction;
       }
+      if (sortField === "end_date") {
+        const aEnd =
+          getContractEndDate(a.latest)?.getTime() ?? Number.POSITIVE_INFINITY;
+        const bEnd =
+          getContractEndDate(b.latest)?.getTime() ?? Number.POSITIVE_INFINITY;
+        return (aEnd - bEnd) * direction;
+      }
       const aStart =
         toDateStartOfDay(a.latest.start_date)?.getTime() ??
         Number.POSITIVE_INFINITY;
@@ -560,6 +605,7 @@ export default function Contracts() {
     field:
       | "client_name"
       | "start_date"
+      | "end_date"
       | "duration_months"
       | "progress"
       | "revenue",
@@ -570,7 +616,9 @@ export default function Contracts() {
     }
 
     setSortField(field);
-    setSortOrder(field === "start_date" ? "desc" : "asc");
+    setSortOrder(
+      field === "start_date" || field === "end_date" ? "desc" : "asc",
+    );
   };
 
   /* ----------------- Pagination ---------------- */
@@ -1006,7 +1054,29 @@ export default function Contracts() {
                     )}
                   </button>
                 </TableHead>
-                <TableHead>Enddatum</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => onSortBy("end_date")}
+                    className="inline-flex items-center gap-1 text-left font-medium text-muted-foreground hover:text-foreground"
+                    title={
+                      sortField === "end_date" && sortOrder === "asc"
+                        ? "Nach Enddatum absteigend sortieren"
+                        : "Nach Enddatum aufsteigend sortieren"
+                    }
+                  >
+                    Enddatum
+                    {sortField === "end_date" ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUp className="h-4 w-4" />
+                      ) : (
+                        <ArrowDown className="h-4 w-4" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead>
                   <button
                     type="button"
@@ -1302,16 +1372,62 @@ export default function Contracts() {
                   Upsell / Vertragsverlängerung
                 </h3>
 
-                {/* Show upsell planning button */}
-                <button
-                  onClick={() => {
-                    setEditingUpsell(null);
-                    setShowUpsellModal(true);
-                  }}
-                  className="mt-4 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
-                >
-                  Upsell planen
-                </button>
+                {/* Show saved upsell if one exists, otherwise show plan button */}
+                {savedUpsell ? (
+                  <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">
+                        {savedUpsell.upsell_result === "verlaengerung"
+                          ? "✅ Verlängerung"
+                          : savedUpsell.upsell_result === "keine_verlaengerung"
+                            ? "❌ Keine Verlängerung"
+                            : "⏳ Offen"}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingUpsell(savedUpsell);
+                          setShowUpsellModal(true);
+                        }}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Bearbeiten
+                      </button>
+                    </div>
+                    {savedUpsell.upsell_date && (
+                      <div className="text-sm text-muted-foreground">
+                        Gesprächsdatum:{" "}
+                        {formatDateOnly(savedUpsell.upsell_date)}
+                      </div>
+                    )}
+                    {savedUpsell.upsell_revenue != null && (
+                      <div className="text-sm text-muted-foreground">
+                        Geschätzter Umsatz: €
+                        {savedUpsell.upsell_revenue.toLocaleString()}
+                      </div>
+                    )}
+                    {savedUpsell.contract_start_date && (
+                      <div className="text-sm text-muted-foreground">
+                        Neues Startdatum:{" "}
+                        {formatDateOnly(savedUpsell.contract_start_date)}
+                      </div>
+                    )}
+                    {savedUpsell.contract_duration_months != null && (
+                      <div className="text-sm text-muted-foreground">
+                        Laufzeit: {savedUpsell.contract_duration_months} Monate
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingUpsell(null);
+                      setShowUpsellModal(true);
+                    }}
+                    className="mt-4 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90"
+                  >
+                    Upsell planen
+                  </button>
+                )}
 
                 {/* ---- Vertragshistorie (all periods in chain) ---- */}
                 {chainWithLabels.length > 1 && (
@@ -1442,6 +1558,11 @@ export default function Contracts() {
             queryClient.invalidateQueries({
               queryKey: queryKeys.contract(selectedContract!.id),
             });
+            if (selectedContract?.sales_process_id) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.upsell(selectedContract.sales_process_id),
+              });
+            }
           }}
         />
       )}
