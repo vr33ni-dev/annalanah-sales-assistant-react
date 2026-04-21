@@ -848,16 +848,49 @@ export const getCashflowMetrics = async (): Promise<CashflowMetrics> => {
 
 /* Natural Language Querying */
 export interface NLQResponse {
-  sql: string;
-  rows: Record<string, unknown>[];
+  sql?: string;
+  rows?: Record<string, unknown>[];
   columns?: string[];
   error?: string;
   answer?: string;
 }
 
+/** Thrown by runNLQ when the server returns a non-200 HTTP status. */
+export class NLQHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "NLQHttpError";
+  }
+}
+
+const NLQ_HTTP_MESSAGES: Record<number, string> = {
+  402: "Budget exhausted — please contact your admin or upgrade your plan.",
+  429: "Rate limit reached — please wait a moment and try again.",
+  502: "The AI service is temporarily unavailable. Please try again.",
+  500: "An unexpected server error occurred. Please try again.",
+};
+
 export const runNLQ = async (question: string): Promise<NLQResponse> => {
-  const { data } = await api.post<NLQResponse>("/nlq", { question });
-  return data;
+  try {
+    const { data } = await api.post<NLQResponse>("/nlq", { question });
+    return data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response) {
+      const { status, data } = err.response as {
+        status: number;
+        data: { error?: string };
+      };
+      const serverMsg = data?.error;
+      const fallback =
+        NLQ_HTTP_MESSAGES[status] ??
+        `Server error (${status}). Please try again.`;
+      throw new NLQHttpError(status, serverMsg ?? fallback);
+    }
+    throw err;
+  }
 };
 
 /* Comments */

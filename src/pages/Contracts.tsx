@@ -68,94 +68,19 @@ import {
 } from "@/components/ui/sheet";
 import { CashflowUpcomingTable } from "../components/cashflow/CashflowUpcomingTable";
 import { formatDateOnly, formatMonthLabel, toYmdLocal } from "@/helpers/date";
+import {
+  addMonthsDate,
+  addMonthsIso,
+  getContractEndDate,
+  getElapsedContractMonths,
+  isContractExpired,
+  selectActiveUpsell,
+  toDateStartOfDay,
+} from "@/helpers/contract";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
-
-/* ---------------- helpers ---------------- */
-
-// add months to a YYYY-MM-DD string safely
-function addMonthsIso(iso: string, m: number): string {
-  const dateOnly = iso.split("T")[0];
-  const [y, mo, d] = dateOnly.split("-").map(Number);
-  const dt = new Date(y, mo - 1, d);
-  dt.setMonth(dt.getMonth() + m);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
-    2,
-    "0",
-  )}-${String(dt.getDate()).padStart(2, "0")}`;
-}
-
-// Robustly parse either YYYY-MM-DD or full ISO datetimes and return a
-// Date normalized to local start-of-day (time components zeroed).
-function toDateStartOfDay(input?: string | null) {
-  if (!input) return null;
-  // Always parse by YYYY-MM-DD prefix and construct a local Date.
-  // Avoids timezone shifts caused by native Date parsing.
-  const m = String(input).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  return null;
-}
-
-function addMonthsDate(d: Date, months: number) {
-  const dt = new Date(d.getTime());
-  dt.setMonth(dt.getMonth() + months);
-  return dt;
-}
-
-function getContractEndDate(contract: Contract) {
-  const start = toDateStartOfDay(contract.start_date);
-  const endFromServer = toDateStartOfDay(contract.end_date ?? null);
-
-  if (endFromServer) return endFromServer;
-  if (!start || typeof contract.duration_months !== "number") return null;
-
-  return addMonthsDate(start, contract.duration_months);
-}
-
-function isContractExpired(contract: Contract, today: Date) {
-  const current = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-  const end = getContractEndDate(contract);
-
-  return !!end && end < current;
-}
-
-function getElapsedContractMonths(
-  startDate: string | null | undefined,
-  today: Date,
-  durationMonths?: number | null,
-) {
-  const start = toDateStartOfDay(startDate);
-  if (!start) return 0;
-
-  const current = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-  if (start > current) return 0;
-
-  let completedMonths =
-    (current.getFullYear() - start.getFullYear()) * 12 +
-    (current.getMonth() - start.getMonth());
-
-  if (current.getDate() < start.getDate()) {
-    completedMonths -= 1;
-  }
-
-  const currentContractMonth = Math.max(1, completedMonths + 1);
-
-  if (typeof durationMonths === "number") {
-    return Math.min(currentContractMonth, durationMonths);
-  }
-
-  return currentContractMonth;
-}
 
 function euro(n: number) {
   return `€${Math.round(n).toLocaleString()}`;
@@ -249,16 +174,13 @@ export default function Contracts() {
     select: (d) => d,
     mockData: [],
   });
-  const savedUpsell = useMemo(() => {
-    const candidates = savedUpsells.filter(
-      (u) =>
-        u.previous_contract_id === drawerContract?.id && !u.new_contract_id,
-    );
-    if (!candidates.length) return null;
-    return candidates.reduce((a, b) =>
-      (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
-    );
-  }, [savedUpsells, drawerContract?.id]);
+  const savedUpsell = useMemo(
+    () =>
+      drawerContract
+        ? selectActiveUpsell(savedUpsells, drawerContract.id)
+        : null,
+    [savedUpsells, drawerContract],
+  );
 
   // Chain is embedded in the GET /contracts/{id} response.
   const contractChain = useMemo(
