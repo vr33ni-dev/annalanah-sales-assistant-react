@@ -288,7 +288,7 @@ export interface ContractUpsell {
   sales_process_id: number;
   client_id: number;
   upsell_date: string | null;
-  upsell_result: UpsellResult;
+  upsell_result: UpsellResult | null;
   upsell_revenue: number | null;
   previous_contract_id: number | null;
   new_contract_id: number | null;
@@ -599,7 +599,11 @@ export const getUpsellForSalesProcess = async (
   salesProcessId: number,
 ): Promise<ContractUpsell[]> => {
   const { data } = await api.get(`/sales/${salesProcessId}/upsell`);
-  return data as ContractUpsell[];
+  if (Array.isArray(data)) return data as ContractUpsell[];
+  // Handle { scheduled: [...] } wrapped format
+  if (data && Array.isArray((data as { scheduled?: unknown }).scheduled))
+    return (data as { scheduled: ContractUpsell[] }).scheduled;
+  return [];
 };
 
 /** PATCH /sales/{id}/upsell */
