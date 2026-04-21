@@ -347,7 +347,9 @@ export default function Dashboard() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Geschäftsübersicht & KPIs</p>
+          <p className="text-muted-foreground">
+            Geschäftsübersicht & KPIs (abzüglich MwSt)
+          </p>
         </div>
       </div>
 
