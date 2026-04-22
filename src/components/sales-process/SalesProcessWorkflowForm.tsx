@@ -51,6 +51,18 @@ export function SalesProcessWorkflowForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [durationError, setDurationError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  // Email and phone validation helpers
+  function isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+  function isValidPhone(phone: string): boolean {
+    if (!phone) return true; // phone is optional
+    // Allow +, digits, spaces, -, (, ) and min 6 digits
+    const cleaned = phone.replace(/[^\d]/g, "");
+    return /^[\d\s+\-()]+$/.test(phone) && cleaned.length >= 6;
+  }
 
   const MIN_REVENUE = 0;
   const MAX_REVENUE = 1_000_000;
@@ -61,6 +73,18 @@ export function SalesProcessWorkflowForm({
   // Erstgespräch submit
   const handleErstgespraechSaveWrapped = async () => {
     if (isSubmitting) return;
+    setEmailError(null);
+    setPhoneError(null);
+    if (!isValidEmail(formData.email)) {
+      setEmailError("Bitte geben Sie eine gültige Email-Adresse ein.");
+      return;
+    }
+    if (!isValidPhone(formData.phone)) {
+      setPhoneError(
+        "Bitte geben Sie eine gültige Telefonnummer ein (mind. 6 Ziffern).",
+      );
+      return;
+    }
     setIsSubmitting(true);
     try {
       await onErstgespraechSave();
@@ -72,6 +96,18 @@ export function SalesProcessWorkflowForm({
   // Zweitgespräch submit (old flow, step 5)
   const handleZweitgespraechStartWrapped = async () => {
     if (isSubmitting) return;
+    setEmailError(null);
+    setPhoneError(null);
+    if (!isValidEmail(formData.email)) {
+      setEmailError("Bitte geben Sie eine gültige Email-Adresse ein.");
+      return;
+    }
+    if (!isValidPhone(formData.phone)) {
+      setPhoneError(
+        "Bitte geben Sie eine gültige Telefonnummer ein (mind. 6 Ziffern).",
+      );
+      return;
+    }
     setIsSubmitting(true);
     try {
       await onZweitgespraechStart();
@@ -218,12 +254,16 @@ export function SalesProcessWorkflowForm({
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setEmailError(null);
+                }}
                 placeholder="max@example.com"
                 className="bg-success/5 border-success/30"
               />
+              {emailError && (
+                <p className="text-xs text-destructive mt-1">{emailError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -231,12 +271,16 @@ export function SalesProcessWorkflowForm({
               <Input
                 id="phone"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  setPhoneError(null);
+                }}
                 placeholder="+49 123 456789"
                 className="bg-success/5 border-success/30"
               />
+              {phoneError && (
+                <p className="text-xs text-destructive mt-1">{phoneError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -740,12 +784,16 @@ export function SalesProcessWorkflowForm({
                 id="email-zweit"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setEmailError(null);
+                }}
                 placeholder="max@example.com"
                 className="bg-success/5 border-success/30"
               />
+              {emailError && (
+                <p className="text-xs text-destructive mt-1">{emailError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -753,12 +801,16 @@ export function SalesProcessWorkflowForm({
               <Input
                 id="phone-zweit"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  setPhoneError(null);
+                }}
                 placeholder="+49 123 456789"
                 className="bg-success/5 border-success/30"
               />
+              {phoneError && (
+                <p className="text-xs text-destructive mt-1">{phoneError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
