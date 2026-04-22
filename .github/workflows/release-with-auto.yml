@@ -95,6 +95,13 @@ jobs:
               npm version "${LATEST_NO_V}" --no-git-tag-version --allow-same-version >/dev/null 2>&1 || {
                 echo "Warning: failed to sync package version to ${LATEST_NO_V}; continuing" >&2
               }
+              # Keep working tree clean for auto: commit sync changes if npm touched files.
+              if [ -n "$(git status --porcelain --untracked-files=no | grep -E 'package.json|package-lock.json|pnpm-lock.yaml|yarn.lock' || true)" ]; then
+                git add -A package.json package-lock.json pnpm-lock.yaml yarn.lock || true
+                if ! git diff --staged --quiet; then
+                  git commit -m "chore(release): sync package version to latest tag [skip ci]" || true
+                fi
+              fi
             fi
           fi
 
