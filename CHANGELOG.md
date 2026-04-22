@@ -1,3 +1,16 @@
+# v0.6.1 (Wed Apr 22 2026)
+
+#### 🐛 Bug Fix
+
+- Refactoring [#117](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/117) ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]) [@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 2
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.6.0 (Wed Apr 22 2026)
 
 #### 🚀 Enhancement
