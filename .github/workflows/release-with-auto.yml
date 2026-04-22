@@ -99,13 +99,18 @@ jobs:
             # release without touching the repo working tree.
             printf '%s\n' "$AUTO_SHIPIT_OUTPUT" > "$GITHUB_WORKSPACE/auto-shipit-dry-run.log" || true
 
-            # Try to extract a semver (v1.2.3 or 1.2.3) from the shipit output
-            # Some versions of auto print messages like:
-            #   "Would have created a release on GitHub for version: 0.1.24"
-            # or
-            #   "Would have published: 0.1.19"
-            # so grep for the first semver-like token and prefer that as CANDIDATE.
-            CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+            # Try to extract the target semver (v1.2.3 or 1.2.3) from shipit output.
+            # Important: auto output can include the *current* version before the
+            # computed next version, so do not pick the first match.
+            # Prefer explicit "would release" lines first, then fall back to the
+            # last semver token found in the output.
+            CANDIDATE=$(printf '%s\n' "$AUTO_SHIPIT_OUTPUT" | sed -nE 's/.*Would have created a release on GitHub for version:[[:space:]]*(v?[0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | tail -n1 || true)
+            if [ -z "${CANDIDATE:-}" ]; then
+              CANDIDATE=$(printf '%s\n' "$AUTO_SHIPIT_OUTPUT" | sed -nE 's/.*Would have published:[[:space:]]*(v?[0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | tail -n1 || true)
+            fi
+            if [ -z "${CANDIDATE:-}" ]; then
+              CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
+            fi
 
             # Ensure we have commits and tags from origin so CHANGELOG/RANGE calculations work
             git fetch --tags origin main || true
