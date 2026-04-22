@@ -737,6 +737,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_active_clients ?? 0)}
           label="CLV aktive Kunden"
           popover={`Gesamtwert aller Vertragsperioden aktiver Kunden (historisch + aktuell)`}
+          netAmount
         />
 
         <MetricChip
@@ -745,6 +746,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_all_time ?? 0)}
           label="CLV gesamt (all-time)"
           popover={`Summe aller Verträge ever – inkl. inaktiver/verlorener Kunden`}
+          netAmount
         />
 
         <MetricChip
@@ -761,6 +763,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.active_revenue ?? 0)}
           label="Aktiver Umsatz"
           popover={`Summe der laufenden Vertragsperioden (nicht abgelaufen)\n= ${euro(kpisAllTime?.active_revenue ?? 0)}`}
+          netAmount
         />
 
         <MetricChip
@@ -773,6 +776,7 @@ export default function Contracts() {
             `= ${euro(kpisAllTime?.active_revenue ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
             `= ${euro(kpisAllTime?.avg_vertragswert ?? 0)}`
           }
+          netAmount
         />
 
         <MetricChip
