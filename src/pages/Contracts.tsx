@@ -737,6 +737,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_active_clients ?? 0)}
           label="CLV aktive Kunden"
           popover={`Gesamtwert aller Vertragsperioden aktiver Kunden (historisch + aktuell)`}
+          netAmount
         />
 
         <MetricChip
@@ -745,6 +746,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_all_time ?? 0)}
           label="CLV gesamt (all-time)"
           popover={`Summe aller Verträge ever – inkl. inaktiver/verlorener Kunden`}
+          netAmount
         />
 
         <MetricChip
@@ -761,6 +763,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.active_revenue ?? 0)}
           label="Aktiver Umsatz"
           popover={`Summe der laufenden Vertragsperioden (nicht abgelaufen)\n= ${euro(kpisAllTime?.active_revenue ?? 0)}`}
+          netAmount
         />
 
         <MetricChip
@@ -773,6 +776,7 @@ export default function Contracts() {
             `= ${euro(kpisAllTime?.active_revenue ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
             `= ${euro(kpisAllTime?.avg_vertragswert ?? 0)}`
           }
+          netAmount
         />
 
         <MetricChip
@@ -792,6 +796,7 @@ export default function Contracts() {
             `= ${euro(kpisAllTime?.clv_active_clients ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
             `= ${euro(Math.round(kpisAllTime?.active_contracts_count ? kpisAllTime.clv_active_clients / kpisAllTime.active_contracts_count : 0))}`
           }
+          netAmount
         />
 
         <MetricChip
@@ -804,6 +809,7 @@ export default function Contracts() {
             `YTD Cashflow: ${euro(ytdPaidAmountDisplay)}\n` +
             `Ø pro Monat: ${euro(avgMonthlyYtd)}`
           }
+          netAmount
         />
 
         <MetricChip
@@ -822,6 +828,7 @@ export default function Contracts() {
                   .join(" + ")}) / ${next3Display.length} = ${euro(avgNext3)}`
               : "Keine Forecast-Daten für die nächsten 3 Monate."
           }
+          netAmount
         />
       </div>
 

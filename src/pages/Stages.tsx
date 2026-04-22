@@ -758,6 +758,7 @@ export default function Stages() {
           iconBg="bg-primary/10 text-primary"
           value={`€${totals.budget.toLocaleString()}`}
           label="Budget gesamt"
+          netAmount
         />
 
         <MetricChip
@@ -794,6 +795,7 @@ export default function Stages() {
             totals.budget,
             totals.roiVal ?? undefined,
           )}
+          netAmount
         />
       </div>
 
