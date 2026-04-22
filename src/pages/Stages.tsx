@@ -657,6 +657,7 @@ export default function Stages() {
   });
 
   const stages = useMemo<Stage[]>(() => data ?? [], [data]);
+  const stageValuesAreNet = (stages[0]?.monetary_mode ?? "brutto") === "netto";
 
   const filteredStages = useMemo<Stage[]>(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -758,7 +759,7 @@ export default function Stages() {
           iconBg="bg-primary/10 text-primary"
           value={`€${totals.budget.toLocaleString()}`}
           label="Budget gesamt"
-          netAmount
+          netAmount={stageValuesAreNet}
         />
 
         <MetricChip
@@ -795,7 +796,7 @@ export default function Stages() {
             totals.budget,
             totals.roiVal ?? undefined,
           )}
-          netAmount
+          netAmount={stageValuesAreNet}
         />
       </div>
 

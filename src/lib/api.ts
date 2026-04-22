@@ -59,6 +59,8 @@ export default api;
 /* Helpers */
 const asArray = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
 
+export type MonetaryMode = "netto" | "brutto";
+
 /* Clients */
 export interface Client {
   id: number;
@@ -332,6 +334,7 @@ export type UpsellAnalytics = {
 };
 
 export type DashboardKPIs = {
+  monetary_mode?: MonetaryMode;
   total_revenue: number;
   new_customer_revenue: number;
   renewal_revenue: number;
@@ -352,6 +355,7 @@ export type MonthlyKPI = {
   revenue: number;
   closed_deals: number;
   closing_rate: number | null;
+  monetary_mode?: MonetaryMode;
 };
 
 export const getMonthlyKPIs = async (year?: number): Promise<MonthlyKPI[]> => {
@@ -368,6 +372,7 @@ export type ContractInRange = {
   start_date: string | null;
   end_date: string | null;
   revenue_netto: number;
+  monetary_mode?: MonetaryMode;
 };
 
 export const getContractsInRange = async (params: {
@@ -412,6 +417,7 @@ export interface Contract {
   cashflow?: CashflowEntry[];
   chain?: Contract[];
   source?: "manual" | "imported";
+  monetary_mode?: MonetaryMode;
 }
 
 export const getContracts = async (options?: {
@@ -470,6 +476,7 @@ export interface Stage {
   attendance_rate?: number;
   closing_rate?: number;
   roi?: number;
+  monetary_mode?: MonetaryMode;
 }
 
 export const getStages = async (): Promise<Stage[]> => {
@@ -732,6 +739,7 @@ export interface CashflowRow {
   confirmed: number;
   potential: number;
   contract_id?: number;
+  monetary_mode?: MonetaryMode;
 }
 
 // Individual cashflow entries (past & scheduled payments)
@@ -743,6 +751,7 @@ export interface CashflowEntry {
   amount: number;
   confirmed?: boolean;
   status?: "overdue" | "paid" | null;
+  monetary_mode?: MonetaryMode;
 }
 
 export const getCashflowEntries = async (
@@ -781,8 +790,23 @@ export const getCashflowEntries = async (
   // All-contract view: prefer the aggregate endpoint to avoid an HTTP N+1.
   // (The per-contract fan-out can be enabled explicitly via options.)
   try {
-    const { data } = await api.get<CashflowEntry[]>(`/cashflow/entries`);
-    if (Array.isArray(data)) return data;
+    const { data } = await api.get<unknown>(`/cashflow/entries`);
+    if (Array.isArray(data)) return data as CashflowEntry[];
+
+    if (data && typeof data === "object") {
+      const wrapped = data as {
+        monetary_mode?: MonetaryMode;
+        data?: unknown;
+      };
+
+      if (Array.isArray(wrapped.data)) {
+        const mode = wrapped.monetary_mode;
+        return (wrapped.data as CashflowEntry[]).map((entry) => ({
+          ...entry,
+          monetary_mode: entry.monetary_mode ?? mode,
+        }));
+      }
+    }
   } catch (err: unknown) {
     const status = axios.isAxiosError(err) ? err.response?.status : undefined;
     const canFallback =
@@ -869,6 +893,7 @@ export const getCashflowForecast = async (
 
 export type CashflowMetricMonth = { month: string; confirmed: number };
 export type CashflowMetrics = {
+  monetary_mode?: MonetaryMode;
   avg_monthly_ytd: number;
   months_elapsed_ytd: number;
   ytd_paid_amount: number;

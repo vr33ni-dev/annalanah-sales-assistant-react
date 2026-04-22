@@ -49,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 import {
   Tooltip,
   TooltipContent,
@@ -99,35 +100,35 @@ export default function Dashboard() {
   // LOAD DATA
   // -----------------------------
   const { data: clients = [] } = useMockableQuery<Client[]>({
-    queryKey: ["clients"],
+    queryKey: queryKeys.clients(false),
     queryFn: () => getClients(),
     select: asArray<Client>,
     mockData: mockClients,
   });
 
   const { data: contracts = [] } = useMockableQuery<Contract[]>({
-    queryKey: ["contracts"],
+    queryKey: queryKeys.contracts,
     queryFn: () => getContracts(),
     select: asArray<Contract>,
     mockData: mockContracts,
   });
 
   const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
-    queryKey: ["sales"],
+    queryKey: queryKeys.sales,
     queryFn: getSalesProcesses,
     select: asArray<SalesProcess>,
     mockData: mockSalesProcesses,
   });
 
   const { data: stages = [] } = useMockableQuery<Stage[]>({
-    queryKey: ["stages"],
+    queryKey: queryKeys.stages,
     queryFn: getStages,
     select: asArray<Stage>,
     mockData: mockStages,
   });
 
   const { data: upsells = [] } = useMockableQuery<ContractUpsell[]>({
-    queryKey: ["upsells", startDateParam ?? "", endDateParam ?? ""],
+    queryKey: queryKeys.upsellsByDateRange(startDateParam, endDateParam),
     queryFn: () =>
       getUpsells({
         start_date: startDateParam,
@@ -138,7 +139,10 @@ export default function Dashboard() {
   });
 
   const { data: kpis } = useMockableQuery<DashboardKPIs>({
-    queryKey: ["dashboardKPIs", startDateParam ?? "", endDateParam ?? ""],
+    queryKey: queryKeys.dashboardKpis({
+      startDate: startDateParam,
+      endDate: endDateParam,
+    }),
     queryFn: () =>
       getDashboardKPIs({
         start_date: startDateParam,
@@ -149,12 +153,11 @@ export default function Dashboard() {
 
   const { data: neukundenContracts = [] } = useMockableQuery<ContractInRange[]>(
     {
-      queryKey: [
-        "contracts-in-range",
+      queryKey: queryKeys.contractsInRange(
         startDateParam ?? "",
         endDateParam ?? "",
         "neukunden",
-      ],
+      ),
       queryFn: () =>
         getContractsInRange({
           start_date: startDateParam,
@@ -168,12 +171,11 @@ export default function Dashboard() {
   const { data: verlaengerungContracts = [] } = useMockableQuery<
     ContractInRange[]
   >({
-    queryKey: [
-      "contracts-in-range",
+    queryKey: queryKeys.contractsInRange(
       startDateParam ?? "",
       endDateParam ?? "",
       "verlaengerung",
-    ],
+    ),
     queryFn: () =>
       getContractsInRange({
         start_date: startDateParam,

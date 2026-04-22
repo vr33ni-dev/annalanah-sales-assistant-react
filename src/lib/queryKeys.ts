@@ -21,6 +21,8 @@ export const queryKeys = {
     ] as const,
   contract: (id: number) => ["contracts", id] as const,
   upsell: (salesProcessId?: number) => ["upsell", salesProcessId] as const,
+  upsellsByDateRange: (startDate?: string, endDate?: string) =>
+    ["upsells", startDate ?? "", endDate ?? ""] as const,
   settings: ["settings"] as const,
   setting: (key: string) => ["settings", key] as const,
   numericSetting: (key: string) => ["setting", key] as const,
@@ -33,6 +35,19 @@ export const queryKeys = {
     ["cashflow-forecast", contractId] as const,
   cashflowMetrics: ["cashflow-metrics"] as const,
   monthlyKpis: (year: number) => ["monthly-kpis", year] as const,
+  dashboardKpis: (params?: {
+    startDate?: string;
+    endDate?: string;
+    scope?: "all-time" | "range";
+  }) =>
+    [
+      "dashboard-kpis",
+      {
+        startDate: params?.startDate ?? "",
+        endDate: params?.endDate ?? "",
+        scope: params?.scope ?? "range",
+      },
+    ] as const,
   contractsInRange: (start: string, end: string, type: string) =>
     ["contracts-in-range", start, end, type] as const,
   stageParticipants: (stageId: number) =>

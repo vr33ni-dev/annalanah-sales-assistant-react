@@ -307,11 +307,18 @@ export default function Contracts() {
 
   // All-time KPIs (no date filter) — used for all metric chips on this page
   const { data: kpisAllTime } = useMockableQuery<DashboardKPIs>({
-    queryKey: ["dashboardKPIs", "all-time"],
+    queryKey: queryKeys.dashboardKpis({ scope: "all-time" }),
     queryFn: () => getDashboardKPIs(),
     staleTime: 5 * 60 * 1000,
     mockData: mockDashboardKPIs,
   });
+
+  const dashboardValuesAreNet =
+    (kpisAllTime?.monetary_mode ?? contracts[0]?.monetary_mode ?? "netto") ===
+    "netto";
+  const cashflowValuesAreNet =
+    (metrics?.monetary_mode ?? forecast[0]?.monetary_mode ?? "brutto") ===
+    "netto";
 
   const filteredContracts = useMemo(() => {
     let list = contracts;
@@ -737,7 +744,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_active_clients ?? 0)}
           label="CLV aktive Kunden"
           popover={`Gesamtwert aller Vertragsperioden aktiver Kunden (historisch + aktuell)`}
-          netAmount
+          netAmount={dashboardValuesAreNet}
         />
 
         <MetricChip
@@ -746,7 +753,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.clv_all_time ?? 0)}
           label="CLV gesamt (all-time)"
           popover={`Summe aller Verträge ever – inkl. inaktiver/verlorener Kunden`}
-          netAmount
+          netAmount={dashboardValuesAreNet}
         />
 
         <MetricChip
@@ -763,7 +770,7 @@ export default function Contracts() {
           value={euro(kpisAllTime?.active_revenue ?? 0)}
           label="Aktiver Umsatz"
           popover={`Summe der laufenden Vertragsperioden (nicht abgelaufen)\n= ${euro(kpisAllTime?.active_revenue ?? 0)}`}
-          netAmount
+          netAmount={dashboardValuesAreNet}
         />
 
         <MetricChip
@@ -776,7 +783,7 @@ export default function Contracts() {
             `= ${euro(kpisAllTime?.active_revenue ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
             `= ${euro(kpisAllTime?.avg_vertragswert ?? 0)}`
           }
-          netAmount
+          netAmount={dashboardValuesAreNet}
         />
 
         <MetricChip
@@ -796,7 +803,7 @@ export default function Contracts() {
             `= ${euro(kpisAllTime?.clv_active_clients ?? 0)} / ${kpisAllTime?.active_contracts_count || 1}\n` +
             `= ${euro(Math.round(kpisAllTime?.active_contracts_count ? kpisAllTime.clv_active_clients / kpisAllTime.active_contracts_count : 0))}`
           }
-          netAmount
+          netAmount={dashboardValuesAreNet}
         />
 
         <MetricChip
@@ -809,7 +816,7 @@ export default function Contracts() {
             `YTD Cashflow: ${euro(ytdPaidAmountDisplay)}\n` +
             `Ø pro Monat: ${euro(avgMonthlyYtd)}`
           }
-          netAmount
+          netAmount={cashflowValuesAreNet}
         />
 
         <MetricChip
@@ -828,7 +835,7 @@ export default function Contracts() {
                   .join(" + ")}) / ${next3Display.length} = ${euro(avgNext3)}`
               : "Keine Forecast-Daten für die nächsten 3 Monate."
           }
-          netAmount
+          netAmount={cashflowValuesAreNet}
         />
       </div>
 
@@ -1226,7 +1233,7 @@ export default function Contracts() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
-                    Umsatz (gesamt)
+                    Umsatz (CLV, Netto)
                   </h3>
                   <p>
                     €
