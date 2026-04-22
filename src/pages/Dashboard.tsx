@@ -18,12 +18,14 @@ import {
   getStages,
   getUpsells,
   getDashboardKPIs,
+  getContractsInRange,
   type Client,
   type Contract,
   type SalesProcess,
   type Stage,
   type ContractUpsell,
   type DashboardKPIs,
+  type ContractInRange,
 } from "@/lib/api";
 
 import {
@@ -47,6 +49,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { SALES_STAGE, STAGE_LABELS } from "@/constants/stages";
 import { parseIsoToLocal } from "@/helpers/date";
+import { queryKeys } from "@/lib/queryKeys";
 import {
   Tooltip,
   TooltipContent,
@@ -97,35 +100,35 @@ export default function Dashboard() {
   // LOAD DATA
   // -----------------------------
   const { data: clients = [] } = useMockableQuery<Client[]>({
-    queryKey: ["clients"],
+    queryKey: queryKeys.clients(false),
     queryFn: () => getClients(),
     select: asArray<Client>,
     mockData: mockClients,
   });
 
   const { data: contracts = [] } = useMockableQuery<Contract[]>({
-    queryKey: ["contracts"],
+    queryKey: queryKeys.contracts,
     queryFn: () => getContracts(),
     select: asArray<Contract>,
     mockData: mockContracts,
   });
 
   const { data: salesProcesses = [] } = useMockableQuery<SalesProcess[]>({
-    queryKey: ["sales"],
+    queryKey: queryKeys.sales,
     queryFn: getSalesProcesses,
     select: asArray<SalesProcess>,
     mockData: mockSalesProcesses,
   });
 
   const { data: stages = [] } = useMockableQuery<Stage[]>({
-    queryKey: ["stages"],
+    queryKey: queryKeys.stages,
     queryFn: getStages,
     select: asArray<Stage>,
     mockData: mockStages,
   });
 
   const { data: upsells = [] } = useMockableQuery<ContractUpsell[]>({
-    queryKey: ["upsells", startDateParam ?? "", endDateParam ?? ""],
+    queryKey: queryKeys.upsellsByDateRange(startDateParam, endDateParam),
     queryFn: () =>
       getUpsells({
         start_date: startDateParam,
@@ -136,13 +139,50 @@ export default function Dashboard() {
   });
 
   const { data: kpis } = useMockableQuery<DashboardKPIs>({
-    queryKey: ["dashboardKPIs", startDateParam ?? "", endDateParam ?? ""],
+    queryKey: queryKeys.dashboardKpis({
+      startDate: startDateParam,
+      endDate: endDateParam,
+    }),
     queryFn: () =>
       getDashboardKPIs({
         start_date: startDateParam,
         end_date: endDateParam,
       }),
     mockData: mockDashboardKPIs,
+  });
+
+  const { data: neukundenContracts = [] } = useMockableQuery<ContractInRange[]>(
+    {
+      queryKey: queryKeys.contractsInRange(
+        startDateParam ?? "",
+        endDateParam ?? "",
+        "neukunden",
+      ),
+      queryFn: () =>
+        getContractsInRange({
+          start_date: startDateParam,
+          end_date: endDateParam,
+          type: "neukunden",
+        }),
+      mockData: [],
+    },
+  );
+
+  const { data: verlaengerungContracts = [] } = useMockableQuery<
+    ContractInRange[]
+  >({
+    queryKey: queryKeys.contractsInRange(
+      startDateParam ?? "",
+      endDateParam ?? "",
+      "verlaengerung",
+    ),
+    queryFn: () =>
+      getContractsInRange({
+        start_date: startDateParam,
+        end_date: endDateParam,
+        type: "verlaengerung",
+      }),
+    mockData: [],
   });
 
   // -----------------------------
@@ -308,18 +348,6 @@ export default function Dashboard() {
   );
   const notRenewedUpsellsInRange = upsells.filter(
     (u) => u.upsell_result === "keine_verlaengerung",
-  );
-
-  const renewalContractIds = new Set(
-    upsells
-      .filter(
-        (u) => u.upsell_result === "verlaengerung" && u.new_contract_id != null,
-      )
-      .map((u) => u.new_contract_id!),
-  );
-
-  const newCustomerContractsInRange = contractsStartedInRange.filter(
-    (c) => !renewalContractIds.has(c.id),
   );
 
   // Won sales processes list for the closing rate modal detail view
@@ -497,7 +525,7 @@ export default function Dashboard() {
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
-      <MonthlyKPITable contracts={contracts} salesProcesses={salesProcesses} />
+      <MonthlyKPITable />
 
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -719,38 +747,39 @@ export default function Dashboard() {
           {/* ── Umsatz durch Verlängerungen ── */}
           {revenueModal === "renewal" && (
             <div className="space-y-2 mt-2">
-              {renewedUpsellsInRange.length === 0 ? (
+              {verlaengerungContracts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Keine Verlängerungen im gewählten Zeitraum.
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                  <div className="grid grid-cols-[1fr_auto_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
                     <span>Kunde</span>
-                    <span className="text-right">Umsatz</span>
+                    <span className="text-center px-3">Beginn</span>
+                    <span className="text-right">Umsatz (Netto)</span>
                   </div>
-                  {renewedUpsellsInRange
+                  {verlaengerungContracts
                     .slice()
-                    .sort(
-                      (a, b) =>
-                        (b.upsell_revenue ?? 0) - (a.upsell_revenue ?? 0),
-                    )
-                    .map((u) => (
+                    .sort((a, b) => b.revenue_netto - a.revenue_netto)
+                    .map((c) => (
                       <div
-                        key={u.id}
-                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                        key={c.contract_id}
+                        className="grid grid-cols-[1fr_auto_auto] items-center text-sm py-1 border-b last:border-0"
                       >
-                        <span>
-                          {clientNameById.get(u.client_id) ??
-                            `Kunde ${u.client_id}`}
+                        <span>{c.client_name}</span>
+                        <span className="text-xs text-muted-foreground px-3">
+                          {c.start_date
+                            ? formatLocalDate(parseIsoToLocal(c.start_date))
+                            : "—"}
                         </span>
                         <span className="text-right font-medium">
-                          {euro(u.upsell_revenue ?? 0)}
+                          {euro(c.revenue_netto)}
                         </span>
                       </div>
                     ))}
-                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                  <div className="grid grid-cols-[1fr_auto_auto] items-center text-sm font-semibold pt-2 border-t">
                     <span>Gesamt</span>
+                    <span />
                     <span className="text-right">
                       {euro(kpis?.renewal_revenue ?? 0)}
                     </span>
@@ -760,53 +789,88 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── Revenue modals (new / all) ── */}
-          {(revenueModal === "new" || revenueModal === "all") &&
-            (() => {
-              const displayContracts =
-                revenueModal === "new"
-                  ? newCustomerContractsInRange
-                  : contractsStartedInRange;
-              const displayTotal =
-                revenueModal === "new" ? newCustomerRevenue : totalRevenue;
-              return (
-                <div className="space-y-2 mt-2">
-                  {displayContracts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Keine Verträge im gewählten Zeitraum.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
-                        <span>Kunde</span>
-                        <span className="text-right">Umsatz</span>
+          {/* ── Umsatz durch Neukunden ── */}
+          {revenueModal === "new" && (
+            <div className="space-y-2 mt-2">
+              {neukundenContracts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine Neukunden-Verträge im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-center px-3">Beginn</span>
+                    <span className="text-right">Umsatz (Netto)</span>
+                  </div>
+                  {neukundenContracts
+                    .slice()
+                    .sort((a, b) => b.revenue_netto - a.revenue_netto)
+                    .map((c) => (
+                      <div
+                        key={c.contract_id}
+                        className="grid grid-cols-[1fr_auto_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>{c.client_name}</span>
+                        <span className="text-xs text-muted-foreground px-3">
+                          {c.start_date
+                            ? formatLocalDate(parseIsoToLocal(c.start_date))
+                            : "—"}
+                        </span>
+                        <span className="text-right font-medium">
+                          {euro(c.revenue_netto)}
+                        </span>
                       </div>
-                      {displayContracts
-                        .slice()
-                        .sort(
-                          (a, b) =>
-                            (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
-                        )
-                        .map((c) => (
-                          <div
-                            key={c.id}
-                            className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
-                          >
-                            <span>{c.client_name}</span>
-                            <span className="text-right font-medium">
-                              {euro(c.revenue_total ?? 0)}
-                            </span>
-                          </div>
-                        ))}
-                      <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
-                        <span>Gesamt</span>
-                        <span className="text-right">{euro(displayTotal)}</span>
+                    ))}
+                  <div className="grid grid-cols-[1fr_auto_auto] items-center text-sm font-semibold pt-2 border-t">
+                    <span>Gesamt</span>
+                    <span />
+                    <span className="text-right">
+                      {euro(newCustomerRevenue)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── Gesamtumsatz (all contracts in range) ── */}
+          {revenueModal === "all" && (
+            <div className="space-y-2 mt-2">
+              {contractsStartedInRange.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Keine Verträge im gewählten Zeitraum.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_auto] text-xs font-medium text-muted-foreground border-b pb-1 mb-1">
+                    <span>Kunde</span>
+                    <span className="text-right">Umsatz</span>
+                  </div>
+                  {contractsStartedInRange
+                    .slice()
+                    .sort(
+                      (a, b) => (b.revenue_total ?? 0) - (a.revenue_total ?? 0),
+                    )
+                    .map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-[1fr_auto] items-center text-sm py-1 border-b last:border-0"
+                      >
+                        <span>{c.client_name}</span>
+                        <span className="text-right font-medium">
+                          {euro(c.revenue_total ?? 0)}
+                        </span>
                       </div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+                    ))}
+                  <div className="grid grid-cols-[1fr_auto] items-center text-sm font-semibold pt-2 border-t">
+                    <span>Gesamt</span>
+                    <span className="text-right">{euro(totalRevenue)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -23,6 +23,8 @@ type MetricChipProps = {
   className?: string;
   /** Chip size */
   size?: Size;
+  /** If true, appends a note that the value is net (19% MwSt. already deducted). */
+  netAmount?: boolean;
 };
 
 const sizeStyles: Record<
@@ -57,8 +59,16 @@ export function MetricChip({
   popover,
   className = "",
   size = "lg",
+  netAmount = false,
 }: MetricChipProps) {
   const sz = sizeStyles[size];
+
+  const vatNote = "Netto-Betrag – 19% MwSt. bereits abgezogen.";
+  const popoverText = netAmount
+    ? popover
+      ? `${popover}\n\n${vatNote}`
+      : vatNote
+    : popover;
 
   return (
     <div
@@ -78,7 +88,7 @@ export function MetricChip({
       <div className="min-w-0 leading-tight">
         <div className={`${sz.value} font-semibold truncate`}>{value}</div>
 
-        {popover ? (
+        {popoverText ? (
           <Popover>
             <PopoverTrigger asChild>
               <button
@@ -91,7 +101,7 @@ export function MetricChip({
               </button>
             </PopoverTrigger>
             <PopoverContent className="whitespace-pre-line text-xs max-w-xs">
-              {popover}
+              {popoverText}
             </PopoverContent>
           </Popover>
         ) : (

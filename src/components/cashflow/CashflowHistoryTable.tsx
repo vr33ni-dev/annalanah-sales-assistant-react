@@ -248,7 +248,7 @@ export function CashflowHistoryTable({
                 <TableRow>
                   {!contractId && <TableHead>Vertrag</TableHead>}
                   <TableHead>Fälligkeitsdatum</TableHead>
-                  <TableHead>Betrag</TableHead>
+                  <TableHead>Betrag (Brutto)</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>

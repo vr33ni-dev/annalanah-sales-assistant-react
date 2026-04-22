@@ -18,7 +18,13 @@ import { asArray } from "@/lib/safe";
 import { extractYmd, formatMonthLabel, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
 
-export function CashflowUpcomingTable({ contractId, clientId }: { contractId?: number; clientId?: number }) {
+export function CashflowUpcomingTable({
+  contractId,
+  clientId,
+}: {
+  contractId?: number;
+  clientId?: number;
+}) {
   const { enabled } = useAuthEnabled();
   const isContractView = typeof contractId === "number";
   const isClientView = typeof clientId === "number";
@@ -163,18 +169,25 @@ export function CashflowUpcomingTable({ contractId, clientId }: { contractId?: n
     return Array.from(byMonth.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, amount]) => ({ month, confirmed: amount, potential: 0 }));
-  }, [forecast, isContractView, isClientView, selectedContract?.cashflow, clientContractsFull, clientId]);
+  }, [
+    forecast,
+    isContractView,
+    isClientView,
+    selectedContract?.cashflow,
+    clientContractsFull,
+    clientId,
+  ]);
 
   const isFetching = isClientView
     ? isFetchingClientContracts
     : isContractView
-    ? isFetchingContractDetail
-    : isFetchingForecast;
+      ? isFetchingContractDetail
+      : isFetchingForecast;
   const isError = isClientView
     ? isErrorClientContracts
     : isContractView
-    ? isErrorContractDetail
-    : isErrorForecast;
+      ? isErrorContractDetail
+      : isErrorForecast;
 
   return (
     <Card>
@@ -188,7 +201,7 @@ export function CashflowUpcomingTable({ contractId, clientId }: { contractId?: n
         <div className="mt-2 text-sm text-muted-foreground space-y-1">
           <div>
             <strong>Bestätigt:</strong> Verbindliche Zahlungen der nächsten{" "}
-            {potentialMonths} Monate aus bestehenden Verträgen.
+            {potentialMonths} Monate aus bestehenden Verträgen. (Brutto)
           </div>
           {showPotential && (
             <div>

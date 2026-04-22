@@ -23,6 +23,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { LeadSearch } from "@/components/LeadSearch";
 import type { SalesProcessWorkflowFormProps } from "./types";
 
+import { useState } from "react";
+
 export function SalesProcessWorkflowForm({
   showForm,
   title,
@@ -44,6 +46,125 @@ export function SalesProcessWorkflowForm({
   onSelectLead,
 }: SalesProcessWorkflowFormProps) {
   if (!showForm) return null;
+
+  // Double submit prevention and field errors
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [revenueError, setRevenueError] = useState<string | null>(null);
+  const [durationError, setDurationError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  // Email and phone validation helpers
+  function isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+  function isValidPhone(phone: string): boolean {
+    if (!phone) return true; // phone is optional
+    // Allow +, digits, spaces, -, (, ) and min 6 digits
+    const cleaned = phone.replace(/[^\d]/g, "");
+    return /^[\d\s+\-()]+$/.test(phone) && cleaned.length >= 6;
+  }
+
+  const MIN_REVENUE = 0;
+  const MAX_REVENUE = 1_000_000;
+  const MIN_DURATION = 1;
+  const MAX_DURATION = 120;
+
+  // Validate and submit for contract/Abschluss step
+  // Erstgespräch submit
+  const handleErstgespraechSaveWrapped = async () => {
+    if (isSubmitting) return;
+    setEmailError(null);
+    setPhoneError(null);
+    if (!isValidEmail(formData.email)) {
+      setEmailError("Bitte geben Sie eine gültige Email-Adresse ein.");
+      return;
+    }
+    if (!isValidPhone(formData.phone)) {
+      setPhoneError(
+        "Bitte geben Sie eine gültige Telefonnummer ein (mind. 6 Ziffern).",
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await onErstgespraechSave();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Zweitgespräch submit (old flow, step 5)
+  const handleZweitgespraechStartWrapped = async () => {
+    if (isSubmitting) return;
+    setEmailError(null);
+    setPhoneError(null);
+    if (!isValidEmail(formData.email)) {
+      setEmailError("Bitte geben Sie eine gültige Email-Adresse ein.");
+      return;
+    }
+    if (!isValidPhone(formData.phone)) {
+      setPhoneError(
+        "Bitte geben Sie eine gültige Telefonnummer ein (mind. 6 Ziffern).",
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await onZweitgespraechStart();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAbschlussSubmit = async () => {
+    if (isSubmitting) return;
+    setRevenueError(null);
+    setDurationError(null);
+
+    // Only validate if contract fields are visible
+    if (formData.abschluss) {
+      const revenue = Number(formData.revenue);
+      const duration = Number(formData.contractDuration);
+      if (isNaN(revenue) || formData.revenue === "") {
+        setRevenueError("Umsatz ist erforderlich.");
+        return;
+      }
+      if (revenue < MIN_REVENUE) {
+        setRevenueError("Umsatz darf nicht negativ sein.");
+        return;
+      }
+      if (revenue > MAX_REVENUE) {
+        setRevenueError(
+          `Umsatz darf maximal ${MAX_REVENUE.toLocaleString()} betragen.`,
+        );
+        return;
+      }
+      if (isNaN(duration) || formData.contractDuration === "") {
+        setDurationError("Vertragsdauer ist erforderlich.");
+        return;
+      }
+      if (duration < MIN_DURATION) {
+        setDurationError(
+          `Vertragsdauer muss mindestens ${MIN_DURATION} Monat betragen.`,
+        );
+        return;
+      }
+      if (duration > MAX_DURATION) {
+        setDurationError(
+          `Vertragsdauer darf maximal ${MAX_DURATION} Monate betragen.`,
+        );
+        return;
+      }
+    }
+    setIsSubmitting(true);
+    try {
+      await onSubmit();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Patch all other submit handlers to use isSubmitting if needed (not shown here for brevity)
 
   return (
     <Card className="border-2 border-primary/20 bg-primary/5">
@@ -133,12 +254,16 @@ export function SalesProcessWorkflowForm({
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setEmailError(null);
+                }}
                 placeholder="max@example.com"
                 className="bg-success/5 border-success/30"
               />
+              {emailError && (
+                <p className="text-xs text-destructive mt-1">{emailError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -146,12 +271,16 @@ export function SalesProcessWorkflowForm({
               <Input
                 id="phone"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  setPhoneError(null);
+                }}
                 placeholder="+49 123 456789"
                 className="bg-success/5 border-success/30"
               />
+              {phoneError && (
+                <p className="text-xs text-destructive mt-1">{phoneError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -240,16 +369,19 @@ export function SalesProcessWorkflowForm({
                 Zurück
               </Button>
               <Button
-                onClick={onErstgespraechSave}
+                onClick={handleErstgespraechSaveWrapped}
                 disabled={
                   !formData.name ||
                   !formData.source ||
                   !formData.email.trim() ||
                   !formData.erstgespraechDate ||
-                  isStartPending
+                  isStartPending ||
+                  isSubmitting
                 }
               >
-                {isStartPending ? "Speichern…" : "Speichern & Schließen"}
+                {isStartPending || isSubmitting
+                  ? "Speichern…"
+                  : "Speichern & Schließen"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
@@ -308,9 +440,11 @@ export function SalesProcessWorkflowForm({
             <div className="col-span-full flex gap-3">
               <Button
                 onClick={onSubmit}
-                disabled={!formData.zweitgespraechDate || isPatchPending}
+                disabled={
+                  !formData.zweitgespraechDate || isPatchPending || isSubmitting
+                }
               >
-                {isPatchPending ? "Speichern…" : "Speichern"}
+                {isPatchPending || isSubmitting ? "Speichern…" : "Speichern"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
@@ -452,21 +586,30 @@ export function SalesProcessWorkflowForm({
                   <Input
                     type="number"
                     value={formData.revenue}
-                    onChange={(e) =>
-                      setFormData({ ...formData, revenue: e.target.value })
-                    }
+                    min={MIN_REVENUE}
+                    max={MAX_REVENUE}
+                    onChange={(e) => {
+                      setFormData({ ...formData, revenue: e.target.value });
+                      setRevenueError(null);
+                    }}
                     placeholder="4800"
                     className="bg-success/5 border-success/30"
                   />
+                  {revenueError && (
+                    <p className="text-xs text-destructive mt-1">
+                      {revenueError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
                   <Label>Vertragsdauer (Monate) *</Label>
                   <Select
                     value={formData.contractDuration ?? ""}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, contractDuration: value })
-                    }
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, contractDuration: value });
+                      setDurationError(null);
+                    }}
                   >
                     <SelectTrigger className="bg-success/5 border-success/30">
                       <SelectValue placeholder="Dauer auswählen" />
@@ -478,6 +621,11 @@ export function SalesProcessWorkflowForm({
                       <SelectItem value="24">24</SelectItem>
                     </SelectContent>
                   </Select>
+                  {durationError && (
+                    <p className="text-xs text-destructive mt-1">
+                      {durationError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -592,11 +740,13 @@ export function SalesProcessWorkflowForm({
 
             <div className="flex gap-3">
               <Button
-                onClick={onSubmit}
-                disabled={!canSubmit || isPatchPending}
+                onClick={handleAbschlussSubmit}
+                disabled={!canSubmit || isPatchPending || isSubmitting}
                 className="mt-4"
               >
-                {isPatchPending ? "Speichern…" : "Speichern & Abschließen"}
+                {isPatchPending || isSubmitting
+                  ? "Speichern…"
+                  : "Speichern & Abschließen"}
               </Button>
               <Button variant="ghost" onClick={onClose} className="mt-4">
                 Abbrechen
@@ -634,12 +784,16 @@ export function SalesProcessWorkflowForm({
                 id="email-zweit"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  setEmailError(null);
+                }}
                 placeholder="max@example.com"
                 className="bg-success/5 border-success/30"
               />
+              {emailError && (
+                <p className="text-xs text-destructive mt-1">{emailError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -647,12 +801,16 @@ export function SalesProcessWorkflowForm({
               <Input
                 id="phone-zweit"
                 value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  setPhoneError(null);
+                }}
                 placeholder="+49 123 456789"
                 className="bg-success/5 border-success/30"
               />
+              {phoneError && (
+                <p className="text-xs text-destructive mt-1">{phoneError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -741,16 +899,17 @@ export function SalesProcessWorkflowForm({
                 Zurück
               </Button>
               <Button
-                onClick={onZweitgespraechStart}
+                onClick={handleZweitgespraechStartWrapped}
                 disabled={
                   !formData.name ||
                   !formData.source ||
                   !formData.email.trim() ||
                   !formData.zweitgespraechDate ||
-                  isStartPending
+                  isStartPending ||
+                  isSubmitting
                 }
               >
-                {isStartPending ? "Speichern…" : "Speichern"}
+                {isStartPending || isSubmitting ? "Speichern…" : "Speichern"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
