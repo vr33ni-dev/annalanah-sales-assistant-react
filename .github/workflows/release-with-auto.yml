@@ -7,7 +7,7 @@ permissions:
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -82,6 +82,38 @@ jobs:
           CANDIDATE=""
           RAW_VERSION=""
 
+          # Sync local package version with latest remote tag before auto runs.
+          # This avoids npm/tag collisions when package.json is behind tags
+          # (e.g. local 0.4.x while latest tag is v0.5.0).
+          git fetch --tags origin main || true
+          LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+          if [ -n "${LATEST_TAG:-}" ] && [ -f package.json ]; then
+            LATEST_NO_V="${LATEST_TAG#v}"
+            PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || true)
+            if [ -n "${PKG_VERSION:-}" ] && [ "${PKG_VERSION}" != "${LATEST_NO_V}" ]; then
+              echo "Synchronizing package version from ${PKG_VERSION} to ${LATEST_NO_V} before auto shipit"
+              npm version "${LATEST_NO_V}" --no-git-tag-version --allow-same-version >/dev/null 2>&1 || {
+                echo "Warning: failed to sync package version to ${LATEST_NO_V}; continuing" >&2
+              }
+              # Keep working tree clean for auto: commit sync changes if npm touched files.
+              if [ -n "$(git status --porcelain --untracked-files=no | grep -E 'package.json|package-lock.json|pnpm-lock.yaml|yarn.lock' || true)" ]; then
+                FILES_TO_ADD=""
+                for f in package.json package-lock.json pnpm-lock.yaml yarn.lock; do
+                  if [ -f "$f" ]; then
+                    FILES_TO_ADD="$FILES_TO_ADD $f"
+                  fi
+                done
+                if [ -n "${FILES_TO_ADD# }" ]; then
+                  # shellcheck disable=SC2086
+                  git add -A $FILES_TO_ADD
+                fi
+                if ! git diff --staged --quiet; then
+                  git commit -m "chore(release): sync package version to latest tag [skip ci]" || true
+                fi
+              fi
+            fi
+          fi
+
           # Run auto and capture full output for diagnostics (don't print secrets)
             # Prefer using `auto shipit --dry-run` to get the full semver (vX.Y.Z)
             AUTO_SHIPIT_OUTPUT=$(npx auto shipit --dry-run 2>&1 || true)
@@ -99,13 +131,22 @@ jobs:
             # release without touching the repo working tree.
             printf '%s\n' "$AUTO_SHIPIT_OUTPUT" > "$GITHUB_WORKSPACE/auto-shipit-dry-run.log" || true
 
-            # Try to extract a semver (v1.2.3 or 1.2.3) from the shipit output
-            # Some versions of auto print messages like:
-            #   "Would have created a release on GitHub for version: 0.1.24"
-            # or
-            #   "Would have published: 0.1.19"
-            # so grep for the first semver-like token and prefer that as CANDIDATE.
-            CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+            # Try to extract the target semver (v1.2.3 or 1.2.3) from shipit output.
+            # Important: auto output can include the *current* version before the
+            # computed next version, so do not pick the first match.
+            # Prefer explicit "would release" lines first, then fall back to the
+            # last semver token found in the output.
+            CANDIDATE=$(printf '%s\n' "$AUTO_SHIPIT_OUTPUT" | sed -nE 's/.*Would have created a release on GitHub for version:[[:space:]]*(v?[0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | tail -n1 || true)
+            if [ -z "${CANDIDATE:-}" ]; then
+              CANDIDATE=$(printf '%s\n' "$AUTO_SHIPIT_OUTPUT" | sed -nE 's/.*Would have published:[[:space:]]*(v?[0-9]+\.[0-9]+\.[0-9]+).*/\1/p' | tail -n1 || true)
+            fi
+            if [ -z "${CANDIDATE:-}" ]; then
+              CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
+            fi
+
+            # auto dry-run may touch npm-managed files; restore them so the
+            # subsequent real shipit starts from a clean working tree.
+            git restore --staged --worktree package.json package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null || true
 
             # Ensure we have commits and tags from origin so CHANGELOG/RANGE calculations work
             git fetch --tags origin main || true
@@ -193,6 +234,14 @@ jobs:
           # Create the release using `auto shipit` now that package.json has been bumped
           echo "Running 'auto shipit' to publish the release for ${TAG_NAME}"
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+          echo "package.json version before shipit: $(node -p "require('./package.json').version" 2>/dev/null || echo 'unknown')"
+          # Final guard: ensure no dirty tracked files remain before shipit.
+          DIRTY_FILES=$(git status --porcelain --untracked-files=no | grep -v '^$' || true)
+          if [ -n "${DIRTY_FILES}" ]; then
+            echo "Working tree not clean before shipit; restoring tracked changes:"
+            printf '%s\n' "${DIRTY_FILES}"
+            git restore --staged --worktree . || true
+          fi
           # Run auto shipit (non-dry) to create the tag/release on GitHub. It will operate
           # against the repo and create the release referencing the current HEAD (the bumped commit).
           npx auto shipit || {
@@ -228,7 +277,16 @@ jobs:
             git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
 
             # Stage lockfiles that changed
-            git add -A package-lock.json pnpm-lock.yaml yarn.lock || true
+            FILES_TO_ADD=""
+            for f in package-lock.json pnpm-lock.yaml yarn.lock; do
+              if [ -f "$f" ]; then
+                FILES_TO_ADD="$FILES_TO_ADD $f"
+              fi
+            done
+            if [ -n "${FILES_TO_ADD# }" ]; then
+              # shellcheck disable=SC2086
+              git add -A $FILES_TO_ADD
+            fi
 
             # Create a dedicated commit for lockfile updates
             if git diff --staged --quiet; then
