@@ -97,7 +97,16 @@ jobs:
               }
               # Keep working tree clean for auto: commit sync changes if npm touched files.
               if [ -n "$(git status --porcelain --untracked-files=no | grep -E 'package.json|package-lock.json|pnpm-lock.yaml|yarn.lock' || true)" ]; then
-                git add -A package.json package-lock.json pnpm-lock.yaml yarn.lock || true
+                FILES_TO_ADD=""
+                for f in package.json package-lock.json pnpm-lock.yaml yarn.lock; do
+                  if [ -f "$f" ]; then
+                    FILES_TO_ADD="$FILES_TO_ADD $f"
+                  fi
+                done
+                if [ -n "${FILES_TO_ADD# }" ]; then
+                  # shellcheck disable=SC2086
+                  git add -A $FILES_TO_ADD
+                fi
                 if ! git diff --staged --quiet; then
                   git commit -m "chore(release): sync package version to latest tag [skip ci]" || true
                 fi
@@ -225,6 +234,7 @@ jobs:
           # Create the release using `auto shipit` now that package.json has been bumped
           echo "Running 'auto shipit' to publish the release for ${TAG_NAME}"
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+          echo "package.json version before shipit: $(node -p "require('./package.json').version" 2>/dev/null || echo 'unknown')"
           # Final guard: ensure no dirty tracked files remain before shipit.
           DIRTY_FILES=$(git status --porcelain --untracked-files=no | grep -v '^$' || true)
           if [ -n "${DIRTY_FILES}" ]; then
@@ -267,7 +277,16 @@ jobs:
             git config user.email "${GITHUB_ACTOR:-github-actions[bot]}@users.noreply.github.com" || true
 
             # Stage lockfiles that changed
-            git add -A package-lock.json pnpm-lock.yaml yarn.lock || true
+            FILES_TO_ADD=""
+            for f in package-lock.json pnpm-lock.yaml yarn.lock; do
+              if [ -f "$f" ]; then
+                FILES_TO_ADD="$FILES_TO_ADD $f"
+              fi
+            done
+            if [ -n "${FILES_TO_ADD# }" ]; then
+              # shellcheck disable=SC2086
+              git add -A $FILES_TO_ADD
+            fi
 
             # Create a dedicated commit for lockfile updates
             if git diff --staged --quiet; then
