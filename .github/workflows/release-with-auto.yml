@@ -135,6 +135,10 @@ jobs:
               CANDIDATE=$(printf '%s' "$AUTO_SHIPIT_OUTPUT" | grep -E -o 'v?[0-9]+\.[0-9]+\.[0-9]+' | tail -n1 || true)
             fi
 
+            # auto dry-run may touch npm-managed files; restore them so the
+            # subsequent real shipit starts from a clean working tree.
+            git restore --staged --worktree package.json package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null || true
+
             # Ensure we have commits and tags from origin so CHANGELOG/RANGE calculations work
             git fetch --tags origin main || true
             LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
@@ -221,6 +225,13 @@ jobs:
           # Create the release using `auto shipit` now that package.json has been bumped
           echo "Running 'auto shipit' to publish the release for ${TAG_NAME}"
           export GH_TOKEN="${AUTO_TOKEN:-${GH_TOKEN:-}}"
+          # Final guard: ensure no dirty tracked files remain before shipit.
+          DIRTY_FILES=$(git status --porcelain --untracked-files=no | grep -v '^$' || true)
+          if [ -n "${DIRTY_FILES}" ]; then
+            echo "Working tree not clean before shipit; restoring tracked changes:"
+            printf '%s\n' "${DIRTY_FILES}"
+            git restore --staged --worktree . || true
+          fi
           # Run auto shipit (non-dry) to create the tag/release on GitHub. It will operate
           # against the repo and create the release referencing the current HEAD (the bumped commit).
           npx auto shipit || {
