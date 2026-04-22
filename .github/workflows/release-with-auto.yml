@@ -82,6 +82,22 @@ jobs:
           CANDIDATE=""
           RAW_VERSION=""
 
+          # Sync local package version with latest remote tag before auto runs.
+          # This avoids npm/tag collisions when package.json is behind tags
+          # (e.g. local 0.4.x while latest tag is v0.5.0).
+          git fetch --tags origin main || true
+          LATEST_TAG=$(git describe --tags --abbrev=0 origin/main 2>/dev/null || true)
+          if [ -n "${LATEST_TAG:-}" ] && [ -f package.json ]; then
+            LATEST_NO_V="${LATEST_TAG#v}"
+            PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || true)
+            if [ -n "${PKG_VERSION:-}" ] && [ "${PKG_VERSION}" != "${LATEST_NO_V}" ]; then
+              echo "Synchronizing package version from ${PKG_VERSION} to ${LATEST_NO_V} before auto shipit"
+              npm version "${LATEST_NO_V}" --no-git-tag-version --allow-same-version >/dev/null 2>&1 || {
+                echo "Warning: failed to sync package version to ${LATEST_NO_V}; continuing" >&2
+              }
+            fi
+          fi
+
           # Run auto and capture full output for diagnostics (don't print secrets)
             # Prefer using `auto shipit --dry-run` to get the full semver (vX.Y.Z)
             AUTO_SHIPIT_OUTPUT=$(npx auto shipit --dry-run 2>&1 || true)
