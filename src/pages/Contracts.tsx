@@ -86,6 +86,32 @@ function euro(n: number) {
   return `€${Math.round(n).toLocaleString()}`;
 }
 
+function euro2(n: number) {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
+function paymentFrequencyLabel(frequency?: string | null): string {
+  switch (frequency) {
+    case "monthly":
+      return "Monatlich";
+    case "bi-monthly":
+      return "Zweimonatlich";
+    case "quarterly":
+      return "Vierteljährlich";
+    case "bi-yearly":
+      return "Halbjährlich";
+    case "one-time":
+      return "Einmalig";
+    default:
+      return frequency ?? "–";
+  }
+}
+
 /* --------------- page ------------------- */
 
 export default function Contracts() {
@@ -1107,12 +1133,10 @@ export default function Contracts() {
                         return end ? formatDateOnly(end.toISOString()) : "–";
                       })()}
                     </TableCell>
-                    <TableCell>
-                      €{group.totalRevenue.toLocaleString()}
-                    </TableCell>
+                    <TableCell>{euro2(group.totalRevenue)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {latest.payment_frequency}
+                        {paymentFrequencyLabel(latest.payment_frequency)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -1225,22 +1249,14 @@ export default function Contracts() {
                 )}
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground">
-                    Zahlungsfrequenz
-                  </h3>
-                  <Badge variant="outline">
-                    {drawerContract.payment_frequency}
-                  </Badge>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-muted-foreground">
-                    Umsatz (CLV, Netto)
+                    CLV (Netto)
                   </h3>
                   <p>
-                    €
-                    {(chainTotal > 0
-                      ? chainTotal
-                      : drawerContract.revenue_total
-                    ).toLocaleString()}
+                    {euro2(
+                      chainTotal > 0
+                        ? chainTotal
+                        : drawerContract.revenue_total,
+                    )}
                   </p>
                 </div>
 
@@ -1252,6 +1268,7 @@ export default function Contracts() {
                     </p>
                     <div className="space-y-1 text-sm mb-3">
                       <div>
+                        <span className="text-muted-foreground">Dauer: </span>
                         {formatDateOnly(currentOrNextContract.start_date)}
                         {" – "}
                         {(() => {
@@ -1263,8 +1280,20 @@ export default function Contracts() {
                         {" Monate)"}
                       </div>
                       <div>
-                        €{currentOrNextContract.revenue_total.toLocaleString()}{" "}
-                        · {currentOrNextContract.payment_frequency}
+                        <span className="text-muted-foreground">
+                          Umsatz (Netto):
+                        </span>{" "}
+                        {euro2(currentOrNextContract.revenue_total)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">
+                          Zahlungsfrequenz:
+                        </span>
+                        <Badge variant="outline">
+                          {paymentFrequencyLabel(
+                            currentOrNextContract.payment_frequency,
+                          )}
+                        </Badge>
                       </div>
                     </div>
                     <button
@@ -1337,8 +1366,7 @@ export default function Contracts() {
                     )}
                     {savedUpsell.upsell_revenue != null && (
                       <div className="text-sm text-muted-foreground">
-                        Geschätzter Umsatz: €
-                        {savedUpsell.upsell_revenue.toLocaleString()}
+                        Geschätzter Umsatz: {euro2(savedUpsell.upsell_revenue)}
                       </div>
                     )}
                     {savedUpsell.contract_start_date && (
@@ -1437,7 +1465,10 @@ export default function Contracts() {
                                   )}
                                   {c.payment_frequency && (
                                     <div className="text-sm">
-                                      Zahlungsfrequenz: {c.payment_frequency}
+                                      Zahlungsfrequenz:{" "}
+                                      {paymentFrequencyLabel(
+                                        c.payment_frequency,
+                                      )}
                                     </div>
                                   )}
                                   <div className="text-sm flex items-center gap-1.5">
@@ -1448,8 +1479,7 @@ export default function Contracts() {
                                           : ""
                                       }
                                     >
-                                      Umsatz: €
-                                      {c.revenue_total.toLocaleString()}
+                                      Umsatz: {euro2(c.revenue_total)}
                                     </span>
                                     {c.source === "imported" && (
                                       <span
@@ -1508,17 +1538,26 @@ export default function Contracts() {
           onClose={() => setShowContractEdit(false)}
           onSaved={() => {
             setShowContractEdit(false);
+            const selectedId = selectedContract?.id;
 
             toast({
               title: "Vertrag gespeichert",
               description: "Die Änderungen wurden erfolgreich gespeichert.",
             });
 
+            if (selectedId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.contract(selectedId),
+              });
+              queryClient.refetchQueries({
+                queryKey: queryKeys.contract(selectedId),
+                type: "active",
+              });
+            }
+
             refetchContracts().then((result) => {
               // Get fresh contract from server
-              const updated = result.data?.find(
-                (c) => c.id === selectedContract?.id,
-              );
+              const updated = result.data?.find((c) => c.id === selectedId);
               if (updated) {
                 setSelectedContract(updated); // refreshes the drawer details
               }
