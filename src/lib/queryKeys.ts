@@ -33,6 +33,8 @@ export const queryKeys = {
     ["cashflow-forecast", contractId] as const,
   cashflowMetrics: ["cashflow-metrics"] as const,
   monthlyKpis: (year: number) => ["monthly-kpis", year] as const,
+  contractsInRange: (start: string, end: string, type: string) =>
+    ["contracts-in-range", start, end, type] as const,
   stageParticipants: (stageId: number) =>
     ["stage-participants", stageId] as const,
 };

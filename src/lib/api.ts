@@ -361,6 +361,27 @@ export const getMonthlyKPIs = async (year?: number): Promise<MonthlyKPI[]> => {
   return data;
 };
 
+export type ContractInRange = {
+  contract_id: number;
+  client_id: number;
+  client_name: string;
+  start_date: string | null;
+  end_date: string | null;
+  revenue_netto: number;
+};
+
+export const getContractsInRange = async (params: {
+  start_date?: string;
+  end_date?: string;
+  type: "neukunden" | "verlaengerung";
+}): Promise<ContractInRange[]> => {
+  const { data } = await api.get<ContractInRange[]>(
+    "/dashboard/contracts-in-range",
+    { params },
+  );
+  return data;
+};
+
 export const getDashboardKPIs = async (params?: {
   start_date?: string;
   end_date?: string;
