@@ -196,13 +196,6 @@ export async function getSalesProcesses(): Promise<
   });
 }
 
-export const getSalesProcessById = async (
-  id: string | number,
-): Promise<SalesProcess> => {
-  const { data } = await api.get(`/sales/${id}`);
-  return data as SalesProcess;
-};
-
 // Narrow the update payload to only fields the backend accepts on PATCH
 export type SalesProcessUpdateRequest = {
   initial_contact_date?: string | null;
@@ -229,12 +222,6 @@ export const updateSalesProcess = async (
 ): Promise<SalesProcess> => {
   const { data } = await api.patch(`/sales/${id}`, payload);
   return data as SalesProcess;
-};
-
-export const deleteSalesProcess = async (
-  id: string | number,
-): Promise<void> => {
-  await api.delete(`/sales/${id}`);
 };
 
 export type StartSalesProcessRequest = {
@@ -440,11 +427,6 @@ export const getContractById = async (
   return data as Contract;
 };
 
-export const getContractChain = async (id: number): Promise<Contract[]> => {
-  const { data } = await api.get(`/contracts/${id}/chain`);
-  return asArray<Contract>(data);
-};
-
 export const createContract = async (
   payload: Partial<Contract>,
 ): Promise<Contract> => {
@@ -484,11 +466,6 @@ export const getStages = async (): Promise<Stage[]> => {
   return asArray<Stage>(data);
 };
 
-export const getStageById = async (id: string | number): Promise<Stage> => {
-  const { data } = await api.get(`/stages/${id}`);
-  return data as Stage;
-};
-
 export const createStage = async (payload: Partial<Stage>): Promise<Stage> => {
   const { data } = await api.post("/stages", payload);
   return data as Stage;
@@ -521,23 +498,6 @@ export const updateStageStats = async (
 
 /* Stage participants & assignments */
 /* ------------------------------------------------------------------ */
-/* Stage participants (API response shape) */
-
-export interface StageParticipantResponse {
-  id: number;
-  stage_id: number;
-
-  participant_name: string;
-  participant_email?: string | null;
-  participant_phone?: string | null;
-
-  linked_client_id?: number | null;
-  linked_lead_id?: number | null;
-
-  attended: boolean;
-  created_at?: string;
-}
-
 export interface AddStageParticipantRequest {
   participant_name: string;
   participant_email?: string;
@@ -590,17 +550,6 @@ export interface StageParticipant {
 
   attended: boolean;
   created_at?: string;
-}
-
-export interface StageParticipantUI {
-  id: number;
-  stage_id: number;
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  client_id?: number | null;
-  lead_id?: number | null;
-  attended: boolean;
 }
 
 export const getStageParticipants = async (
@@ -756,94 +705,30 @@ export interface CashflowEntry {
 
 export const getCashflowEntries = async (
   contractId?: number,
-  options?: {
-    /**
-     * If the aggregate endpoint (/cashflow/entries) is not available,
-     * optionally fall back to fetching per-contract cashflow schedules.
-     *
-     * NOTE: This can generate 1 request per contract and should generally be
-     * avoided when working against a real backend.
-     */
-    allowFanoutFallback?: boolean;
-  },
 ): Promise<CashflowEntry[]> => {
   if (contractId) {
-    try {
-      const { data } = await api.get<CashflowEntry[]>(
-        `/contracts/${contractId}/cashflow`,
-      );
-      if (Array.isArray(data)) return data;
-    } catch {
-      // Backward-compatible fallback for older backend route
-      try {
-        const { data } = await api.get<CashflowEntry[]>(
-          `/cashflow/entries?contract_id=${contractId}`,
-        );
-        if (Array.isArray(data)) return data;
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  }
-
-  // All-contract view: prefer the aggregate endpoint to avoid an HTTP N+1.
-  // (The per-contract fan-out can be enabled explicitly via options.)
-  try {
-    const { data } = await api.get<unknown>(`/cashflow/entries`);
-    if (Array.isArray(data)) return data as CashflowEntry[];
-
-    if (data && typeof data === "object") {
-      const wrapped = data as {
-        monetary_mode?: MonetaryMode;
-        data?: unknown;
-      };
-
-      if (Array.isArray(wrapped.data)) {
-        const mode = wrapped.monetary_mode;
-        return (wrapped.data as CashflowEntry[]).map((entry) => ({
-          ...entry,
-          monetary_mode: entry.monetary_mode ?? mode,
-        }));
-      }
-    }
-  } catch (err: unknown) {
-    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-    const canFallback =
-      !!options?.allowFanoutFallback &&
-      (status === 404 || status === 405 || status === 501);
-
-    if (!canFallback) return [];
-  }
-
-  // Optional fallback for older/incomplete backends: derive a full list by
-  // fetching each contract's schedule.
-  try {
-    const contracts = await getContracts();
-    const lists = await Promise.all(
-      contracts.map(async (contract) => {
-        try {
-          const { data } = await api.get<CashflowEntry[]>(
-            `/contracts/${contract.id}/cashflow`,
-          );
-          if (!Array.isArray(data)) return [] as CashflowEntry[];
-          return data.map((entry) => ({
-            ...entry,
-            contract_id:
-              typeof entry.contract_id === "number"
-                ? entry.contract_id
-                : contract.id,
-          }));
-        } catch {
-          return [] as CashflowEntry[];
-        }
-      }),
+    const { data } = await api.get<CashflowEntry[]>(
+      `/contracts/${contractId}/cashflow`,
     );
-
-    return lists.flat();
-  } catch {
-    return [];
+    return Array.isArray(data) ? data : [];
   }
+
+  const { data } = await api.get<unknown>(`/cashflow/entries`);
+
+  if (Array.isArray(data)) return data as CashflowEntry[];
+
+  if (data && typeof data === "object") {
+    const wrapped = data as { monetary_mode?: MonetaryMode; data?: unknown };
+    if (Array.isArray(wrapped.data)) {
+      const mode = wrapped.monetary_mode;
+      return (wrapped.data as CashflowEntry[]).map((entry) => ({
+        ...entry,
+        monetary_mode: entry.monetary_mode ?? mode,
+      }));
+    }
+  }
+
+  return [];
 };
 
 export type RawExportTable = "clients" | "contracts" | "cashflow_entries";
