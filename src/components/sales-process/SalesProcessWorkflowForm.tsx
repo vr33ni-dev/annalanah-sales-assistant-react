@@ -98,7 +98,9 @@ export function SalesProcessWorkflowForm({
         return;
       }
       if (revenue > MAX_REVENUE) {
-        setRevenueError(`Umsatz darf maximal ${MAX_REVENUE.toLocaleString()} betragen.`);
+        setRevenueError(
+          `Umsatz darf maximal ${MAX_REVENUE.toLocaleString()} betragen.`,
+        );
         return;
       }
       if (isNaN(duration) || formData.contractDuration === "") {
@@ -106,11 +108,15 @@ export function SalesProcessWorkflowForm({
         return;
       }
       if (duration < MIN_DURATION) {
-        setDurationError(`Vertragsdauer muss mindestens ${MIN_DURATION} Monat betragen.`);
+        setDurationError(
+          `Vertragsdauer muss mindestens ${MIN_DURATION} Monat betragen.`,
+        );
         return;
       }
       if (duration > MAX_DURATION) {
-        setDurationError(`Vertragsdauer darf maximal ${MAX_DURATION} Monate betragen.`);
+        setDurationError(
+          `Vertragsdauer darf maximal ${MAX_DURATION} Monate betragen.`,
+        );
         return;
       }
     }
@@ -329,7 +335,9 @@ export function SalesProcessWorkflowForm({
                   isSubmitting
                 }
               >
-                {(isStartPending || isSubmitting) ? "Speichern…" : "Speichern & Schließen"}
+                {isStartPending || isSubmitting
+                  ? "Speichern…"
+                  : "Speichern & Schließen"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
@@ -388,9 +396,11 @@ export function SalesProcessWorkflowForm({
             <div className="col-span-full flex gap-3">
               <Button
                 onClick={onSubmit}
-                disabled={!formData.zweitgespraechDate || isPatchPending || isSubmitting}
+                disabled={
+                  !formData.zweitgespraechDate || isPatchPending || isSubmitting
+                }
               >
-                {(isPatchPending || isSubmitting) ? "Speichern…" : "Speichern"}
+                {isPatchPending || isSubmitting ? "Speichern…" : "Speichern"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
@@ -542,7 +552,9 @@ export function SalesProcessWorkflowForm({
                     className="bg-success/5 border-success/30"
                   />
                   {revenueError && (
-                    <p className="text-xs text-destructive mt-1">{revenueError}</p>
+                    <p className="text-xs text-destructive mt-1">
+                      {revenueError}
+                    </p>
                   )}
                 </div>
 
@@ -566,7 +578,9 @@ export function SalesProcessWorkflowForm({
                     </SelectContent>
                   </Select>
                   {durationError && (
-                    <p className="text-xs text-destructive mt-1">{durationError}</p>
+                    <p className="text-xs text-destructive mt-1">
+                      {durationError}
+                    </p>
                   )}
                 </div>
 
@@ -686,7 +700,9 @@ export function SalesProcessWorkflowForm({
                 disabled={!canSubmit || isPatchPending || isSubmitting}
                 className="mt-4"
               >
-                {(isPatchPending || isSubmitting) ? "Speichern…" : "Speichern & Abschließen"}
+                {isPatchPending || isSubmitting
+                  ? "Speichern…"
+                  : "Speichern & Abschließen"}
               </Button>
               <Button variant="ghost" onClick={onClose} className="mt-4">
                 Abbrechen
@@ -841,7 +857,7 @@ export function SalesProcessWorkflowForm({
                   isSubmitting
                 }
               >
-                {(isStartPending || isSubmitting) ? "Speichern…" : "Speichern"}
+                {isStartPending || isSubmitting ? "Speichern…" : "Speichern"}
               </Button>
               <Button variant="ghost" onClick={onClose}>
                 Abbrechen
