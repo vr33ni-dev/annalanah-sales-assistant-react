@@ -1,3 +1,76 @@
+# v0.6.0 (Wed Apr 22 2026)
+
+#### 🚀 Enhancement
+
+- feat: add unit tests, NLQ error handling, and CI test workflow [#115](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/115) ([@vr33ni](https://github.com/vr33ni))
+- feat: Comments page update, correct link between entities; Tooltip added to Sales Process Table; Dashboard KPIs querying backend + displaying details [#113](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/113) ([@vr33ni](https://github.com/vr33ni))
+- feat/fix: backend-driven KPIs, cashflow status sync, and submission guards [#110](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/110) ([@vr33ni](https://github.com/vr33ni))
+- feat: accept array of emails for email recipient on new contract crea… [#106](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/106) ([@vr33ni](https://github.com/vr33ni))
+- fix(api, dashboard, contracts): prefer aggregate cashflow entries endpoint; update recent activities; show upsell notice in old+new contract [#102](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/102) ([@vr33ni](https://github.com/vr33ni))
+- feat: mail on contract creation; one-time payment as option allowed [#96](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/96) ([@vr33ni](https://github.com/vr33ni))
+
+#### 🐛 Bug Fix
+
+- branding update [#116](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/116) ([@vr33ni](https://github.com/vr33ni))
+- Dev [#114](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/114) ([@vr33ni](https://github.com/vr33ni))
+- fix: metric chip showing correct analytics report [#112](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/112) ([@vr33ni](https://github.com/vr33ni))
+- fix: cashflow status sync & optimistic update, settings API consolida… [#111](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/111) ([@vr33ni](https://github.com/vr33ni))
+- Dev [#109](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/109) ([@vr33ni](https://github.com/vr33ni))
+- refactoring: added client search field to contracts table [#108](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/108) ([@vr33ni](https://github.com/vr33ni))
+- refactoring: add filter on status columns, popover text update; trans… [#107](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/107) ([@vr33ni](https://github.com/vr33ni))
+- refactor contracts overview to use compact list and detail queries [#105](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/105) ([@vr33ni](https://github.com/vr33ni))
+- fix(contracts): metric chips display+tooltip; avoid per contract cash… [#104](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/104) ([@vr33ni](https://github.com/vr33ni))
+- fix: import of components [#98](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/98) ([@vr33ni](https://github.com/vr33ni))
+- Refactoring of date formatting, queryKeys and query/mockQuery [#97](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/97) ([@vr33ni](https://github.com/vr33ni))
+- feat: data export translations [#95](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/95) ([@vr33ni](https://github.com/vr33ni))
+- fix: cashflow forecast + history display [#94](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/94) ([@vr33ni](https://github.com/vr33ni))
+- fix: date calculations, cache sync and tooltips [#93](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/93) ([@vr33ni](https://github.com/vr33ni))
+- feat: add date range filtering to upsell methods [#92](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/92) ([@vr33ni](https://github.com/vr33ni))
+- fix: make isOpen property in CommentsSection optional [#90](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/90) ([@vr33ni](https://github.com/vr33ni))
+- fix: rm n+1 querying [#89](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/89) ([@vr33ni](https://github.com/vr33ni))
+- fit: Add cashflow entries API + fallback and allow numeric query keys [#88](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/88) ([@vr33ni](https://github.com/vr33ni))
+- Fix: Rename field names to match backend changes [#86](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/86) ([@vr33ni](https://github.com/vr33ni))
+
+#### ⚠️ Pushed to `main`
+
+- fix: force release ([@vr33ni](https://github.com/vr33ni))
+- cleaned wd ([@vr33ni](https://github.com/vr33ni))
+- Hide empty pagination and align right ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Adjust pagination layout ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Fix cashflow mock data fallback ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Cashflow mock data restored ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Preceding changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Unify pagination across tables ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Unify pagination UI ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add pagination UI to more tables ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Anzeige Anzahl von Kunden unter Paginierung ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add client count indicator ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Show total count indicator ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Work in progress ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Fix save and mock data ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Changes ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add Bühne column to Clients ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add delete for leads per row ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Make cashflow history paginated ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add pagination to cashflow history ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Set default cashflow history ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Add pagination support ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Improve cashflow history display ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- fix: date range filtering of contracts ([@vr33ni](https://github.com/vr33ni))
+- Aktive Verträge erweitert ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Fix active contracts KPI ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- fix: variable name ([@vr33ni](https://github.com/vr33ni))
+- Guarded fetchMe response ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Migrate mock data for stages ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+- Revert "Changes" ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 2
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.4.13 (Mon Feb 23 2026)
 
 #### ⚠️ Pushed to `main`
