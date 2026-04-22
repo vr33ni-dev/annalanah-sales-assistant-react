@@ -32,6 +32,7 @@ export const queryKeys = {
   cashflowForecastByContract: (contractId?: number) =>
     ["cashflow-forecast", contractId] as const,
   cashflowMetrics: ["cashflow-metrics"] as const,
+  monthlyKpis: (year: number) => ["monthly-kpis", year] as const,
   stageParticipants: (stageId: number) =>
     ["stage-participants", stageId] as const,
 };

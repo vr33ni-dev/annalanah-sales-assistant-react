@@ -347,6 +347,20 @@ export type DashboardKPIs = {
   avg_clv_per_contract: number | null;
 };
 
+export type MonthlyKPI = {
+  month: number;
+  revenue: number;
+  closed_deals: number;
+  closing_rate: number | null;
+};
+
+export const getMonthlyKPIs = async (year?: number): Promise<MonthlyKPI[]> => {
+  const { data } = await api.get<MonthlyKPI[]>("/dashboard/monthly-kpis", {
+    params: year ? { year } : undefined,
+  });
+  return data;
+};
+
 export const getDashboardKPIs = async (params?: {
   start_date?: string;
   end_date?: string;

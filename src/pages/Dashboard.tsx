@@ -497,7 +497,7 @@ export default function Dashboard() {
       </div>
 
       {/* MONTHLY COMPARISON TABLE */}
-      <MonthlyKPITable contracts={contracts} salesProcesses={salesProcesses} />
+      <MonthlyKPITable />
 
       {/* SECONDARY SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
