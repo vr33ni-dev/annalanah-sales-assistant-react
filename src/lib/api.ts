@@ -203,6 +203,7 @@ export type SalesProcessUpdateRequest = {
   follow_up_date?: string | null;
   source?: "organic" | "paid" | null;
   source_stage_id?: number | null;
+  stage_id?: number | null;
   closed?: boolean | null;
   revenue?: number | null;
   contract_duration_months?: number;
@@ -535,6 +536,17 @@ export const deleteStageParticipant = async (
 ): Promise<void> => {
   await api.delete(`/stages/${stageId}/participants/${participantId}`);
 };
+
+export interface StageParticipantUI {
+  id: number;
+  stage_id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  client_id?: number | null;
+  lead_id?: number | null;
+  attended: boolean;
+}
 
 /* Stage participants */
 export interface StageParticipant {

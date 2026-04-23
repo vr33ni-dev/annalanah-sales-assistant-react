@@ -446,6 +446,7 @@ export default function SalesProcessView() {
         follow_up_result: formData.zweitgespraechResult ?? true,
         closed: formData.abschluss ?? null,
         revenue: revenueNum,
+        stage_id: formData.stageId ?? null,
         completed_at: formData.completedAt
           ? format(formData.completedAt, "yyyy-MM-dd")
           : undefined,
@@ -570,6 +571,7 @@ export default function SalesProcessView() {
       name: entry.client_name,
       salesProcessId: entry.id,
       clientId: entry.client_id,
+      stageId: entry.stage_id ?? null,
       zweitgespraechResult: defaultResult,
       zweitgespraechDate: followUpDate,
     }));
@@ -583,6 +585,7 @@ export default function SalesProcessView() {
       name: entry.client_name,
       salesProcessId: entry.id,
       clientId: entry.client_id,
+      stageId: entry.stage_id ?? null,
       zweitgespraechResult: true,
       abschluss: null,
       zweitgespraechDate: parseIsoToLocal(entry.follow_up_date),
@@ -637,6 +640,7 @@ export default function SalesProcessView() {
                 : undefined,
             follow_up_result: payload.follow_up_result,
             completed_at: payload.completed_at || undefined,
+            stage_id: payload.source_stage_id ?? null,
           },
         }),
         updateClient(entry.client_id, clientPayload),
