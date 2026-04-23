@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
-import { mockStages } from "@/lib/mockData";
+import { mockSalesProcesses, mockStages } from "@/lib/mockData";
 import { formatDateOnly, toDateOnly } from "@/helpers/date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import {
   getStages,
+  getSalesProcesses,
   createStage,
   deleteStage,
   updateStageStats,
@@ -655,7 +656,32 @@ export default function Stages() {
     mockData: mockStages,
   });
 
+  const { data: sales = [] } = useMockableQuery<
+    Array<{ stage_id?: number | null; closed?: boolean | null }>
+  >({
+    queryKey: queryKeys.sales,
+    queryFn: getSalesProcesses,
+    staleTime: 60_000,
+    select: (rows) =>
+      rows.map((entry) => ({
+        stage_id: entry.stage_id ?? null,
+        closed: entry.closed ?? null,
+      })),
+    mockData: mockSalesProcesses.map((entry) => ({
+      stage_id: entry.stage_id ?? null,
+      closed: entry.closed ?? null,
+    })),
+  });
+
   const stages = useMemo<Stage[]>(() => data ?? [], [data]);
+  const closedContractsByStage = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const entry of sales) {
+      if (entry.closed !== true || typeof entry.stage_id !== "number") continue;
+      counts.set(entry.stage_id, (counts.get(entry.stage_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [sales]);
   const stageValuesAreNet = (stages[0]?.monetary_mode ?? "brutto") === "netto";
 
   const filteredStages = useMemo<Stage[]>(() => {
@@ -670,7 +696,8 @@ export default function Stages() {
         const budget = num(s.ad_budget);
         const regs = num(s.registrations);
         const parts = num(s.participants);
-        const closedContracts = num(s.closed_contracts);
+        const closedContracts =
+          closedContractsByStage.get(s.id) ?? num(s.closed_contracts);
         const revenue = num(s.actual_revenue);
         agg.budget += budget;
         agg.registrations += regs;
@@ -705,7 +732,7 @@ export default function Stages() {
         : null;
 
     return { ...acc, attendanceRate, closingRate, roiVal };
-  }, [stages]);
+  }, [closedContractsByStage, stages]);
 
   return (
     <div className="space-y-4">
@@ -850,10 +877,21 @@ export default function Stages() {
                   typeof stage.closing_rate === "number"
                     ? stage.closing_rate
                     : parts > 0
-                      ? Math.round((num(stage.closed_contracts) / parts) * 100)
+                      ? Math.round(
+                          ((closedContractsByStage.get(stage.id) ??
+                            num(stage.closed_contracts)) /
+                            parts) *
+                            100,
+                        )
                       : null;
 
-                const closedContracts = num(stage.closed_contracts);
+                const closedContracts =
+                  closedContractsByStage.get(stage.id) ??
+                  num(stage.closed_contracts);
+                const displayStage: Stage = {
+                  ...stage,
+                  closed_contracts: closedContracts,
+                };
 
                 const roiClass =
                   roiVal == null
@@ -952,8 +990,8 @@ export default function Stages() {
 
                     <TableCell className="py-1.5 text-right">
                       <div className="flex justify-end gap-1">
-                        <StageParticipantsDialog stage={stage} />
-                        <StagePerformanceDialog stage={stage} />
+                        <StageParticipantsDialog stage={displayStage} />
+                        <StagePerformanceDialog stage={displayStage} />
 
                         <EditStageDialog stage={stage} />
 
