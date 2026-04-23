@@ -67,9 +67,9 @@ export function SalesProcessDetailSheet({
     setClientPhone(entry.client_phone ?? "");
     setSource((entry.client_source as SalesProcessSource) ?? "");
     const stageId =
-      entry.stage_id ??
-      stages.find((s) => s.name === entry.source_stage_name)?.id ??
-      null;
+      entry.stage_id !== undefined
+        ? entry.stage_id
+        : (stages.find((s) => s.name === entry.source_stage_name)?.id ?? null);
     setSourceStageId(entry.client_source === "paid" ? stageId : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id]);

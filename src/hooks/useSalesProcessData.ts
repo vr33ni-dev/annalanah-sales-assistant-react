@@ -87,18 +87,21 @@ export function useSalesProcessData({
     onSuccess: (data: StartSalesProcessResponse) => {
       try {
         if (data.client) {
-          queryClient.setQueryData<Client[]>(queryKeys.clients(false), (old) => {
-            const prev = (old ?? []) as Client[];
-            const idx = prev.findIndex(
-              (client) => client.id === data.client.id,
-            );
-            if (idx >= 0) {
-              const next = [...prev];
-              next[idx] = { ...next[idx], ...data.client };
-              return next;
-            }
-            return [data.client, ...prev];
-          });
+          queryClient.setQueryData<Client[]>(
+            queryKeys.clients(false),
+            (old) => {
+              const prev = (old ?? []) as Client[];
+              const idx = prev.findIndex(
+                (client) => client.id === data.client.id,
+              );
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...data.client };
+                return next;
+              }
+              return [data.client, ...prev];
+            },
+          );
         }
       } catch {
         // ignore cache update errors
@@ -225,6 +228,7 @@ export function useSalesProcessData({
 
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: queryKeys.leads });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stages });
     },
     onError: (err: unknown) => showErrorToast("Fehler beim Aktualisieren", err),
   });
@@ -239,11 +243,15 @@ export function useSalesProcessData({
         : null);
     const fallbackStageId =
       fallbackSource === "paid"
-        ? (entry.stage_id ?? client?.source_stage_id ?? null)
+        ? entry.stage_id !== undefined
+          ? entry.stage_id
+          : (client?.source_stage_id ?? null)
         : null;
     const fallbackStageName =
       fallbackSource === "paid"
-        ? (entry.source_stage_name ?? client?.source_stage_name ?? null)
+        ? entry.source_stage_name !== undefined
+          ? entry.source_stage_name
+          : (client?.source_stage_name ?? null)
         : null;
 
     return {
