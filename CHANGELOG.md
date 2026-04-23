@@ -1,3 +1,15 @@
+# v0.7.0 (Thu Apr 23 2026)
+
+#### 🚀 Enhancement
+
+- feat(sales): include stage_id in sales process updates [#118](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/118) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.6.1 (Wed Apr 22 2026)
 
 #### 🐛 Bug Fix
