@@ -52,9 +52,8 @@ import {
   getStageParticipants,
   Stage,
   StageParticipant,
-  StageParticipantUI,
 } from "@/lib/api";
-import type { AddStageParticipantRequest } from "@/lib/api";
+import type { AddStageParticipantRequest, StageParticipantUI } from "@/lib/api";
 import { MetricChip } from "@/components/MetricChip";
 import {
   ParticipantForm,
