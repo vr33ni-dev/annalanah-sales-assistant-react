@@ -1,3 +1,15 @@
+# v0.7.1 (Thu Apr 23 2026)
+
+#### 🐛 Bug Fix
+
+- fix(sales-process,stages): stop stage relink fallback for null stage_… [#119](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/119) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.7.0 (Thu Apr 23 2026)
 
 #### 🚀 Enhancement
