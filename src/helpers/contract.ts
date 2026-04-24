@@ -119,3 +119,21 @@ export function selectActiveUpsell(
     (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
   );
 }
+
+/**
+ * Like selectActiveUpsell, but also returns already-executed upsells
+ * (those with a new_contract_id). Use this for display purposes only —
+ * for gating "is there an upsell in progress?", prefer selectActiveUpsell.
+ */
+export function selectDisplayUpsell(
+  upsells: ContractUpsell[],
+  contractId: number,
+): ContractUpsell | null {
+  const candidates = upsells.filter(
+    (u) => u.previous_contract_id === contractId,
+  );
+  if (!candidates.length) return null;
+  return candidates.reduce((a, b) =>
+    (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
+  );
+}

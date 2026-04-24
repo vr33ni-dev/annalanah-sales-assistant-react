@@ -76,6 +76,7 @@ import {
   getElapsedContractMonths,
   isContractExpired,
   selectActiveUpsell,
+  selectDisplayUpsell,
   toDateStartOfDay,
 } from "@/helpers/contract";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
@@ -207,6 +208,13 @@ export default function Contracts() {
     () =>
       drawerContract
         ? selectActiveUpsell(savedUpsells, drawerContract.id)
+        : null,
+    [savedUpsells, drawerContract],
+  );
+  const displayUpsell = useMemo(
+    () =>
+      drawerContract
+        ? selectDisplayUpsell(savedUpsells, drawerContract.id)
         : null,
     [savedUpsells, drawerContract],
   );
@@ -1361,19 +1369,19 @@ export default function Contracts() {
                   Upsell planen
                 </button>
 
-                {savedUpsell && (
+                {displayUpsell && (
                   <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">
-                        {savedUpsell.upsell_result === "verlaengerung"
+                        {displayUpsell.upsell_result === "verlaengerung"
                           ? "✅ Verlängerung"
-                          : savedUpsell.upsell_result === "keine_verlaengerung"
+                          : displayUpsell.upsell_result === "keine_verlaengerung"
                             ? "❌ Keine Verlängerung"
                             : "⏳ Offen"}
                       </span>
                       <button
                         onClick={() => {
-                          setEditingUpsell(savedUpsell);
+                          setEditingUpsell(displayUpsell);
                           setShowUpsellModal(true);
                         }}
                         className="text-xs text-blue-600 hover:underline"
@@ -1381,28 +1389,28 @@ export default function Contracts() {
                         Bearbeiten
                       </button>
                     </div>
-                    {savedUpsell.upsell_date && (
+                    {displayUpsell.upsell_date && (
                       <div className="text-sm text-muted-foreground">
                         Gesprächsdatum:{" "}
-                        {formatDateOnly(savedUpsell.upsell_date)}
+                        {formatDateOnly(displayUpsell.upsell_date)}
                       </div>
                     )}
-                    {savedUpsell.upsell_result === "verlaengerung" &&
-                      savedUpsell.upsell_revenue != null && (
+                    {displayUpsell.upsell_result === "verlaengerung" &&
+                      displayUpsell.upsell_revenue != null && (
                         <div className="text-sm text-muted-foreground">
                           Geschätzter Umsatz:{" "}
-                          {euro2(savedUpsell.upsell_revenue)}
+                          {euro2(displayUpsell.upsell_revenue)}
                         </div>
                       )}
-                    {savedUpsell.contract_start_date && (
+                    {displayUpsell.contract_start_date && (
                       <div className="text-sm text-muted-foreground">
                         Neues Startdatum:{" "}
-                        {formatDateOnly(savedUpsell.contract_start_date)}
+                        {formatDateOnly(displayUpsell.contract_start_date)}
                       </div>
                     )}
-                    {savedUpsell.contract_duration_months != null && (
+                    {displayUpsell.contract_duration_months != null && (
                       <div className="text-sm text-muted-foreground">
-                        Laufzeit: {savedUpsell.contract_duration_months} Monate
+                        Laufzeit: {displayUpsell.contract_duration_months} Monate
                       </div>
                     )}
                   </div>
