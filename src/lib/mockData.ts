@@ -631,7 +631,7 @@ export const upsertMockUpsell = (
   const created: ContractUpsell = {
     id: Date.now(),
     sales_process_id: salesProcessId,
-    client_id: payload.client_id ?? null,
+    client_id: payload.client_id ?? 0,
     upsell_date: payload.upsell_date ?? null,
     upsell_result: payload.upsell_result ?? null,
     upsell_revenue: payload.upsell_revenue ?? null,
