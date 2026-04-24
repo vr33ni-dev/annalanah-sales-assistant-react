@@ -58,6 +58,7 @@ import {
   mockCashflowForecast,
   mockSalesProcesses,
   mockDashboardKPIs,
+  getMockUpsellsForSalesProcess,
 } from "@/lib/mockData";
 import { asArray } from "@/lib/safe";
 import {
