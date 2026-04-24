@@ -1,3 +1,16 @@
+# v0.7.2 (Fri Apr 24 2026)
+
+#### 🐛 Bug Fix
+
+- Contract duration adjustment/Date range filter fix [#120](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/120) ([@vr33ni](https://github.com/vr33ni) [@lovable-dev[bot]](https://github.com/lovable-dev[bot]))
+
+#### Authors: 2
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.7.1 (Thu Apr 23 2026)
 
 #### 🐛 Bug Fix
