@@ -199,7 +199,9 @@ export default function Contracts() {
     retry: false,
     staleTime: 0,
     select: (d) => d,
-    mockData: [],
+    mockData: drawerContract?.sales_process_id
+      ? getMockUpsellsForSalesProcess(drawerContract.sales_process_id)
+      : [],
   });
   const savedUpsell = useMemo(
     () =>
