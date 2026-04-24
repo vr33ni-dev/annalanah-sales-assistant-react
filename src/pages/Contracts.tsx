@@ -76,6 +76,7 @@ import {
   getElapsedContractMonths,
   isContractExpired,
   selectActiveUpsell,
+  selectDisplayUpsell,
   toDateStartOfDay,
 } from "@/helpers/contract";
 import { ContractEditModal } from "@/components/contract/ContractEditModal";
@@ -207,6 +208,13 @@ export default function Contracts() {
     () =>
       drawerContract
         ? selectActiveUpsell(savedUpsells, drawerContract.id)
+        : null,
+    [savedUpsells, drawerContract],
+  );
+  const displayUpsell = useMemo(
+    () =>
+      drawerContract
+        ? selectDisplayUpsell(savedUpsells, drawerContract.id)
         : null,
     [savedUpsells, drawerContract],
   );
