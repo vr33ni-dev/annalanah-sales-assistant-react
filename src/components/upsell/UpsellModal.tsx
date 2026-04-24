@@ -13,9 +13,12 @@ import { useEffect, useState } from "react";
 import { parseIsoToLocal, toDateOnly, toYmdLocal } from "@/helpers/date";
 import { useToast } from "@/hooks/use-toast";
 import { extractErrorMessage } from "@/helpers/error";
+import { useAuthEnabled } from "@/auth/useAuthEnabled";
+import { upsertMockUpsell } from "@/lib/mockData";
 
 export function UpsellModal({ contract, upsell, onClose, onSaved }) {
   const { toast } = useToast();
+  const { useMockData } = useAuthEnabled();
   // Compute contract end date as fallback for verlaengerung records imported without a talk date
   const contractEndDateYmd = (() => {
     if (!contract) return "";
@@ -72,14 +75,24 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
       upsell?.sales_process_id ?? contract.sales_process_id;
 
     try {
-      await createOrUpdateUpsell(targetSalesProcessId, {
+      const payload = {
         upsell_date: date || null,
         upsell_result: result || null,
         upsell_revenue: revenue ? Number(revenue) : null,
         contract_start_date: isExtension ? contractStart : null,
         contract_duration_months: isExtension ? Number(contractDuration) : null,
         contract_frequency: isExtension ? contractFrequency : null,
-      });
+      };
+      if (useMockData) {
+        upsertMockUpsell(targetSalesProcessId, {
+          ...payload,
+          client_id: contract.client_id ?? upsell?.client_id ?? 0,
+          previous_contract_id: contract.id ?? upsell?.previous_contract_id ?? null,
+        });
+        toast({ title: "Upsell gespeichert" });
+      } else {
+        await createOrUpdateUpsell(targetSalesProcessId, payload);
+      }
       onSaved();
     } catch (err) {
       const raw = extractErrorMessage(err);
