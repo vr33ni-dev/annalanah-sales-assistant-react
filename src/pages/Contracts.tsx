@@ -1364,11 +1364,13 @@ export default function Contracts() {
                         {formatDateOnly(savedUpsell.upsell_date)}
                       </div>
                     )}
-                    {savedUpsell.upsell_revenue != null && (
-                      <div className="text-sm text-muted-foreground">
-                        Geschätzter Umsatz: {euro2(savedUpsell.upsell_revenue)}
-                      </div>
-                    )}
+                    {savedUpsell.upsell_result === "verlaengerung" &&
+                      savedUpsell.upsell_revenue != null && (
+                        <div className="text-sm text-muted-foreground">
+                          Geschätzter Umsatz:{" "}
+                          {euro2(savedUpsell.upsell_revenue)}
+                        </div>
+                      )}
                     {savedUpsell.contract_start_date && (
                       <div className="text-sm text-muted-foreground">
                         Neues Startdatum:{" "}
