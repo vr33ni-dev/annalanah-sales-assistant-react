@@ -89,7 +89,7 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
   const revenueModeLabel = "Brutto";
 
   const MAX_DURATION = 120;
-  const MIN_DURATION = 1;
+  const MIN_DURATION = 0;
   const MAX_REVENUE = 1_000_000;
   const MIN_REVENUE = 0;
 

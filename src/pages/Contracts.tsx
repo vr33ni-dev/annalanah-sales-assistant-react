@@ -219,6 +219,14 @@ export default function Contracts() {
     [savedUpsells, drawerContract],
   );
 
+  const verlaengerungUpsell = useMemo(
+    () =>
+      drawerContract
+        ? savedUpsells.find((u) => u.upsell_result === "verlaengerung")
+        : null,
+    [savedUpsells, drawerContract],
+  );
+
   // Chain is embedded in the GET /contracts/{id} response.
   const contractChain = useMemo(
     () => selectedContractDetail?.chain ?? [],
@@ -272,6 +280,15 @@ export default function Contracts() {
     // 3. If all are expired, return the last (most recent)
     return sortedChain[sortedChain.length - 1];
   }, [sortedChain, drawerContract, today]);
+
+  const verlaengerungIsFuture = useMemo(() => {
+    if (!verlaengerungUpsell?.contract_start_date) return false;
+    // Compare date string directly to avoid timezone shifts
+    const renewalDateStr =
+      verlaengerungUpsell.contract_start_date.split("T")[0];
+    const todayStr = toYmdLocal(new Date());
+    return renewalDateStr > todayStr;
+  }, [verlaengerungUpsell]);
 
   const clientContracts = useMemo(
     () =>
@@ -1354,68 +1371,67 @@ export default function Contracts() {
                     setEditingUpsell(null);
                     setShowUpsellModal(true);
                   }}
-                  disabled={!!savedUpsell}
+                  disabled={savedUpsells.length > 0}
                   title={
-                    savedUpsell
+                    savedUpsells.length > 0
                       ? "Es existiert bereits ein Upsell für diesen Vertrag. Bitte den bestehenden Eintrag bearbeiten."
                       : undefined
                   }
                   className={
-                    savedUpsell
+                    savedUpsells.length > 0
                       ? "mt-4 px-4 py-2 border border-border bg-muted text-muted-foreground rounded-md cursor-not-allowed"
                       : "mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                   }
                 >
                   Upsell planen
                 </button>
-
-                {displayUpsell && (
-                  <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">
-                        {displayUpsell.upsell_result === "verlaengerung"
-                          ? "✅ Verlängerung"
-                          : displayUpsell.upsell_result === "keine_verlaengerung"
+                {displayUpsell &&
+                  displayUpsell.upsell_result !== "verlaengerung" && (
+                    <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">
+                          {displayUpsell.upsell_result === "keine_verlaengerung"
                             ? "❌ Keine Verlängerung"
                             : "⏳ Offen"}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setEditingUpsell(displayUpsell);
-                          setShowUpsellModal(true);
-                        }}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        Bearbeiten
-                      </button>
-                    </div>
-                    {displayUpsell.upsell_date && (
-                      <div className="text-sm text-muted-foreground">
-                        Gesprächsdatum:{" "}
-                        {formatDateOnly(displayUpsell.upsell_date)}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setEditingUpsell(displayUpsell);
+                            setShowUpsellModal(true);
+                          }}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Bearbeiten
+                        </button>
                       </div>
-                    )}
-                    {displayUpsell.upsell_result === "verlaengerung" &&
-                      displayUpsell.upsell_revenue != null && (
+                      {displayUpsell.upsell_date && (
                         <div className="text-sm text-muted-foreground">
-                          Geschätzter Umsatz:{" "}
-                          {euro2(displayUpsell.upsell_revenue)}
+                          Gesprächsdatum:{" "}
+                          {formatDateOnly(displayUpsell.upsell_date)}
                         </div>
                       )}
-                    {displayUpsell.contract_start_date && (
-                      <div className="text-sm text-muted-foreground">
-                        Neues Startdatum:{" "}
-                        {formatDateOnly(displayUpsell.contract_start_date)}
-                      </div>
-                    )}
-                    {displayUpsell.contract_duration_months != null && (
-                      <div className="text-sm text-muted-foreground">
-                        Laufzeit: {displayUpsell.contract_duration_months} Monate
-                      </div>
-                    )}
+                      {displayUpsell.contract_start_date && (
+                        <div className="text-sm text-muted-foreground">
+                          Neues Startdatum:{" "}
+                          {formatDateOnly(displayUpsell.contract_start_date)}
+                        </div>
+                      )}
+                      {displayUpsell.contract_duration_months != null && (
+                        <div className="text-sm text-muted-foreground">
+                          Laufzeit: {displayUpsell.contract_duration_months}{" "}
+                          Monate
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {verlaengerungUpsell && verlaengerungIsFuture && (
+                  <div className="mt-4">
+                    <span className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
+                      ✅ Verlängerung
+                    </span>
                   </div>
                 )}
-
                 {/* ---- Vertragshistorie (all periods in chain) ---- */}
                 {chainWithLabels.length > 1 && (
                   <div className="mt-6">
