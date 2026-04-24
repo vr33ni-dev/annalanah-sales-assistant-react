@@ -425,7 +425,13 @@ export default function Contracts() {
           !!created && created >= viewStart && created <= viewEnd;
         // Future-start contracts that are still active (end >= viewEnd / today)
         // must always appear in the table so the count matches the metric chip.
-        const isFutureActive = isFutureStart && (!cEnd || cEnd >= viewEnd);
+        const todayMidnight = toDateStartOfDay(toYmdLocal(new Date()));
+
+        const isFutureActive =
+          isFutureStart &&
+          (!cEnd || cEnd >= viewEnd) &&
+          !!todayMidnight &&
+          viewEnd >= todayMidnight; // only apply when window reaches the present
 
         return (
           overlapsWindow || (isFutureStart && createdInWindow) || isFutureActive
@@ -629,8 +635,18 @@ export default function Contracts() {
             : addMonthsDate(cStart ?? new Date(), match.duration_months ?? 0);
 
           const viewStart = toDateStartOfDay(dateStart ?? null);
-          const viewEnd = toDateStartOfDay(dateEnd ?? null);
-
+          const viewEndDate = toDateStartOfDay(dateEnd ?? null);
+          const viewEnd = viewEndDate
+            ? new Date(
+                viewEndDate.getFullYear(),
+                viewEndDate.getMonth(),
+                viewEndDate.getDate(),
+                23,
+                59,
+                59,
+                999,
+              )
+            : null;
           const needsExpand =
             (cStart && viewStart && cStart < viewStart) ||
             (cEnd && viewEnd && cEnd > viewEnd) ||
@@ -950,30 +966,18 @@ export default function Contracts() {
                     const defaultStart = toYmdLocal(startOfYear);
                     const defaultEnd = toYmdLocal(new Date());
 
-                    // earliest initial_contact_date from sales processes
-                    let earliestContact: string | null = null;
-                    for (const sp of salesProcesses) {
-                      if (!sp.initial_contact_date) continue;
-                      const d = sp.initial_contact_date.split("T")[0];
-                      earliestContact =
-                        !earliestContact || d < earliestContact
-                          ? d
-                          : earliestContact;
-                    }
+                    const earliestStart = contracts.reduce<string | null>(
+                      (min, c) => {
+                        if (!c.start_date) return min;
+                        const sd = c.start_date.split("T")[0];
+                        return !min || sd < min ? sd : min;
+                      },
+                      null,
+                    );
 
-                    // fallback to earliest contract start_date
-                    if (!earliestContact) {
-                      earliestContact = contracts.reduce<string | null>(
-                        (min, c) => {
-                          if (!c.start_date) return min;
-                          const sd = c.start_date.split("T")[0];
-                          return !min || sd < min ? sd : min;
-                        },
-                        null,
-                      );
-                    }
+                    setDateStart(earliestStart ?? defaultStart);
+                    // setDateStart("2000-01-01");
 
-                    setDateStart(earliestContact ?? defaultStart);
                     setDateEnd(defaultEnd);
                   }}
                   className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
