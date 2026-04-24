@@ -597,6 +597,56 @@ export const mockUpsells: ContractUpsell[] = [
   },
 ];
 
+/**
+ * In-memory upsell store for Lovable preview mode.
+ * Allows users to add/update upsell entries without a backend.
+ */
+const mockUpsellStore: ContractUpsell[] = [...mockUpsells];
+
+export const getMockUpsellsForSalesProcess = (
+  salesProcessId: number,
+): ContractUpsell[] =>
+  mockUpsellStore.filter((u) => u.sales_process_id === salesProcessId);
+
+export const upsertMockUpsell = (
+  salesProcessId: number,
+  payload: Partial<ContractUpsell>,
+): ContractUpsell => {
+  const now = new Date().toISOString();
+  // Match the backend behaviour: most-recent active (no new_contract_id) wins
+  const existingIndex = mockUpsellStore.findIndex(
+    (u) => u.sales_process_id === salesProcessId && u.new_contract_id == null,
+  );
+  if (existingIndex >= 0) {
+    const existing = mockUpsellStore[existingIndex];
+    const updated: ContractUpsell = {
+      ...existing,
+      ...payload,
+      sales_process_id: salesProcessId,
+      updated_at: now,
+    };
+    mockUpsellStore[existingIndex] = updated;
+    return updated;
+  }
+  const created: ContractUpsell = {
+    id: Date.now(),
+    sales_process_id: salesProcessId,
+    client_id: payload.client_id ?? 0,
+    upsell_date: payload.upsell_date ?? null,
+    upsell_result: payload.upsell_result ?? null,
+    upsell_revenue: payload.upsell_revenue ?? null,
+    previous_contract_id: payload.previous_contract_id ?? null,
+    new_contract_id: payload.new_contract_id ?? null,
+    created_at: now,
+    updated_at: now,
+    contract_start_date: payload.contract_start_date ?? null,
+    contract_duration_months: payload.contract_duration_months ?? null,
+    contract_frequency: payload.contract_frequency ?? null,
+  };
+  mockUpsellStore.push(created);
+  return created;
+};
+
 export const mockUpsellAnalytics = {
   verlaengerung_count: 1,
   keine_verlaengerung_count: 1,
