@@ -613,9 +613,15 @@ export const upsertMockUpsell = (
   payload: Partial<ContractUpsell>,
 ): ContractUpsell => {
   const now = new Date().toISOString();
-  // Match the backend behaviour: most-recent active (no new_contract_id) wins
+  // Match the backend behaviour: only an upsell that is still pending
+  // (no result decided yet) AND has not produced a new contract is updated
+  // in place. A decided upsell (verlaengerung / keine_verlaengerung) is
+  // considered finalised, so a follow-up "Upsell planen" creates a new row.
   const existingIndex = mockUpsellStore.findIndex(
-    (u) => u.sales_process_id === salesProcessId && u.new_contract_id == null,
+    (u) =>
+      u.sales_process_id === salesProcessId &&
+      u.new_contract_id == null &&
+      !u.upsell_result,
   );
   if (existingIndex >= 0) {
     const existing = mockUpsellStore[existingIndex];
