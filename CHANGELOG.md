@@ -1,3 +1,16 @@
+# v0.7.3 (Mon Apr 27 2026)
+
+#### 🐛 Bug Fix
+
+- Bugfix: Upsell planen Button greyed out [#122](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/122) ([@lovable-dev[bot]](https://github.com/lovable-dev[bot]) [@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 2
+
+- [@lovable-dev[bot]](https://github.com/lovable-dev[bot])
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.7.2 (Fri Apr 24 2026)
 
 #### 🐛 Bug Fix
