@@ -132,6 +132,9 @@ export default function Contracts() {
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
     null,
   );
+  // Bumped after a mock upsell save to force re-render & re-read of the
+  // in-memory mock store (real react-query invalidation is bypassed in mock mode).
+  const [mockUpsellTick, setMockUpsellTick] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,6 +207,8 @@ export default function Contracts() {
       ? getMockUpsellsForSalesProcess(drawerContract.sales_process_id)
       : [],
   });
+  // Reference the tick so this hook re-runs when a mock save bumps it.
+  void mockUpsellTick;
   const savedUpsell = useMemo(
     () =>
       drawerContract
@@ -211,21 +216,50 @@ export default function Contracts() {
         : null,
     [savedUpsells, drawerContract],
   );
-  const displayUpsell = useMemo(
-    () =>
-      drawerContract
-        ? selectDisplayUpsell(savedUpsells, drawerContract.id)
-        : null,
-    [savedUpsells, drawerContract],
-  );
+  const displayUpsell = useMemo(() => {
+    if (!drawerContract) return null;
 
-  const verlaengerungUpsell = useMemo(
-    () =>
-      drawerContract
-        ? savedUpsells.find((u) => u.upsell_result === "verlaengerung")
-        : null,
-    [savedUpsells, drawerContract],
-  );
+    // Primary path: upsell explicitly linked to this contract.
+    const direct = selectDisplayUpsell(savedUpsells, drawerContract.id);
+    if (direct) return direct;
+
+    // Fallback 1: rows where previous_contract_id is not set (legacy/backend gap).
+    const legacy = savedUpsells.filter((u) => u.previous_contract_id == null);
+    if (legacy.length) {
+      return legacy.reduce((a, b) =>
+        (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
+      );
+    }
+
+    // Fallback 2: any upsell for this sales process — backend enforces uniqueness
+    // so if any row exists, it belongs to this contract chain.
+    if (!savedUpsells.length) return null;
+    return savedUpsells.reduce((a, b) =>
+      (a.updated_at ?? "") >= (b.updated_at ?? "") ? a : b,
+    );
+  }, [savedUpsells, drawerContract]);
+
+  // Block planning a new upsell only when an existing one hasn't started yet.
+  // Once contract_start_date is in the past the upsell contract is active and
+  // a further upsell for the next renewal cycle is allowed.
+  const hasBlockingUpsell = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return savedUpsells.some((u) => {
+      if (!u.contract_start_date) return true; // no start date → not yet started
+      return new Date(u.contract_start_date) > today;
+    });
+  }, [savedUpsells]);
+
+  // Only an "offen" upsell (no result decided yet) blocks planning a new one.
+  // Decided upsells (verlaengerung / keine_verlaengerung) should not prevent
+  // planning a future follow-up upsell.
+  const pendingUpsell = useMemo(() => {
+    if (!savedUpsell) return null;
+    return !savedUpsell.upsell_result || savedUpsell.upsell_result === "offen"
+      ? savedUpsell
+      : null;
+  }, [savedUpsell]);
 
   // Chain is embedded in the GET /contracts/{id} response.
   const contractChain = useMemo(
@@ -234,16 +268,56 @@ export default function Contracts() {
   );
 
   const chainWithLabels = useMemo(() => {
-    const sorted = contractChain
-      .slice()
-      .sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? ""));
+    const base = contractChain.slice();
+
+    // Synthesize chain entries from saved Verlängerung upsells that have not
+    // yet produced a real contract record (mock flow). This lets newly planned
+    // Verlängerungen show up in the Vertragshistorie immediately.
+    const existingIds = new Set(base.map((c) => c.id));
+    const synthesized = savedUpsells
+      .filter(
+        (u) =>
+          u.upsell_result === "verlaengerung" &&
+          u.contract_start_date &&
+          (u.new_contract_id == null || !existingIds.has(u.new_contract_id)),
+      )
+      .map((u) => {
+        const duration = u.contract_duration_months ?? null;
+        const revenue = u.upsell_revenue ?? 0;
+        const monthly =
+          duration && duration > 0 ? Math.round(revenue / duration) : 0;
+        const start = u.contract_start_date!.split("T")[0];
+        const end =
+          duration && duration > 0 ? addMonthsIso(start, duration) : null;
+        const synth: Contract = {
+          id: u.new_contract_id ?? -(u.id ?? Date.now()),
+          client_id: u.client_id ?? drawerContract?.client_id ?? 0,
+          client_name: drawerContract?.client_name ?? "",
+          sales_process_id:
+            u.sales_process_id ?? drawerContract?.sales_process_id ?? null,
+          created_at: u.updated_at ?? u.created_at ?? new Date().toISOString(),
+          start_date: start,
+          end_date: end,
+          duration_months: duration ?? 0,
+          revenue_total: revenue,
+          payment_frequency: u.contract_frequency ?? null,
+          base_monthly_amount: monthly,
+          next_due_date: null,
+        } as Contract;
+        return synth;
+      });
+
+    const merged = [...base, ...synthesized];
+    const sorted = merged.sort((a, b) =>
+      (a.start_date ?? "").localeCompare(b.start_date ?? ""),
+    );
     return sorted.map((c, i) => ({
       ...c,
       label: i === 0 ? "Aktueller Vertrag" : `Verlängerung #${i}`,
       // Only the first contract (original) is ever 'geöffnet' (current)
       isCurrent: i === 0,
     }));
-  }, [contractChain]);
+  }, [contractChain, savedUpsells, drawerContract]);
 
   // Chain-level aggregates for the drawer header
   const sortedChain = useMemo(
@@ -262,7 +336,7 @@ export default function Contracts() {
   );
 
   // Find the current or next contract in the chain
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const currentOrNextContract = useMemo(() => {
     if (!sortedChain.length) return drawerContract;
     // 1. Try to find contract where today is within [start, end]
@@ -280,15 +354,6 @@ export default function Contracts() {
     // 3. If all are expired, return the last (most recent)
     return sortedChain[sortedChain.length - 1];
   }, [sortedChain, drawerContract, today]);
-
-  const verlaengerungIsFuture = useMemo(() => {
-    if (!verlaengerungUpsell?.contract_start_date) return false;
-    // Compare date string directly to avoid timezone shifts
-    const renewalDateStr =
-      verlaengerungUpsell.contract_start_date.split("T")[0];
-    const todayStr = toYmdLocal(new Date());
-    return renewalDateStr > todayStr;
-  }, [verlaengerungUpsell]);
 
   const clientContracts = useMemo(
     () =>
@@ -1369,35 +1434,47 @@ export default function Contracts() {
                   Upsell / Vertragsverlängerung
                 </h3>
 
-                {/* Show saved upsell if one exists, otherwise show plan button */}
+                {/* Disable the plan button only when an upsell exists whose contract
+                    hasn't started yet. Once the start date is in the past a new
+                    upsell for the next cycle is allowed. */}
                 <button
                   onClick={() => {
                     setEditingUpsell(null);
                     setShowUpsellModal(true);
                   }}
-                  disabled={savedUpsells.length > 0}
+                  disabled={hasBlockingUpsell}
                   title={
-                    savedUpsells.length > 0
+                    hasBlockingUpsell
                       ? "Es existiert bereits ein Upsell für diesen Vertrag. Bitte den bestehenden Eintrag bearbeiten."
                       : undefined
                   }
                   className={
-                    savedUpsells.length > 0
+                    hasBlockingUpsell
                       ? "mt-4 px-4 py-2 border border-border bg-muted text-muted-foreground rounded-md cursor-not-allowed"
                       : "mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                   }
                 >
                   Upsell planen
                 </button>
-                {displayUpsell &&
-                  displayUpsell.upsell_result !== "verlaengerung" && (
-                    <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">
-                          {displayUpsell.upsell_result === "keine_verlaengerung"
+                {hasBlockingUpsell && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Upsell bereits geplant – bitte bestehenden Eintrag
+                    bearbeiten.
+                  </p>
+                )}
+                {displayUpsell && (
+                  <div className="mt-4 p-4 border rounded-md space-y-2 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">
+                        {displayUpsell.upsell_result === "verlaengerung"
+                          ? "✅ Verlängerung"
+                          : displayUpsell.upsell_result ===
+                              "keine_verlaengerung"
                             ? "❌ Keine Verlängerung"
                             : "⏳ Offen"}
-                        </span>
+                      </span>
+                      {displayUpsell.upsell_result ===
+                      "verlaengerung" ? null : (
                         <button
                           onClick={() => {
                             setEditingUpsell(displayUpsell);
@@ -1407,33 +1484,33 @@ export default function Contracts() {
                         >
                           Bearbeiten
                         </button>
-                      </div>
-                      {displayUpsell.upsell_date && (
-                        <div className="text-sm text-muted-foreground">
-                          Gesprächsdatum:{" "}
-                          {formatDateOnly(displayUpsell.upsell_date)}
-                        </div>
-                      )}
-                      {displayUpsell.contract_start_date && (
-                        <div className="text-sm text-muted-foreground">
-                          Neues Startdatum:{" "}
-                          {formatDateOnly(displayUpsell.contract_start_date)}
-                        </div>
-                      )}
-                      {displayUpsell.contract_duration_months != null && (
-                        <div className="text-sm text-muted-foreground">
-                          Laufzeit: {displayUpsell.contract_duration_months}{" "}
-                          Monate
-                        </div>
                       )}
                     </div>
-                  )}
-
-                {verlaengerungUpsell && verlaengerungIsFuture && (
-                  <div className="mt-4">
-                    <span className="inline-flex items-center gap-1 text-sm px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
-                      ✅ Verlängerung
-                    </span>
+                    {displayUpsell.upsell_date && (
+                      <div className="text-sm text-muted-foreground">
+                        Gesprächsdatum:{" "}
+                        {formatDateOnly(displayUpsell.upsell_date)}
+                      </div>
+                    )}
+                    {displayUpsell.upsell_result === "verlaengerung" &&
+                      displayUpsell.upsell_revenue != null && (
+                        <div className="text-sm text-muted-foreground">
+                          Geschätzter Umsatz:{" "}
+                          {euro2(displayUpsell.upsell_revenue)}
+                        </div>
+                      )}
+                    {displayUpsell.contract_start_date && (
+                      <div className="text-sm text-muted-foreground">
+                        Neues Startdatum:{" "}
+                        {formatDateOnly(displayUpsell.contract_start_date)}
+                      </div>
+                    )}
+                    {displayUpsell.contract_duration_months != null && (
+                      <div className="text-sm text-muted-foreground">
+                        Laufzeit: {displayUpsell.contract_duration_months}{" "}
+                        Monate
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* ---- Vertragshistorie (all periods in chain) ---- */}
@@ -1564,14 +1641,25 @@ export default function Contracts() {
           onClose={() => setShowUpsellModal(false)}
           onSaved={() => {
             setShowUpsellModal(false);
+            setMockUpsellTick((t) => t + 1);
+            // Use drawerContract (which may have sales_process_id from the detail response)
+            // as the source of truth. selectedContract is the compact list version and may
+            // not have sales_process_id populated.
+            const spId =
+              drawerContract?.sales_process_id ??
+              selectedContract?.sales_process_id;
+            if (spId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.upsell(spId),
+              });
+              queryClient.refetchQueries({
+                queryKey: queryKeys.upsell(spId),
+                type: "active",
+              });
+            }
             queryClient.invalidateQueries({
               queryKey: queryKeys.contract(selectedContract!.id),
             });
-            if (selectedContract?.sales_process_id) {
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.upsell(selectedContract.sales_process_id),
-              });
-            }
           }}
         />
       )}

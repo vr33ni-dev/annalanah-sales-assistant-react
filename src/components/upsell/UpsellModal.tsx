@@ -86,6 +86,7 @@ export function UpsellModal({ contract, upsell, onClose, onSaved }) {
       if (useMockData) {
         upsertMockUpsell(targetSalesProcessId, {
           ...payload,
+          id: upsell?.id,
           client_id: contract.client_id ?? upsell?.client_id ?? 0,
           previous_contract_id: contract.id ?? upsell?.previous_contract_id ?? null,
         });
