@@ -1616,6 +1616,7 @@ export default function Contracts() {
           onClose={() => setShowUpsellModal(false)}
           onSaved={() => {
             setShowUpsellModal(false);
+            setMockUpsellTick((t) => t + 1);
             queryClient.invalidateQueries({
               queryKey: queryKeys.contract(selectedContract!.id),
             });
