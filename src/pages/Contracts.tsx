@@ -243,16 +243,56 @@ export default function Contracts() {
   );
 
   const chainWithLabels = useMemo(() => {
-    const sorted = contractChain
-      .slice()
-      .sort((a, b) => (a.start_date ?? "").localeCompare(b.start_date ?? ""));
+    const base = contractChain.slice();
+
+    // Synthesize chain entries from saved Verlängerung upsells that have not
+    // yet produced a real contract record (mock flow). This lets newly planned
+    // Verlängerungen show up in the Vertragshistorie immediately.
+    const existingIds = new Set(base.map((c) => c.id));
+    const synthesized = savedUpsells
+      .filter(
+        (u) =>
+          u.upsell_result === "verlaengerung" &&
+          u.contract_start_date &&
+          (u.new_contract_id == null || !existingIds.has(u.new_contract_id)),
+      )
+      .map((u) => {
+        const duration = u.contract_duration_months ?? null;
+        const revenue = u.upsell_revenue ?? 0;
+        const monthly =
+          duration && duration > 0 ? Math.round(revenue / duration) : 0;
+        const start = u.contract_start_date!.split("T")[0];
+        const end =
+          duration && duration > 0 ? addMonthsIso(start, duration) : null;
+        const synth: Contract = {
+          id: u.new_contract_id ?? -(u.id ?? Date.now()),
+          client_id: u.client_id ?? drawerContract?.client_id ?? 0,
+          client_name: drawerContract?.client_name ?? "",
+          sales_process_id:
+            u.sales_process_id ?? drawerContract?.sales_process_id ?? null,
+          created_at: u.updated_at ?? u.created_at ?? new Date().toISOString(),
+          start_date: start,
+          end_date: end,
+          duration_months: duration ?? 0,
+          revenue_total: revenue,
+          payment_frequency: u.contract_frequency ?? null,
+          base_monthly_amount: monthly,
+          next_due_date: null,
+        } as Contract;
+        return synth;
+      });
+
+    const merged = [...base, ...synthesized];
+    const sorted = merged.sort((a, b) =>
+      (a.start_date ?? "").localeCompare(b.start_date ?? ""),
+    );
     return sorted.map((c, i) => ({
       ...c,
       label: i === 0 ? "Aktueller Vertrag" : `Verlängerung #${i}`,
       // Only the first contract (original) is ever 'geöffnet' (current)
       isCurrent: i === 0,
     }));
-  }, [contractChain]);
+  }, [contractChain, savedUpsells, drawerContract]);
 
   // Chain-level aggregates for the drawer header
   const sortedChain = useMemo(
