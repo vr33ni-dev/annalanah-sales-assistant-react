@@ -219,6 +219,15 @@ export default function Contracts() {
     [savedUpsells, drawerContract],
   );
 
+  // Only an "offen" upsell (no result decided yet) blocks planning a new one.
+  // Decided upsells (verlaengerung / keine_verlaengerung) should not prevent
+  // planning a future follow-up upsell.
+  const pendingUpsell = useMemo(
+    () =>
+      savedUpsell && !savedUpsell.upsell_result ? savedUpsell : null,
+    [savedUpsell],
+  );
+
   const verlaengerungUpsell = useMemo(
     () =>
       drawerContract
