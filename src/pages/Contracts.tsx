@@ -207,6 +207,8 @@ export default function Contracts() {
       ? getMockUpsellsForSalesProcess(drawerContract.sales_process_id)
       : [],
   });
+  // Reference the tick so this hook re-runs when a mock save bumps it.
+  void mockUpsellTick;
   const savedUpsell = useMemo(
     () =>
       drawerContract
