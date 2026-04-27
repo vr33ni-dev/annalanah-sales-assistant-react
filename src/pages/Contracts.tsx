@@ -132,6 +132,9 @@ export default function Contracts() {
   const [editingUpsell, setEditingUpsell] = useState<ContractUpsell | null>(
     null,
   );
+  // Bumped after a mock upsell save to force re-render & re-read of the
+  // in-memory mock store (real react-query invalidation is bypassed in mock mode).
+  const [mockUpsellTick, setMockUpsellTick] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [showExpiredContracts, setShowExpiredContracts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,6 +207,8 @@ export default function Contracts() {
       ? getMockUpsellsForSalesProcess(drawerContract.sales_process_id)
       : [],
   });
+  // Reference the tick so this hook re-runs when a mock save bumps it.
+  void mockUpsellTick;
   const savedUpsell = useMemo(
     () =>
       drawerContract
@@ -1613,6 +1618,7 @@ export default function Contracts() {
           onClose={() => setShowUpsellModal(false)}
           onSaved={() => {
             setShowUpsellModal(false);
+            setMockUpsellTick((t) => t + 1);
             queryClient.invalidateQueries({
               queryKey: queryKeys.contract(selectedContract!.id),
             });
