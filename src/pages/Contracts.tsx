@@ -1384,14 +1384,14 @@ export default function Contracts() {
                     setEditingUpsell(null);
                     setShowUpsellModal(true);
                   }}
-                  disabled={savedUpsells.length > 0}
+                  disabled={!!pendingUpsell}
                   title={
-                    savedUpsells.length > 0
-                      ? "Es existiert bereits ein Upsell für diesen Vertrag. Bitte den bestehenden Eintrag bearbeiten."
+                    pendingUpsell
+                      ? "Es existiert bereits ein offener Upsell für diesen Vertrag. Bitte den bestehenden Eintrag bearbeiten."
                       : undefined
                   }
                   className={
-                    savedUpsells.length > 0
+                    pendingUpsell
                       ? "mt-4 px-4 py-2 border border-border bg-muted text-muted-foreground rounded-md cursor-not-allowed"
                       : "mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
                   }
