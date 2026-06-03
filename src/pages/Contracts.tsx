@@ -1703,6 +1703,12 @@ export default function Contracts() {
             queryClient.invalidateQueries({
               queryKey: queryKeys.cashflowMetrics,
             });
+
+            if (selectedId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.comments("contract", selectedId),
+              });
+            }
           }}
         />
       )}

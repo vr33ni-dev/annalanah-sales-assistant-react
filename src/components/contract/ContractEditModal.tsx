@@ -219,7 +219,7 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Vertrag bearbeiten</DialogTitle>
         </DialogHeader>
