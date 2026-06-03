@@ -1667,6 +1667,26 @@ export default function Contracts() {
         <ContractEditModal
           contract={drawerContract}
           onClose={() => setShowContractEdit(false)}
+          onEndDateSaved={() => {
+            const selectedId = selectedContract?.id;
+            const clientId = drawerContract?.client_id;
+
+            if (selectedId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.contract(selectedId),
+              });
+            }
+            if (clientId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.commentsByClient(clientId),
+              });
+            }
+            if (selectedId) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.comments("contract", selectedId),
+              });
+            }
+          }}
           onSaved={() => {
             setShowContractEdit(false);
             const selectedId = selectedContract?.id;
@@ -1687,10 +1707,9 @@ export default function Contracts() {
             }
 
             refetchContracts().then((result) => {
-              // Get fresh contract from server
               const updated = result.data?.find((c) => c.id === selectedId);
               if (updated) {
-                setSelectedContract(updated); // refreshes the drawer details
+                setSelectedContract(updated);
               }
             });
 

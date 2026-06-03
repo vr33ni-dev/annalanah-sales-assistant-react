@@ -58,7 +58,7 @@ function toBruttoNumber(
   return monetaryMode === "netto" ? n * MWST_FACTOR : n;
 }
 
-export function ContractEditModal({ contract, onClose, onSaved }) {
+export function ContractEditModal({ contract, onClose, onSaved, onEndDateSaved }) {
   const [startDate, setStartDate] = useState(toDateOnly(contract?.start_date));
   const [duration, setDuration] = useState("");
   const [frequency, setFrequency] = useState("monthly");
@@ -73,6 +73,7 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
   const [adjustReason, setAdjustReason] = useState("");
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [adjustSuccess, setAdjustSuccess] = useState(false);
   const adjustEndDateInitial =
     contract.end_date_override ?? toDateOnly(contract.end_date) ?? "";
   const adjustEndDateDirty = adjustEndDate !== adjustEndDateInitial;
@@ -125,7 +126,9 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
         new_end_date: adjustEndDate,
         reason: adjustReason.trim(),
       });
-      onSaved();
+      setAdjustReason("");
+      setAdjustSuccess(true);
+      onEndDateSaved?.();
     } catch (err) {
       setAdjustError("Fehler beim Speichern. Bitte versuchen Sie es erneut.");
     } finally {
@@ -329,6 +332,7 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
               onChange={(e) => {
                 setAdjustEndDate(e.target.value);
                 setAdjustError(null);
+                setAdjustSuccess(false);
               }}
             />
           </div>
@@ -346,12 +350,16 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
               onChange={(e) => {
                 setAdjustReason(e.target.value);
                 setAdjustError(null);
+                setAdjustSuccess(false);
               }}
             />
           </div>
 
           {adjustError && (
             <p className="text-xs text-destructive">{adjustError}</p>
+          )}
+          {adjustSuccess && (
+            <p className="text-xs text-green-600">Enddatum erfolgreich gespeichert.</p>
           )}
 
           {adjustEndDateDirty && (
