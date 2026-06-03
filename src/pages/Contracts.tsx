@@ -1723,17 +1723,6 @@ export default function Contracts() {
               queryKey: queryKeys.cashflowMetrics,
             });
 
-            const clientId = drawerContract?.client_id;
-            if (clientId) {
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.commentsByClient(clientId),
-              });
-            }
-            if (selectedId) {
-              queryClient.invalidateQueries({
-                queryKey: queryKeys.comments("contract", selectedId),
-              });
-            }
           }}
         />
       )}
