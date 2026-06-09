@@ -58,7 +58,12 @@ function toBruttoNumber(
   return monetaryMode === "netto" ? n * MWST_FACTOR : n;
 }
 
-export function ContractEditModal({ contract, onClose, onSaved, onEndDateSaved }) {
+export function ContractEditModal({
+  contract,
+  onClose,
+  onSaved,
+  onEndDateSaved,
+}) {
   const [startDate, setStartDate] = useState(toDateOnly(contract?.start_date));
   const [duration, setDuration] = useState("");
   const [frequency, setFrequency] = useState("monthly");
@@ -246,11 +251,15 @@ export function ContractEditModal({ contract, onClose, onSaved, onEndDateSaved }
               value={duration}
               min={MIN_DURATION}
               max={MAX_DURATION}
+              disabled
               onChange={(e) => {
                 setDuration(e.target.value);
                 setDurationError(null);
               }}
             />
+            <p className="text-xs text-muted-foreground">
+              Anzahl der Zahlungseinträge
+            </p>
             {durationError && (
               <p className="text-xs text-destructive mt-1">{durationError}</p>
             )}
@@ -359,7 +368,9 @@ export function ContractEditModal({ contract, onClose, onSaved, onEndDateSaved }
             <p className="text-xs text-destructive">{adjustError}</p>
           )}
           {adjustSuccess && (
-            <p className="text-xs text-green-600">Enddatum erfolgreich gespeichert.</p>
+            <p className="text-xs text-green-600">
+              Enddatum erfolgreich gespeichert.
+            </p>
           )}
 
           {adjustEndDateDirty && (
