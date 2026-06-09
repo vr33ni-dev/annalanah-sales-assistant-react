@@ -428,6 +428,18 @@ export const getContractById = async (
   return data as Contract;
 };
 
+export async function pauseContract(
+  id: number,
+  payload: { new_end_date: string; reason: string },
+) {
+  const res = await fetch(`/api/contracts/${id}/pause`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export const createContract = async (
   payload: Partial<Contract>,
 ): Promise<Contract> => {

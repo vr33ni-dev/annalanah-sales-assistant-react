@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
-import { updateContract } from "@/lib/api";
+import { pauseContract, updateContract } from "@/lib/api";
 import { toDateOnly } from "@/helpers/date";
 
 const MWST_FACTOR = 1.19;
@@ -58,7 +58,7 @@ function toBruttoNumber(
   return monetaryMode === "netto" ? n * MWST_FACTOR : n;
 }
 
-export function ContractEditModal({ contract, onClose, onSaved }) {
+export function ContractEditModal({ contract, onClose, onSaved, onEndDateSaved }) {
   const [startDate, setStartDate] = useState(toDateOnly(contract?.start_date));
   const [duration, setDuration] = useState("");
   const [frequency, setFrequency] = useState("monthly");
@@ -69,6 +69,14 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const mode = normalizeMonetaryMode(contract?.monetary_mode);
+  const [adjustEndDate, setAdjustEndDate] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [adjustSuccess, setAdjustSuccess] = useState(false);
+  const adjustEndDateInitial =
+    contract.end_date_override ?? toDateOnly(contract.end_date) ?? "";
+  const adjustEndDateDirty = adjustEndDate !== adjustEndDateInitial;
 
   // Reset local fields whenever a new contract is opened
   useEffect(() => {
@@ -83,6 +91,12 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
     setDurationError(null);
     setFormError(null);
     setIsSubmitting(false);
+    setAdjustEndDate(
+      contract.end_date_override ?? toDateOnly(contract.end_date) ?? "",
+    );
+    setAdjustReason("");
+    setIsAdjusting(false);
+    setAdjustError(null);
   }, [contract, mode]);
 
   const durationNum = Number(duration) || 0;
@@ -92,6 +106,35 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
   const MIN_DURATION = 0;
   const MAX_REVENUE = 1_000_000;
   const MIN_REVENUE = 0;
+
+  const handleAdjustEndDate = async () => {
+    if (!contract || isAdjusting) return;
+    setAdjustError(null);
+
+    if (!adjustEndDate) {
+      setAdjustError("Bitte ein neues Enddatum angeben.");
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setAdjustError("Bitte einen Grund angeben.");
+      return;
+    }
+
+    setIsAdjusting(true);
+    try {
+      await pauseContract(contract.id, {
+        new_end_date: adjustEndDate,
+        reason: adjustReason.trim(),
+      });
+      setAdjustReason("");
+      setAdjustSuccess(true);
+      onEndDateSaved?.();
+    } catch (err) {
+      setAdjustError("Fehler beim Speichern. Bitte versuchen Sie es erneut.");
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!contract || isSubmitting) return;
@@ -152,6 +195,13 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
       return;
     }
 
+    if (adjustEndDateDirty) {
+      setAdjustError(
+        "Enddatum wurde geändert aber noch nicht gespeichert. Bitte 'Enddatum speichern' klicken oder das Feld zurücksetzen.",
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await updateContract(contract.id, {
@@ -172,7 +222,7 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Vertrag bearbeiten</DialogTitle>
         </DialogHeader>
@@ -261,6 +311,90 @@ export function ContractEditModal({ contract, onClose, onSaved }) {
               <p className="text-xs text-destructive">{revenueError}</p>
             )}
           </div>
+        </div>
+
+        {/* End date adjustment */}
+        <div className="border-t mt-4 pt-4 space-y-3">
+          <p className="text-sm font-medium">Enddatum anpassen</p>
+
+          {contract.end_date_override && (
+            <p className="text-xs text-muted-foreground">
+              Aktuell manuell gesetzt auf{" "}
+              <span className="font-medium">{contract.end_date_override}</span>
+            </p>
+          )}
+
+          <div className="space-y-1">
+            <Label>Neues Enddatum</Label>
+            <Input
+              type="date"
+              value={adjustEndDate}
+              onChange={(e) => {
+                setAdjustEndDate(e.target.value);
+                setAdjustError(null);
+                setAdjustSuccess(false);
+              }}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label>
+              Grund{" "}
+              <span className="text-muted-foreground text-xs">
+                (Pflichtfeld)
+              </span>
+            </Label>
+            <Input
+              placeholder="z.B. OP pausiert 3 Monate, Pause beendet, …"
+              value={adjustReason}
+              onChange={(e) => {
+                setAdjustReason(e.target.value);
+                setAdjustError(null);
+                setAdjustSuccess(false);
+              }}
+            />
+          </div>
+
+          {adjustError && (
+            <p className="text-xs text-destructive">{adjustError}</p>
+          )}
+          {adjustSuccess && (
+            <p className="text-xs text-green-600">Enddatum erfolgreich gespeichert.</p>
+          )}
+
+          {adjustEndDateDirty && (
+            <button
+              className="text-xs underline text-muted-foreground"
+              onClick={() => {
+                setAdjustEndDate(adjustEndDateInitial);
+                setAdjustReason("");
+                setAdjustError(null);
+              }}
+            >
+              Änderung zurücksetzen
+            </button>
+          )}
+
+          <span
+            className="w-full block"
+            onClick={() => {
+              if (isAdjusting) return;
+              if (!adjustEndDate) {
+                setAdjustError("Bitte ein neues Enddatum auswählen.");
+              } else if (!adjustReason.trim()) {
+                setAdjustError("Bitte einen Grund eingeben.");
+              }
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={handleAdjustEndDate}
+              disabled={isAdjusting || !adjustEndDate || !adjustReason.trim()}
+              className="w-full"
+            >
+              {isAdjusting ? "Wird gespeichert..." : "Enddatum speichern"}
+            </Button>
+          </span>
         </div>
 
         {formError && (
