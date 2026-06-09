@@ -1,3 +1,15 @@
+# v0.8.1 (Tue Jun 09 2026)
+
+#### 🐛 Bug Fix
+
+- fix: disable Laufzeit field, add hint that it derives from payment en… [#125](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/125) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.8.0 (Tue Jun 09 2026)
 
 #### 🚀 Enhancement
