@@ -1,3 +1,15 @@
+# v0.8.0 (Tue Jun 09 2026)
+
+#### 🚀 Enhancement
+
+- feat: pause contract [#123](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/123) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.7.3 (Mon Apr 27 2026)
 
 #### 🐛 Bug Fix
