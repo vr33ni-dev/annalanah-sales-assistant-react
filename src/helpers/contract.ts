@@ -36,11 +36,14 @@ export function addMonthsIso(iso: string, m: number): string {
 export function getContractEndDate(contract: {
   start_date?: string | null;
   end_date?: string | null;
+  end_date_override?: string | null;
   duration_months?: number | null;
 }): Date | null {
   const start = toDateStartOfDay(contract.start_date ?? null);
+  const endOverride = toDateStartOfDay(contract.end_date_override ?? null);
   const endFromServer = toDateStartOfDay(contract.end_date ?? null);
 
+  if (endOverride) return endOverride;
   if (endFromServer) return endFromServer;
   if (!start || typeof contract.duration_months !== "number") return null;
 

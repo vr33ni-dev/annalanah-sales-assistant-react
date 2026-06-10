@@ -397,6 +397,7 @@ export interface Contract {
   created_at: string;
   start_date: string;
   end_date?: string | null;
+  end_date_override?: string | null;
   duration_months: number;
   revenue_total: number;
   payment_frequency: string;
