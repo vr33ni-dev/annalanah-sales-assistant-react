@@ -1,3 +1,15 @@
+# v0.8.2 (Wed Jun 10 2026)
+
+#### 🐛 Bug Fix
+
+- fix: disable Laufzeit field; use end_date_override in table; prevent save when form unchanged [#126](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/126) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.8.1 (Tue Jun 09 2026)
 
 #### 🐛 Bug Fix
