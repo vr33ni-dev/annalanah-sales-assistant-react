@@ -107,6 +107,11 @@ export function ContractEditModal({
   const durationNum = Number(duration) || 0;
   const revenueModeLabel = "Brutto";
 
+  const isFormDirty =
+    startDate !== toDateOnly(contract?.start_date) ||
+    frequency !== (contract?.payment_frequency ?? "monthly") ||
+    revenueDirty;
+
   const MAX_DURATION = 120;
   const MIN_DURATION = 0;
   const MAX_REVENUE = 1_000_000;
@@ -413,9 +418,9 @@ export function ContractEditModal({
         )}
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Abbrechen
+            {isFormDirty ? "Abbrechen" : "Schließen"}
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !isFormDirty}>
             {isSubmitting ? "Speichern..." : "Speichern"}
           </Button>
         </DialogFooter>
