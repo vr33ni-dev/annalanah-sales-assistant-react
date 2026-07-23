@@ -871,7 +871,7 @@ export const runNLQ = async (question: string): Promise<NLQResponse> => {
 };
 
 /* Comments */
-export type CommentEntityType = "client" | "contract" | "sales_process";
+export type CommentEntityType = "client" | "contract" | "sales_process" | "lead";
 
 export interface Comment {
   id: number;

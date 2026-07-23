@@ -39,7 +39,9 @@ export function CommentsDialog({
 }: CommentsDialogProps) {
   const [open, setOpen] = useState(false);
 
-  const { data: comments = [] } = useMockableQuery({
+  const isConvertedLead = entityType === "lead" && !!clientId;
+
+  const { data: primaryComments = [] } = useMockableQuery({
     queryKey: clientId
       ? queryKeys.commentsByClient(clientId)
       : queryKeys.comments(entityType, entityId),
@@ -53,12 +55,23 @@ export function CommentsDialog({
       : getMockCommentsForEntity(entityType, entityId),
   });
 
-  const commentCount = comments.length;
+  const { data: preConversionComments = [] } = useMockableQuery({
+    queryKey: queryKeys.comments("lead", entityId),
+    queryFn: () => getComments("lead", entityId),
+    enabled: open && isConvertedLead,
+    mockData: getMockCommentsForEntity("lead", entityId),
+  });
+
+  const commentCount = isConvertedLead
+    ? new Set([...primaryComments, ...preConversionComments].map((c) => c.id))
+        .size
+    : primaryComments.length;
 
   const entityTypeLabels: Record<CommentEntityType, string> = {
     client: "Kunde",
     contract: "Vertrag",
     sales_process: "Verkaufsprozess",
+    lead: "Lead",
   };
 
   return (

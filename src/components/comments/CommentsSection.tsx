@@ -27,6 +27,7 @@ const entityTypeLabels: Record<CommentEntityType, string> = {
   client: "Kunde",
   contract: "Vertrag",
   sales_process: "Verkaufsprozess",
+  lead: "Lead",
 };
 
 interface CommentsSectionProps {
@@ -51,10 +52,15 @@ export function CommentsSection({
   const queryClient = useQueryClient();
   const { useMockData } = useAuthEnabled();
 
-  // When clientId is provided, fetch all comments for the client; otherwise scope to entity
+  // Converted lead: post-conversion comments land on the client (entity_type='client'),
+  // so we fetch by client_id. Pre-conversion comments remain as entity_type='lead',
+  // so we fetch both and merge.
+  const isConvertedLead = entityType === "lead" && !!clientId;
+
   const queryKey = clientId
     ? ["comments", "client", clientId]
     : ["comments", entityType, entityId];
+  const leadQueryKey = ["comments", "lead", entityId] as const;
 
   const {
     data: apiComments = [],
@@ -70,6 +76,24 @@ export function CommentsSection({
       (isOpen ?? true) && (clientId ? !!clientId : !!entityId) && !useMockData,
   });
 
+  const { data: preConversionComments = [] } = useQuery<Comment[], Error>({
+    queryKey: leadQueryKey,
+    queryFn: () => getComments("lead", entityId),
+    enabled: (isOpen ?? true) && isConvertedLead && !useMockData,
+  });
+
+  const mergedApiComments = isConvertedLead
+    ? [
+        ...new Map(
+          [...apiComments, ...preConversionComments].map((c) => [c.id, c]),
+        ).values(),
+      ].sort(
+        (a, b) =>
+          new Date(a.created_at ?? 0).getTime() -
+          new Date(b.created_at ?? 0).getTime(),
+      )
+    : apiComments;
+
   // Use mock data in Lovable preview
   const comments = useMockData
     ? clientId
@@ -78,7 +102,7 @@ export function CommentsSection({
           ...getMockCommentsForEntity(entityType, entityId),
           ...localMockComments,
         ]
-    : apiComments;
+    : mergedApiComments;
 
   const createMutation = useMutation<Comment, unknown, string>({
     mutationFn: (content: string) =>
@@ -89,6 +113,7 @@ export function CommentsSection({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      if (isConvertedLead) queryClient.invalidateQueries({ queryKey: leadQueryKey });
       setNewComment("");
       toast({ title: "Kommentar gespeichert" });
     },
@@ -104,6 +129,7 @@ export function CommentsSection({
     mutationFn: (commentId: number) => deleteComment(commentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
+      if (isConvertedLead) queryClient.invalidateQueries({ queryKey: leadQueryKey });
       toast({ title: "Kommentar gelöscht" });
     },
     onError: () => {

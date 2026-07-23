@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Lead, getLeads, deleteLead } from "@/lib/api";
+import { CommentsDialog } from "@/components/comments/CommentsDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { asArray } from "@/lib/safe";
 import { useMockableQuery } from "@/hooks/useMockableQuery";
@@ -268,7 +269,13 @@ export default function Leads() {
                     )}
                   </TableCell>
                   <TableCell>{formatDate(lead.created_at)}</TableCell>
-                  <TableCell>
+                  <TableCell className="flex gap-2">
+                    <CommentsDialog
+                      entityType="lead"
+                      entityId={lead.id}
+                      clientId={lead.converted_client_id ?? undefined}
+                      entityName={lead.name}
+                    />
                     {lead.converted ? (
                       <TooltipProvider>
                         <Tooltip>
