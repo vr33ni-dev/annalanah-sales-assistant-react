@@ -730,6 +730,7 @@ export interface CashflowEntry {
 
 export const getCashflowEntries = async (
   contractId?: number,
+  clientId?: number,
 ): Promise<CashflowEntry[]> => {
   if (contractId) {
     const { data } = await api.get<CashflowEntry[]>(
@@ -738,7 +739,13 @@ export const getCashflowEntries = async (
     return Array.isArray(data) ? data : [];
   }
 
-  const { data } = await api.get<unknown>(`/cashflow/entries`);
+  const { data } = await api.get<unknown>(`/cashflow/entries`, {
+    params: {
+      sort_order: "desc",
+      per_page: 500,
+      ...(clientId ? { client_id: clientId } : {}),
+    },
+  });
 
   if (Array.isArray(data)) return data as CashflowEntry[];
 
