@@ -1,3 +1,15 @@
+# v0.9.0 (Sat Aug 01 2026)
+
+#### 🚀 Enhancement
+
+- Adjusting UI to reflect backend changes in cashflow history/prognosis + comment function in leads table [#127](https://github.com/vr33ni-dev/annalanah-sales-assistant-react/pull/127) ([@vr33ni](https://github.com/vr33ni))
+
+#### Authors: 1
+
+- [@vr33ni](https://github.com/vr33ni)
+
+---
+
 # v0.8.2 (Wed Jun 10 2026)
 
 #### 🐛 Bug Fix
