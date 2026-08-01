@@ -1412,7 +1412,7 @@ export default function Contracts() {
                 {/* ------------- CashflowEntriesTable --------------*/}
                 <div className="mt-6">
                   <h3 className="font-semibold mb-2">Zahlungsverlauf</h3>
-                  <CashflowHistoryTable contractId={currentOrNextContract.id} />
+                  <CashflowHistoryTable clientId={currentOrNextContract.client_id} />
                 </div>
               </div>
               <div className="mt-6 space-y-3">

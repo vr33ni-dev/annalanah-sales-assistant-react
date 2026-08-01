@@ -12,8 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Contract,
-  getContractById,
   getContracts,
+  getCashflowEntries,
   patchCashflowEntryStatus,
   type CashflowEntry,
 } from "@/lib/api";
@@ -27,23 +27,6 @@ import { TablePagination } from "@/components/TablePagination";
 import { extractYmd, formatYmdToLocale, toYmdLocal } from "@/helpers/date";
 import { queryKeys } from "@/lib/queryKeys";
 
-function calcNextDueAmount(c: Contract): number {
-  switch (c.payment_frequency) {
-    case "monthly":
-      return c.base_monthly_amount;
-    case "bi-monthly":
-      return c.base_monthly_amount * 2;
-    case "quarterly":
-      return c.base_monthly_amount * 3;
-    case "bi-yearly":
-      return c.base_monthly_amount * 6;
-    case "one-time":
-      return c.revenue_total;
-    default:
-      return c.base_monthly_amount;
-  }
-}
-
 export function CashflowHistoryTable({
   contractId,
   clientId,
@@ -54,35 +37,33 @@ export function CashflowHistoryTable({
   onContractClick?: (contract: Contract) => void;
 }) {
   const {
-    data: contracts = [],
-    isFetching: fetchingContracts,
-    isError: contractsError,
-  } = useMockableQuery<Contract[]>({
+    data: rawEntries = [],
+    isFetching: fetchingEntries,
+    isError: entriesError,
+  } = useMockableQuery<CashflowEntry[]>({
+    queryKey: contractId
+      ? queryKeys.cashflowEntriesByContract(contractId)
+      : clientId
+        ? [...queryKeys.cashflowEntries, { clientId }]
+        : queryKeys.cashflowEntries,
+    queryFn: () => getCashflowEntries(contractId, clientId),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    select: asArray<CashflowEntry>,
+    mockData: [],
+  });
+
+  // Contracts list — only needed for clientId filtering and click-through handling
+  const needsContracts =
+    typeof clientId === "number" || typeof onContractClick === "function";
+  const { data: contracts = [] } = useMockableQuery<Contract[]>({
     queryKey: queryKeys.contractsList({ compact: true }),
     queryFn: () => getContracts({ compact: true }),
-    enabled: typeof contractId !== "number",
+    enabled: needsContracts,
     retry: false,
     staleTime: 5 * 60 * 1000,
     select: asArray<Contract>,
     mockData: mockContracts,
-  });
-
-  const {
-    data: contractDetail,
-    isFetching: fetchingContractDetail,
-    isError: contractDetailError,
-  } = useMockableQuery<Contract | null>({
-    queryKey: contractId ? queryKeys.contract(contractId) : ["contract", null],
-    queryFn: () =>
-      typeof contractId === "number" ? getContractById(contractId) : null,
-    enabled: typeof contractId === "number",
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    select: (contract) => contract ?? null,
-    mockData:
-      typeof contractId === "number"
-        ? (mockContracts.find((contract) => contract.id === contractId) ?? null)
-        : null,
   });
 
   type RangeFilter = "all" | "30" | "90" | "365";
@@ -118,64 +99,25 @@ export function CashflowHistoryTable({
 
   const now = new Date();
 
-  const contractSource =
-    typeof contractId === "number"
-      ? contractDetail
-        ? [contractDetail]
-        : []
-      : typeof clientId === "number"
-        ? contracts.filter((c) => c.client_id === clientId)
-        : contracts;
+  const contractById = Object.fromEntries(contracts.map((c) => [c.id, c]));
 
-  const contractById = Object.fromEntries(contractSource.map((c) => [c.id, c]));
-
-  const entries = contractSource
-    .flatMap((contract) => {
-      const contractLabel = contract.client_name;
-      const embeddedEntries = Array.isArray(contract.cashflow)
-        ? contract.cashflow
-            .filter((entry) => Number(entry.amount ?? 0) > 0)
-            .map((entry) => ({
-              id: entry.id,
-              contractId:
-                typeof entry.contract_id === "number"
-                  ? entry.contract_id
-                  : contract.id,
-              contractLabel,
-              dueDate: entry.due_date,
-              amount: entry.amount,
-              confirmed: entry.confirmed ?? true,
-              status: entry.status ?? null,
-            }))
-        : [];
-
-      if (embeddedEntries.length > 0) return embeddedEntries;
-
-      const due = contract.next_due_date ?? contract.start_date ?? null;
-      if (!due) return [];
-
-      return [
-        {
-          id: contract.id,
-          contractId: contract.id,
-          contractLabel,
-          dueDate: due,
-          amount: calcNextDueAmount(contract),
-          confirmed: true,
-          status: null,
-        },
-      ].filter((entry) => entry.amount > 0);
-    })
+  const entries = rawEntries
+    .filter((e) => Number(e.amount ?? 0) > 0)
+    .map((e) => ({
+      id: e.id,
+      contractId: e.contract_id ?? 0,
+      contractLabel: e.contract_label ?? contractById[e.contract_id ?? 0]?.client_name ?? "",
+      dueDate: e.due_date,
+      amount: e.amount,
+      confirmed: e.confirmed ?? true,
+      status: e.status ?? null,
+    }))
     .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""));
 
-  const isFetching =
-    typeof contractId === "number" ? fetchingContractDetail : fetchingContracts;
-  const isError =
-    typeof contractId === "number" ? contractDetailError : contractsError;
+  const isFetching = fetchingEntries;
+  const isError = entriesError;
 
-  // ✅ Apply optional filtering if a contractId is provided and if the user selected a range
   const filteredEntries = entries
-    .filter((e) => !contractId || e.contractId === contractId)
     .filter((e) => {
       const dueYmd = extractYmd(e.dueDate);
       if (!dueYmd) return false;
@@ -270,10 +212,20 @@ export function CashflowHistoryTable({
                     }));
                     try {
                       await patchCashflowEntryStatus(e.id, next);
-                      // Do NOT clear the override — compact mode doesn't return
-                      // cashflow statuses, so clearing it would cause a blink back
-                      // to the old value while the refetch is in flight.
-                      // The override persists as the source of truth until unmount.
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.cashflowEntries,
+                      });
+                      queryClient.invalidateQueries({
+                        queryKey: queryKeys.cashflowEntriesByContract(
+                          e.contractId,
+                        ),
+                      });
+                      if (contractId && contractId !== e.contractId) {
+                        queryClient.invalidateQueries({
+                          queryKey:
+                            queryKeys.cashflowEntriesByContract(contractId),
+                        });
+                      }
                       queryClient.invalidateQueries({
                         queryKey: queryKeys.contractsList({ compact: true }),
                       });
